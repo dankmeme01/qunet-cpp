@@ -2,36 +2,67 @@
 #include <qunet/socket/transport/UdpTransport.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
+#include <qunet/Log.hpp>
+
+#include <asp/time/Instant.hpp>
 
 using namespace qsox;
 using namespace asp::time;
 
 namespace qn {
 
-NetResult<Socket> Socket::connect(const qsox::SocketAddress& address, ConnectionType type, const Duration& timeout) {
-    auto transport = GEODE_UNWRAP(createTransport(address, type, timeout));
+TransportResult<Socket> Socket::connect(const qsox::SocketAddress& address, ConnectionType type, const Duration& timeout) {
+    auto startedAt = Instant::now();
+
+    auto transport = GEODE_UNWRAP(createTransport(address, type, timeout).mapErr([](const auto& err) {
+        return TransportError::TransportCreationFailed;
+    }));
+
+    if (startedAt.elapsed() > timeout) {
+        return Err(TransportError::ConnectionTimedOut);
+    }
 
     Socket socket(std::move(transport));
 
     GEODE_UNWRAP(socket.sendHandshake());
 
+    auto handshakeTimeout = timeout - startedAt.elapsed();
+    if (handshakeTimeout.millis() <= 0) {
+        return Err(TransportError::ConnectionTimedOut);
+    }
+
+    GEODE_UNWRAP(socket.waitForHandshakeResponse(handshakeTimeout));
+
     return Ok(std::move(socket));
 }
 
-NetResult<> Socket::sendHandshake() {
-    HeapByteWriter writer;
-    writer.writeU8(MSG_HANDSHAKE_START);
-    writer.writeU16(MAJOR_VERSION);
+TransportResult<> Socket::sendHandshake() {
+    return m_transport->sendMessage(HandshakeStartMessage {
+        .majorVersion = MAJOR_VERSION,
+        .fragLimit = UDP_PACKET_LIMIT,
+        // TODO: qdb hash
+        .qdbHash = std::array<uint8_t, 16>{}
+    });
+}
 
-    // TODO: fragmentation limit, make it configurable
-    writer.writeU16(UDP_PACKET_LIMIT);
+TransportResult<> Socket::waitForHandshakeResponse(Duration timeout) {
+    bool res = GEODE_UNWRAP(m_transport->poll(timeout));
+    if (!res) {
+        return Err(TransportError::ConnectionTimedOut);
+    }
 
-    // TODO: put qdb hash here
-    writer.writeZeroes(16);
+    auto msg = GEODE_UNWRAP(m_transport->receiveMessage());
 
-    auto data = writer.written();
+    if (msg.is<HandshakeFinishMessage>()) {
+        auto& hf = msg.as<HandshakeFinishMessage>();
+        log::debug("Handshake finished, connection ID: {}", hf.connectionId);
 
-    return m_transport->sendMessage(data);
+        return Ok();
+    } else if (msg.is<HandshakeFailureMessage>()) {
+        return Err(TransportError::HandshakeFailed);
+    } else {
+        return Err(TransportError::InvalidMessage);
+    }
 }
 
 NetResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const SocketAddress& address, ConnectionType type, const Duration& timeout) {

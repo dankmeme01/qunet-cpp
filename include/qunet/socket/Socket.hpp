@@ -18,7 +18,7 @@ enum class ConnectionType {
 class Socket {
 public:
     // Attempts to connect to the specified address using the given connection type.
-    static qsox::NetResult<Socket> connect(
+    static TransportResult<Socket> connect(
         const qsox::SocketAddress& address,
         ConnectionType type,
         const asp::time::Duration& timeout
@@ -35,7 +35,8 @@ private:
         const asp::time::Duration& timeout
     );
 
-    qsox::NetResult<> sendHandshake();
+    TransportResult<> sendHandshake();
+    TransportResult<> waitForHandshakeResponse(asp::time::Duration timeout);
 };
 
 }

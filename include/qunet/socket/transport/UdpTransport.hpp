@@ -14,7 +14,9 @@ public:
     UdpTransport(UdpTransport&&) = default;
     UdpTransport& operator=(UdpTransport&&) = default;
 
-    qsox::NetResult<> sendMessage(std::span<const uint8_t> data) override;
+    TransportResult<> sendMessage(QunetMessage data) override;
+    TransportResult<bool> poll(const asp::time::Duration& dur) override;
+    TransportResult<QunetMessage> receiveMessage() override;
 
 private:
     qsox::UdpSocket m_socket;
