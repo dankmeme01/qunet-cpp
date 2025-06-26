@@ -7,6 +7,7 @@
 #include <asp/sync/Channel.hpp>
 #include <asp/sync/Mutex.hpp>
 #include <asp/time/Duration.hpp>
+#include <semaphore>
 
 namespace qn {
 
@@ -55,8 +56,12 @@ private:
     asp::Channel<std::pair<qsox::SocketAddress, Callback>> m_channel;
 
     std::optional<qsox::UdpSocket> m_socket;
+    std::binary_semaphore m_socketSema{0};
+
     asp::Mutex<std::vector<OutgoingPing>> m_outgoingPings;
     uint32_t m_nextPingId = 0;
+
+
 
     asp::Mutex<std::unordered_map<qsox::SocketAddress, CachedPing>> m_cache;
 

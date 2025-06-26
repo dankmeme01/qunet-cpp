@@ -23,6 +23,7 @@ Result<std::span<const uint8_t>> ByteReader::readBytes(size_t size) {
 
     auto begin = m_data.begin() + m_pos;
     auto end = begin + size;
+    m_pos += size;
 
     return Ok(std::span{begin, end});
 }

@@ -263,13 +263,6 @@ Connection::~Connection() {
 void Connection::thrTryConnectNext() {
     auto _lock = m_internalMutex.lock();
 
-    // increment to the next connection type / ip
-    m_thrConnTypeIndex++;
-    if (m_thrConnTypeIndex >= m_usedConnTypes.size()) {
-        m_thrConnTypeIndex = 0;
-        m_thrConnIpIndex++;
-    }
-
     if (m_thrConnIpIndex >= m_usedIps.size()) {
         // we have tried all ips with all connection types, fail
         log::warn("Tried all IPs ({}) with all connection types ({}), connection failed",
@@ -288,6 +281,14 @@ void Connection::thrTryConnectNext() {
         port = m_usedPort ? m_usedPort : DEFAULT_PORT;
     }
 
+    // increment to the next connection type / ip
+    m_thrConnTypeIndex++;
+    if (m_thrConnTypeIndex >= m_usedConnTypes.size()) {
+        m_thrConnTypeIndex = 0;
+        m_thrConnIpIndex++;
+    }
+
+    // try connecting
     qsox::SocketAddress address{ip, port};
 
     this->thrTryConnectWith(address, connType);
@@ -313,11 +314,27 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
     log::debug("Connected to {} ({})", addr.toString(), connTypeToString(type));
 
     m_socket = std::move(sock.unwrap());
+
+    this->thrConnected();
+}
+
+void Connection::thrConnected() {
+    m_connState = ConnectionState::Connected;
 }
 
 void Connection::thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr) {
     auto _lock = m_internalMutex.lock();
     m_thrPingResults.push_back({addr, result.responseTime});
+
+    for (auto& proto : result.protocols) {
+        if (std::find_if(m_thrPingerSupportedProtocols.begin(), m_thrPingerSupportedProtocols.end(),
+            [&proto](const auto& res) { return res.protocolId == proto.protocolId; }) != m_thrPingerSupportedProtocols.end()) {
+            // already have this protocol, skip
+            continue;
+        }
+
+        m_thrPingerSupportedProtocols.push_back(proto);
+    }
 }
 
 void Connection::thrSortPingResults() {

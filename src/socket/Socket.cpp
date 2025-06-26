@@ -43,7 +43,7 @@ NetResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const SocketAd
         } break;
 
         default: {
-            return Err(Error::UnsupportedFamily);
+            return Err(Error::Unimplemented);
         }
     }
 }

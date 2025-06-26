@@ -23,7 +23,8 @@ Pinger::Pinger() {
     // TODO: maybe make the recv thread sleep longer if there are no outstanding pings
     m_recvThread.setLoopFunction([this](auto& sotpToken) {
         if (!m_socket) {
-            asp::time::sleep(Duration::fromMillis(100));
+            // block until we have a socket
+            m_socketSema.acquire();
             return;
         }
 
@@ -97,6 +98,7 @@ void Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
         }
 
         m_socket = std::move(res).unwrap();
+        m_socketSema.release();
 
         if (auto err = m_socket->setReadTimeout(100).err()) {
             log::error("Failed to set read timeout on pinger UDP socket: {}", err->message());

@@ -185,6 +185,7 @@ private:
     void thrTryConnectNext();
     void thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionType type);
     bool thrConnecting();
+    void thrConnected();
     void thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr);
     void thrSortPingResults();
     void thrSortConnTypes();
