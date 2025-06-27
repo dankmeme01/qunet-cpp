@@ -1,5 +1,6 @@
 #include <qunet/socket/Socket.hpp>
 #include <qunet/socket/transport/UdpTransport.hpp>
+#include <qunet/socket/transport/TcpTransport.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Log.hpp>
@@ -57,8 +58,13 @@ TransportResult<> Socket::waitForHandshakeResponse(Duration timeout) {
         auto& hf = msg.as<HandshakeFinishMessage>();
         log::debug("Handshake finished, connection ID: {}", hf.connectionId);
 
+        m_transport->setConnectionId(hf.connectionId);
+
         return Ok();
     } else if (msg.is<HandshakeFailureMessage>()) {
+        auto& hf = msg.as<HandshakeFailureMessage>();
+        log::warn("Handshake failed: {}", hf.message());
+
         return Err(TransportError::HandshakeFailed);
     } else {
         return Err(TransportError::InvalidMessage);
@@ -70,6 +76,12 @@ NetResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const SocketAd
         case ConnectionType::Udp: {
             auto transport = GEODE_UNWRAP(UdpTransport::connect(address));
             auto ptr = std::make_shared<UdpTransport>(std::move(transport));
+            return Ok(std::static_pointer_cast<BaseTransport>(ptr));
+        } break;
+
+        case ConnectionType::Tcp: {
+            auto transport = GEODE_UNWRAP(TcpTransport::connect(address));
+            auto ptr = std::make_shared<TcpTransport>(std::move(transport));
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 

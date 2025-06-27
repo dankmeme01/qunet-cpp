@@ -11,6 +11,9 @@ QN_MAKE_ERROR_STRUCT(MessageDecodeError,
     InvalidData
 );
 
+template<class... Ts> struct makeVisitor : Ts... { using Ts::operator()...; };
+template<class... Ts> makeVisitor(Ts...) -> makeVisitor<Ts...>;
+
 class QunetMessage {
     using VariantTy = std::variant<
         // PingMessage,
@@ -81,6 +84,72 @@ public:
                 QN_ASSERT(false && "This message does not support encoding");
             }
         }, m_kind);
+    }
+
+    MessageEncodeResult encodeHeader(
+        HeapByteWriter& writer,
+        uint64_t connectionId
+    ) const {
+        // Write the header byte
+        std::visit(makeVisitor {
+            [&](PingMessage msg) {
+                return writer.writeU8(MSG_PING);
+            },
+            [&](PongMessage msg) {
+                return writer.writeU8(MSG_PONG);
+            },
+            [&](KeepaliveMessage msg) {
+                return writer.writeU8(MSG_KEEPALIVE);
+            },
+            [&](KeepaliveResponseMessage msg) {
+                return writer.writeU8(MSG_KEEPALIVE_RESPONSE);
+            },
+            [&](const HandshakeStartMessage& msg) {
+                return writer.writeU8(MSG_HANDSHAKE_START);
+            },
+            [&](const HandshakeFinishMessage& msg) {
+                return writer.writeU8(MSG_HANDSHAKE_FINISH);
+            },
+            [&](const HandshakeFailureMessage& msg) {
+                return writer.writeU8(MSG_HANDSHAKE_FAILURE);
+            },
+            [&](ClientCloseMessage msg) {
+                return writer.writeU8(MSG_CLIENT_CLOSE);
+            },
+            [&](ServerCloseMessage msg) {
+                return writer.writeU8(MSG_SERVER_CLOSE);
+            },
+            [&](ClientReconnectMessage msg) {
+                return writer.writeU8(MSG_CLIENT_RECONNECT);
+            },
+            [&](ConnectionErrorMessage msg) {
+                return writer.writeU8(MSG_CONNECTION_ERROR);
+            },
+            [&](QdbChunkRequestMessage msg) {
+                return writer.writeU8(MSG_QDB_CHUNK_REQUEST);
+            },
+            [&](QdbChunkResponseMessage msg) {
+                return writer.writeU8(MSG_QDB_CHUNK_RESPONSE);
+            },
+            [&](QdbgToggleMessage msg) {
+                return writer.writeU8(MSG_QDBG_TOGGLE);
+            },
+            [&](QdbgReportMessage msg) {
+                return writer.writeU8(MSG_QDBG_REPORT);
+            },
+            [&](const DataMessage& msg) {
+                return writer.writeU8(MSG_DATA);
+            }
+        }, m_kind);
+
+        // TODO compression header
+
+        if (connectionId != 0) {
+            // write the connection ID (udp)
+            writer.writeU64(connectionId);
+        }
+
+        return Ok();
     }
 
     static geode::Result<QunetMessage, MessageDecodeError> decode(ByteReader& reader);

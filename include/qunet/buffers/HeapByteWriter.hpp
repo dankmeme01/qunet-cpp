@@ -59,6 +59,18 @@ public:
     Result<void> setPosition(size_t pos);
     size_t position() const;
 
+    Result<void> performAt(size_t pos, auto&& func) {
+        if (pos > m_buffer.size()) {
+            return Err(ByteWriterError::OutOfBoundsWrite);
+        }
+
+        size_t oldPos = m_pos;
+        m_pos = pos;
+        func(*this);
+        m_pos = oldPos;
+        return Ok();
+    }
+
 private:
     std::vector<uint8_t> m_buffer;
     size_t m_pos = 0;

@@ -1,5 +1,6 @@
 #pragma once
 #include <qunet/buffers/ByteWriter.hpp>
+#include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/buffers/ByteReader.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/util/assert.hpp>
@@ -10,7 +11,6 @@
 #define QN_NO_DECODE(t) static MessageDecodeResult<t> decode(ByteReader& writer) { \
     QN_ASSERT(false && "Message of type " # t " cannot be decoded"); \
 }
-
 
 namespace qn {
 
@@ -32,7 +32,6 @@ struct HandshakeStartMessage {
     std::array<uint8_t, 16> qdbHash;
 
     MessageEncodeResult encode(auto& writer) const {
-        writer.writeU8(MSG_HANDSHAKE_START);
         writer.writeU16(majorVersion);
         writer.writeU16(fragLimit);
         writer.writeBytes(qdbHash.data(), qdbHash.size());
@@ -80,7 +79,29 @@ struct HandshakeFinishMessage {
 };
 
 struct HandshakeFailureMessage {
-    QN_NO_DECODE(HandshakeFailureMessage);
+    uint32_t errorCode;
+    std::string errorMessage;
+
+    std::string_view message() const {
+        switch (errorCode) {
+            case 0: return errorMessage;
+            case 1: return "Client qunet version is too old";
+            case 2: return "Client qunet version is too new";
+            case 3: return "Reconnect failed, unknown connection ID";
+            default: return "Unknown error, invalid error code";
+        }
+    }
+
+    static MessageDecodeResult<HandshakeFailureMessage> decode(ByteReader& writer) {
+        HandshakeFailureMessage out;
+        out.errorCode = GEODE_UNWRAP(writer.readU32());
+        if (out.errorCode == 0) {
+            out.errorMessage = GEODE_UNWRAP(writer.readString());
+        }
+
+        return Ok(std::move(out));
+    }
+
     QN_NO_ENCODE(HandshakeFailureMessage);
 };
 

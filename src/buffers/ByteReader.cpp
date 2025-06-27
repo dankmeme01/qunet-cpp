@@ -114,6 +114,10 @@ Result<std::string> ByteReader::readStringU16() {
     return this->readFixedString(len);
 }
 
+Result<std::string> ByteReader::readString() {
+    return this->readStringU16();
+}
+
 Result<std::string> ByteReader::readFixedString(size_t len) {
     if (len > 1024 * 1024) {
         return Err(ByteReaderError::StringTooLong);

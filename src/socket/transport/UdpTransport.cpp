@@ -5,6 +5,8 @@
 
 #include <qsox/Poll.hpp>
 
+#define MAP_UNWRAP(x) GEODE_UNWRAP((x).mapErr([](const auto& err) { return TransportError::EncodingFailed; }))
+
 using namespace qsox;
 using namespace asp::time;
 
@@ -23,6 +25,8 @@ NetResult<UdpTransport> UdpTransport::connect(const SocketAddress& address) {
 
 TransportResult<> UdpTransport::sendMessage(QunetMessage message) {
     HeapByteWriter writer;
+    MAP_UNWRAP(message.encodeHeader(writer, m_connectionId));
+
     auto res = message.encode(writer);
     if (!res) {
         log::warn("Failed to encode message: {}", res.unwrapErr().message());

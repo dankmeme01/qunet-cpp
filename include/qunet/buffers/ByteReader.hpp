@@ -43,6 +43,8 @@ public:
     Result<std::string> readStringVar();
     Result<std::string> readStringU8();
     Result<std::string> readStringU16();
+    // Alias to `readStringU16`
+    Result<std::string> readString();
     Result<std::string> readFixedString(size_t len);
 
     std::span<const uint8_t> remaining() const;

@@ -13,6 +13,7 @@ std::string_view MessageDecodeError::message() const {
 }
 
 geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decode(ByteReader& reader) {
+    // TODO, just like in the server, split this into `parseHeader` and `decode`
     auto msgType = MAP_UNWRAP(reader.readU8());
 
     if (msgType & MSG_DATA_MASK) {
