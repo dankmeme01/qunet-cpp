@@ -82,14 +82,7 @@ TransportResult<size_t> QuicStream::write(const uint8_t* data, size_t len) {
 }
 
 TransportResult<size_t> QuicStream::tryFlush() {
-    size_t toSend = this->toFlush();
-
-    if (toSend == 0) {
-        // nothing to flush
-        return Ok(0);
-    }
-
-    GEODE_UNWRAP(this->doSend(toSend));
+    GEODE_UNWRAP(this->doSend());
 
     return Ok(this->toFlush());
 }
@@ -98,15 +91,27 @@ size_t QuicStream::toFlush() {
     return m_sendBuffer.lock()->writePos() - m_sendBufferSentPos;
 }
 
-TransportResult<size_t> QuicStream::doSend(size_t count) {
+TransportResult<size_t> QuicStream::doSend(bool fin) {
     auto _lock = m_mutex.lock();
     auto sndbuf = m_sendBuffer.lock();
+
+    size_t count = sndbuf->writePos() - m_sendBufferSentPos;
+    if (count == 0 && !fin) {
+        return Ok(0);
+    }
 
     uint8_t outBuf[1500];
     ngtcp2_pkt_info pi{};
     ngtcp2_ssize datalen;
 
-    log::debug("QUIC stream {}: trying to send {} bytes", m_streamId, count);
+    uint32_t flags = 0;
+
+    if (!fin) {
+        log::debug("QUIC stream {}: trying to send {} bytes", m_streamId, count);
+    } else {
+        log::debug("QUIC stream {}: sending FIN packet", m_streamId);
+        flags = NGTCP2_WRITE_STREAM_FLAG_FIN;
+    }
 
     auto src = sndbuf->data() + m_sendBufferSentPos;
 
@@ -117,7 +122,7 @@ TransportResult<size_t> QuicStream::doSend(size_t count) {
         outBuf,
         sizeof(outBuf),
         &datalen,
-        0,
+        flags,
         m_streamId,
         src,
         count,
@@ -129,7 +134,7 @@ TransportResult<size_t> QuicStream::doSend(size_t count) {
         log::warn("QUIC stream {}: failed to write stream data: {}", m_streamId, err.message());
         return Err(err);
     } else if (written == 0) {
-        log::warn("QUIC stream {}: failed to write stream data due to congestion control", m_streamId);
+        log::debug("QUIC stream {}: failed to write stream data due to congestion control", m_streamId);
         return Err(TransportError::CongestionLimited);
     }
 
@@ -156,6 +161,11 @@ TransportResult<size_t> QuicStream::read(uint8_t* buffer, size_t len) {
     return Ok(read);
 }
 
+TransportResult<> QuicStream::close() {
+    GEODE_UNWRAP(this->doSend(true)); // send FIN
+    return Ok();
+}
+
 TransportResult<size_t> QuicStream::deliverToRecvBuffer(const uint8_t* data, size_t len) {
     auto rcvbuf = m_recvBuffer.lock();
 
@@ -171,6 +181,14 @@ TransportResult<size_t> QuicStream::deliverToRecvBuffer(const uint8_t* data, siz
 
 size_t QuicStream::toReceive() const {
     return m_recvBuffer.lock()->canRead();
+}
+
+bool QuicStream::writable() const {
+    return m_sendBuffer.lock()->canWriteMax() > 0;
+}
+
+bool QuicStream::readable() const {
+    return this->toReceive() > 0;
 }
 
 int64_t QuicStream::id() const {

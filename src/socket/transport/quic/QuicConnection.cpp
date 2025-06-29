@@ -11,7 +11,11 @@
 #include <asp/time/Duration.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/time/sleep.hpp>
+#include <asp/time/chrono.hpp>
 #include <random>
+
+// TODO: i don't know how to handle retransmissions,
+// and i probably should somehow handle a dead server by seeing if packets don't arrive for a while
 
 using namespace asp::time;
 using namespace qsox;
@@ -86,9 +90,18 @@ QuicConnection::QuicConnection(ngtcp2_conn* conn)
             return conn->rawHandle();
         },
         .user_data = this,
-}) {}
+    })
+{
+    m_connThread.setLoopFunction([this](auto& stopToken) {
+        this->threadFunc(stopToken);
+    });
+
+    // defer the connection thread start
+}
 
 QuicConnection::~QuicConnection() {
+    m_connThread.stopAndWait();
+
     if (m_conn) {
         ngtcp2_conn_del(m_conn);
     }
@@ -104,7 +117,7 @@ static void logQuic(const char* format, va_list args) {
     std::string buffer(len, '\0');
     std::vsnprintf(buffer.data(), buffer.size() + 1, format, args);
 
-    qn::log::info("(ngtcp2) {}", buffer);
+    qn::log::debug("(ngtcp2) {}", buffer);
 }
 
 static void logPrintfCallback(void*, const char* format, ...) {
@@ -196,6 +209,9 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
                 return -1;
             }
 
+            auto mtx = quicConn->m_waiterMutex.lock();
+            quicConn->notifyReadable(mtx);
+
             return 0;
         },
         .acked_stream_data_offset = [](ngtcp2_conn* conn, int64_t stream_id, uint64_t offset, uint64_t datalen, void* user_data, void* stream_user_data) {
@@ -203,6 +219,11 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
             QN_ASSERT(stream_id == quicConn->m_mainStream->id() && "Stream ID must match the main stream ID");
 
             quicConn->m_mainStream->onAck(offset, datalen);
+
+            // Data acknowledgement may result in buffer space being freed and the stream becoming writable again,
+            // so notify any waiters.
+            auto mtx = quicConn->m_waiterMutex.lock();
+            quicConn->notifyWritable(mtx);
 
             return 0;
         },
@@ -267,14 +288,19 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
     ));
 
     ngtcp2_conn_set_tls_native_handle(ret->m_conn, ret->m_tlsSession->nativeHandle());
+    ngtcp2_conn_set_keep_alive_timeout(ret->m_conn, Duration::fromSecs(30).nanos());
 
-    // Wait for the QUIC handshake to complete
-    GEODE_UNWRAP(ret->performHandshake(timeout));
-
-    // Open the main stream
-    ret->m_mainStream = GEODE_UNWRAP(ret->openBidiStream());
+    // Start the connection thread
+    ret->m_connThreadState = ThreadState::Handshaking;
+    ret->m_connTimeout = timeout;
+    ret->m_connThread.start();
+    ret->m_connectionReadySema.acquire();
 
     // done!! :)
+
+    log::debug("QUIC: connection is ready now");
+
+    GEODE_UNWRAP(std::move(ret->m_handshakeResult));
 
     return Ok(std::move(ret));
 }
@@ -284,17 +310,7 @@ TransportResult<> QuicConnection::performHandshake(const asp::time::Duration& ti
 
     ngtcp2_path_storage_zero(&m_networkPath);
 
-    ngtcp2_pkt_info pi{};
-    uint8_t outBuf[1500];
-
-    size_t nwrite = ngtcp2_conn_write_pkt(m_conn, &m_networkPath.path, &pi, outBuf, sizeof(outBuf), timestamp());
-    if (nwrite > 0) {
-        log::debug("QUIC: handshake packet written, size: {}", nwrite);
-
-        GEODE_UNWRAP(m_socket->send(outBuf, nwrite));
-    }
-
-    ngtcp2_conn_update_pkt_tx_time(m_conn, timestamp());
+    GEODE_UNWRAP(this->sendNonStreamPacket(true));
 
     while (ngtcp2_conn_get_handshake_completed(m_conn) == 0) {
         auto remaining = timeout - startedAt.elapsed();
@@ -303,7 +319,7 @@ TransportResult<> QuicConnection::performHandshake(const asp::time::Duration& ti
             return Err(TransportError::ConnectionTimedOut);
         }
 
-        bool has = GEODE_UNWRAP(this->pollReadable(remaining));
+        bool has = GEODE_UNWRAP(this->pollReadableSocket(remaining));
         if (!has) {
             continue;
         }
@@ -329,22 +345,34 @@ QuicResult<QuicStream> QuicConnection::openBidiStream() {
     return Ok(QuicStream(this, streamId));
 }
 
-TransportResult<bool> QuicConnection::pollReadable(const asp::time::Duration& dur) {
+TransportResult<bool> QuicConnection::pollReadable(const Duration& dur) {
+    auto lock = m_waiterMutex.lock();
+
+    if (m_mainStream->readable()) {
+        return Ok(true); // stream is readable, no need to wait
+    }
+
+    this->waitUntilReadable(dur, lock);
+
+    return Ok(m_mainStream->readable());
+}
+
+TransportResult<bool> QuicConnection::pollReadableSocket(const asp::time::Duration& dur) {
     auto res = GEODE_UNWRAP(qsox::pollOne(*m_socket, PollType::Read, dur.millis()));
 
     return Ok(res == PollResult::Readable);
 }
 
-TransportResult<> QuicConnection::waitUntilWritable(int64_t streamId) {
-    log::warn("QUIC: I don't know what to do, I am sleeping! (stream blocked due to control flow!)");
-    asp::time::sleep(Duration::fromMillis(100));
-    return Ok();
-}
+TransportResult<bool> QuicConnection::pollWritable(const Duration& dur) {
+    auto lock = m_waiterMutex.lock();
 
-TransportResult<> QuicConnection::waitForBufferSpace(int64_t streamId) {
-    log::warn("QUIC: I don't know what to do, I am sleeping! (no space in buffer!)");
-    asp::time::sleep(Duration::fromMillis(100));
-    return Ok();
+    if (m_mainStream->writable()) {
+        return Ok(true); // stream is writable, no need to wait
+    }
+
+    this->waitUntilWritable(dur, lock);
+
+    return Ok(m_mainStream->writable());
 }
 
 TransportResult<size_t> QuicConnection::send(const uint8_t* data, size_t len) {
@@ -358,28 +386,7 @@ TransportResult<size_t> QuicConnection::send(const uint8_t* data, size_t len) {
         return Err(TransportError::NoBufferSpace);
     }
 
-    while (true) {
-        auto res = m_mainStream->tryFlush();
-
-        if (res) {
-            if (res.unwrap() == 0) {
-                break;
-            } else {
-                // continue flushing
-                continue;
-            }
-        } else {
-            auto err = res.unwrapErr();
-
-            if (this->isCongestionRelatedError(err)) {
-                // cannot send data right now, wait a little and try again
-                GEODE_UNWRAP(this->waitUntilWritable(m_mainStream->id()));
-            } else {
-                // some other error occurred
-                return Err(err);
-            }
-        }
-    }
+    this->notifyDataWritten();
 
     return Ok(len);
 }
@@ -387,10 +394,12 @@ TransportResult<size_t> QuicConnection::send(const uint8_t* data, size_t len) {
 TransportResult<> QuicConnection::sendAll(const uint8_t* data, size_t len) {
     while (len) {
         auto res = this->send(data, len);
+
         if (!res) {
             auto err = res.unwrapErr();
             if (std::get<TransportError::CustomKind>(err.m_kind).code == TransportError::NoBufferSpace) {
-                GEODE_UNWRAP(this->waitForBufferSpace(m_mainStream->id()));
+                GEODE_UNWRAP(this->pollWritable(Duration{}));
+                continue;
             } else {
                 return Err(err);
             }
@@ -405,15 +414,21 @@ TransportResult<> QuicConnection::sendAll(const uint8_t* data, size_t len) {
 }
 
 TransportResult<size_t> QuicConnection::receive(uint8_t* buffer, size_t len) {
-    while (m_mainStream->toReceive() == 0){
-        bool res = GEODE_UNWRAP(this->pollReadable(Duration::fromSecs(1)));
-
-        if (res) {
-            GEODE_UNWRAP(this->doRecv());
-        }
+    if (len == 0) {
+        return Ok(0);
     }
 
-    return m_mainStream->read(buffer, len);
+    while (true) {
+        if (!GEODE_UNWRAP(this->pollReadable(Duration{}))) {
+            continue;
+        }
+
+        size_t readBytes = GEODE_UNWRAP(m_mainStream->read(buffer, len));
+
+        if (readBytes > 0) {
+            return Ok(readBytes);
+        }
+    }
 }
 
 TransportResult<> QuicConnection::doRecv() {
@@ -436,6 +451,191 @@ TransportResult<> QuicConnection::doRecv() {
     }
 
     return Ok();
+}
+
+void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
+    switch (m_connThreadState) {
+        case ThreadState::Idle: {
+            asp::time::yield();
+        } break;
+
+        case ThreadState::Handshaking: {
+            // Wait for the QUIC handshake to complete
+            m_handshakeResult = this->performHandshake(m_connTimeout);
+
+            if (m_handshakeResult.isOk()) {
+                // Open the main stream
+                if (auto stream = this->openBidiStream())  {
+                    m_mainStream = std::move(stream).unwrap();
+                } else {
+                    m_handshakeResult = Err(stream.unwrapErr());
+                }
+            }
+
+            if (m_handshakeResult.isOk()) {
+                m_connThreadState = ThreadState::Running;
+                this->thrPlatformSetup();
+            } else {
+                m_connThreadState = ThreadState::Stopped;
+                log::warn("QUIC: handshake failed: {}", m_handshakeResult.unwrapErr().message());
+            }
+
+            m_connectionReadySema.release();
+        } break;
+
+        case ThreadState::Running: {
+            if (m_terminating) {
+                m_connThreadState = ThreadState::Stopping;
+                return;
+            }
+
+            auto expiry = ngtcp2_conn_get_expiry(m_conn);
+            auto now = timestamp();
+
+            bool wantSendData = false;
+            size_t toFlush = m_mainStream->toFlush();
+            if (toFlush > 0) {
+                // check if we are allowed to send data
+                auto count = ngtcp2_conn_get_cwnd_left(m_conn);
+                log::debug("QUIC: stream {} has {} bytes to flush, congestion window: {}", m_mainStream->id(), toFlush, count);
+
+                wantSendData = count > 0;
+            }
+
+            bool didExpire = now >= expiry;
+
+            // only poll if expiry isn't reached yet and there's no data
+            bool shouldPoll = !didExpire && !wantSendData;
+
+            bool hasIncomingData = false;
+
+            if (shouldPoll) {
+                auto timeout = Duration::fromNanos(expiry - now);
+                log::debug("QUIC: until expiry: {}", timeout.toString());
+
+                if (timeout.millis() > 50) {
+                    timeout = Duration::fromMillis(50);
+                } else if (timeout.millis() < 5) {
+                    timeout = Duration::fromMillis(5);
+                }
+
+                log::debug("QUIC: polling for incoming data, timeout: {}", timeout.toString());
+
+                auto res = this->thrPoll(timeout);
+                hasIncomingData = res.sockReadable;
+                wantSendData = res.newDataAvail;
+                didExpire = timestamp() >= expiry;
+            }
+
+            log::debug("QUIC: poll result - hasIncomingData: {}, wantSendData: {}, didExpire: {}", hasIncomingData, wantSendData, didExpire);
+
+            // If the socket is readable, read the data and push to the receive buffer
+            if (hasIncomingData) {
+                auto res = this->doRecv();
+
+                if (!res) {
+                    auto err = res.unwrapErr();
+                    log::warn("QUIC: failed to receive data: {}", err.message());
+                    this->thrOnFatalError(err);
+                    return;
+                }
+            }
+
+            // handle expired timer
+            if (didExpire) {
+                log::debug("QUIC: handling conn expiry");
+                ngtcp2_conn_handle_expiry(m_conn, timestamp());
+            }
+
+            // check if there's any buffered data to send
+            if (wantSendData) while (true) {
+                auto res = m_mainStream->tryFlush();
+                if (res.isOk()) {
+                    size_t written = res.unwrap();
+                    if (written == 0) {
+                        // no more data to send
+                        break;
+                    }
+
+                    // otherwise, keep trying to send
+                } else {
+                    auto err = res.unwrapErr();
+                    if (this->isCongestionRelatedError(err)) {
+                        // congestion related error, keep reading and try again next time
+                        log::debug("QUIC: stream blocked due to congestion control, can't send pending data");
+                        asp::time::yield();
+                    } else {
+                        this->thrOnFatalError(err);
+                    }
+
+                    return;
+                }
+            }
+
+            // write other packets if needed (acks, pings, retransmissions, etc.)
+            auto res = this->sendNonStreamPacket(false);
+            if (!res) {
+                auto err = res.unwrapErr();
+                if (this->isCongestionRelatedError(err)) {
+                    log::debug("QUIC: non-stream packet blocked due to congestion control, can't send pending data");
+                    asp::time::yield();
+                } else {
+                    this->thrOnFatalError(err);
+                }
+            }
+        } break;
+
+        case ThreadState::Stopping: {
+            // cleanup connection
+            auto res = m_mainStream->close();
+            if (!res) {
+                auto err = res.unwrapErr();
+                log::warn("QUIC: failed to close main stream: {}", err.message());
+            }
+
+            m_connThreadState = ThreadState::Stopped;
+        } break;
+
+        case ThreadState::Stopped: {
+            stopToken.stop();
+            return;
+        } break;
+    }
+}
+
+TransportResult<> QuicConnection::sendNonStreamPacket(bool handshake) {
+    uint8_t outBuf[1500];
+    ngtcp2_pkt_info pi{};
+
+    auto written = ngtcp2_conn_write_pkt(m_conn, handshake ? &m_networkPath.path : nullptr, &pi, outBuf, sizeof(outBuf), timestamp());
+
+    if (written < 0) {
+        QuicError err(written);
+        log::warn("QUIC: failed to write {} packet: {}", handshake ? "handshake" : "non-stream", err.message());
+        return Err(err);
+    } else if (written == 0) {
+        if (handshake) {
+            log::error("QUIC: failed to write handshake packet to buffer, written == 0");
+            return Err(TransportError::Other);
+        } else {
+            log::debug("QUIC: nothing to send");
+            return Ok(); // nothing to send
+        }
+    }
+
+    ngtcp2_conn_update_pkt_tx_time(m_conn, timestamp());
+
+    log::debug("QUIC: sending {} packet, size: {}", handshake ? "handshake" : "non-stream", written);
+
+    GEODE_UNWRAP(m_socket->send(outBuf, written));
+
+    return Ok();
+}
+
+void QuicConnection::thrOnFatalError(const TransportError& err) {
+    m_fatalError = err;
+    log::error("QUIC: fatal error, terminating: {}", err.message());
+    m_terminating = true;
 }
 
 bool QuicConnection::isCongestionRelatedError(const TransportError& err) {

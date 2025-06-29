@@ -15,6 +15,7 @@ std::string_view TransportError::CustomKind::message() const {
         case ZeroLengthMessage: return "Zero length message received";
         case NoBufferSpace: return "No buffer space available";
         case CongestionLimited: return "Congestion limited, cannot send data right now";
+        case Other: return "Unknown transport error";
     }
 }
 

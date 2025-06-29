@@ -39,10 +39,18 @@ public:
     // Returns the number of bytes that are currently buffered and ready to be read.
     size_t toReceive() const;
 
+    // Returns whether the send buffer has any free space to write more data.
+    bool writable() const;
+
+    // Returns whether the receive buffer has any data that can be read.
+    bool readable() const;
+
     // Read data from the receive buffer, returns the number of bytes that were read.
     // This does not block and does not receive data from the stream, you should ensure
     // `toReceive()` is greater than 0 before calling this method.
     TransportResult<size_t> read(uint8_t* buffer, size_t len);
+
+    TransportResult<> close();
 
 private:
     friend class QuicConnection;
@@ -54,7 +62,7 @@ private:
     asp::Mutex<SlidingBuffer> m_recvBuffer, m_sendBuffer;
     size_t m_sendBufferSentPos = 0;
 
-    TransportResult<size_t> doSend(size_t count);
+    TransportResult<size_t> doSend(bool fin = false);
 
     TransportResult<size_t> deliverToRecvBuffer(const uint8_t* data, size_t len);
 };

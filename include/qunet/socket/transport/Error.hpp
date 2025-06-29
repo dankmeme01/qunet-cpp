@@ -23,6 +23,7 @@ struct TransportError {
         ZeroLengthMessage,
         NoBufferSpace,
         CongestionLimited,
+        Other,
     } CustomCode;
 
     struct CustomKind {

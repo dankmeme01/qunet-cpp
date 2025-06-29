@@ -8,14 +8,17 @@
 
 using namespace qsox;
 using namespace qn;
+using namespace asp::time;
 
 int main(int argc, const char** argv) {
-    qn::log::setLogFunction([](qn::log::Level level, const std::string& message) {
+    static Instant start = Instant::now();
+
+    qn::log::setLogFunction([&](qn::log::Level level, const std::string& message) {
         switch (level) {
-            case qn::log::Level::Debug: std::cout << "[DEBUG] " << message << std::endl; break;
-            case qn::log::Level::Info: std::cout << "[INFO] " << message << std::endl; break;
-            case qn::log::Level::Warning: std::cout << "[WARN] " << message << std::endl; break;
-            case qn::log::Level::Error: std::cerr << "[ERROR] " << message << std::endl; break;
+            case qn::log::Level::Debug: fmt::println("[{}] [DEBUG] {}", start.elapsed().toString(), message); break;
+            case qn::log::Level::Info: fmt::println("[{}] [INFO] {}", start.elapsed().toString(),message); break;
+            case qn::log::Level::Warning: fmt::println("[{}] [WARN] {}", start.elapsed().toString(),message); break;
+            case qn::log::Level::Error: fmt::println("[{}] [ERROR] {}", start.elapsed().toString(),message); break;
         }
     });
 
@@ -36,6 +39,10 @@ int main(int argc, const char** argv) {
         log::info("Connected!");
     } else {
         log::warn("Failed to connect: {}", conn.lastError().message());
+    }
+
+    while (true) {
+        asp::time::sleep(asp::time::Duration::fromMillis(100));
     }
 }
 
