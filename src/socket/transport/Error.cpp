@@ -14,9 +14,9 @@ std::string_view TransportError::CustomKind::message() const {
         case MessageTooLong: return "Message too long";
         case ZeroLengthMessage: return "Zero length message received";
         case NoBufferSpace: return "No buffer space available";
+        case CongestionLimited: return "Congestion limited, cannot send data right now";
     }
 }
-
 
 std::string TransportError::message() const {
     return std::visit(makeVisitor {

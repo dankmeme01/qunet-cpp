@@ -289,7 +289,7 @@ TransportResult<> QuicConnection::performHandshake(const asp::time::Duration& ti
 
     size_t nwrite = ngtcp2_conn_write_pkt(m_conn, &m_networkPath.path, &pi, outBuf, sizeof(outBuf), timestamp());
     if (nwrite > 0) {
-        log::debug("QUIC handshake packet written, size: {}", nwrite);
+        log::debug("QUIC: handshake packet written, size: {}", nwrite);
 
         GEODE_UNWRAP(m_socket->send(outBuf, nwrite));
     }
@@ -312,7 +312,7 @@ TransportResult<> QuicConnection::performHandshake(const asp::time::Duration& ti
         GEODE_UNWRAP(this->doRecv());
     }
 
-    log::debug("QUIC handshake completed");
+    log::debug("QUIC: handshake completed");
 
     return Ok();
 }
@@ -336,13 +336,13 @@ TransportResult<bool> QuicConnection::pollReadable(const asp::time::Duration& du
 }
 
 TransportResult<> QuicConnection::waitUntilWritable(int64_t streamId) {
-    log::warn("I don't know what to do, I am sleeping! (stream blocked due to control flow!)");
+    log::warn("QUIC: I don't know what to do, I am sleeping! (stream blocked due to control flow!)");
     asp::time::sleep(Duration::fromMillis(100));
     return Ok();
 }
 
 TransportResult<> QuicConnection::waitForBufferSpace(int64_t streamId) {
-    log::warn("I don't know what to do, I am sleeping! (no space in buffer!)");
+    log::warn("QUIC: I don't know what to do, I am sleeping! (no space in buffer!)");
     asp::time::sleep(Duration::fromMillis(100));
     return Ok();
 }
@@ -371,8 +371,8 @@ TransportResult<size_t> QuicConnection::send(const uint8_t* data, size_t len) {
         } else {
             auto err = res.unwrapErr();
 
-            if (std::get<QuicError>(err.m_kind).code == NGTCP2_ERR_STREAM_DATA_BLOCKED) {
-                // stream is blocked, wait a little and try again
+            if (this->isCongestionRelatedError(err)) {
+                // cannot send data right now, wait a little and try again
                 GEODE_UNWRAP(this->waitUntilWritable(m_mainStream->id()));
             } else {
                 // some other error occurred
@@ -421,14 +421,14 @@ TransportResult<> QuicConnection::doRecv() {
     uint8_t outBuf[1500];
 
     size_t recvRes = GEODE_UNWRAP(m_socket->recv(outBuf, sizeof(outBuf)));
-    log::debug("Read {} bytes from the QUIC socket", recvRes);
+    log::debug("QUIC: read {} bytes from the socket", recvRes);
 
     QuicError res = ngtcp2_conn_read_pkt(m_conn, &m_networkPath.path, &pi, outBuf, recvRes, timestamp());
     if (!res.ok()) {
-        log::warn("Failed to read QUIC packet: {}", res.message());
+        log::warn("QUIC: failed to read the packet: {}", res.message());
         if (res.code == NGTCP2_ERR_CRYPTO) {
             auto tlsErr = m_tlsSession->lastError();
-            log::warn("Last TLS error: {}", tlsErr.message());
+            log::warn("QUIC: last TLS error: {}", tlsErr.message());
             return Err(tlsErr);
         }
 
@@ -436,6 +436,20 @@ TransportResult<> QuicConnection::doRecv() {
     }
 
     return Ok();
+}
+
+bool QuicConnection::isCongestionRelatedError(const TransportError& err) {
+    if (std::holds_alternative<QuicError>(err.m_kind)) {
+        auto& quicErr = std::get<QuicError>(err.m_kind);
+        return quicErr.code == NGTCP2_ERR_STREAM_DATA_BLOCKED ||
+               quicErr.code == NGTCP2_ERR_FLOW_CONTROL;
+    } else if (std::holds_alternative<TransportError::CustomKind>(err.m_kind)) {
+        auto& customErr = std::get<TransportError::CustomKind>(err.m_kind);
+        return customErr.code == TransportError::NoBufferSpace ||
+               customErr.code == TransportError::CongestionLimited;
+    }
+
+    return false;
 }
 
 

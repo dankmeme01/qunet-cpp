@@ -35,7 +35,6 @@ TransportResult<bool> TcpTransport::poll(const Duration& dur) {
     return Ok(res == PollResult::Readable);
 }
 
-// The logic here is pretty much taken from TcpTransport in the qunet server
 TransportResult<QunetMessage> TcpTransport::receiveMessage() {
     return streamcommon::receiveMessage(m_socket, m_readBuffer, m_readBufferPos, m_messageSizeLimit);
 }

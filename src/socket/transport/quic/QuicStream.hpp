@@ -1,6 +1,7 @@
 #pragma once
 
 #include <qunet/socket/transport/Error.hpp>
+#include <qunet/util/SlidingBuffer.hpp>
 #include <asp/sync/Mutex.hpp>
 #include <vector>
 
@@ -48,25 +49,14 @@ private:
 
     class QuicConnection* m_conn = nullptr;
     int64_t m_streamId = -1;
+
     asp::Mutex<void, true> m_mutex;
-
-    std::vector<uint8_t> m_sendBuffer;
-    size_t m_sendBufferPos = 0;
-    size_t m_sendBufferWritePos = 0;
-    size_t m_sendBufferAckPos = 0;
-    uint64_t m_sendStreamOffset = 0;
-
-    std::vector<uint8_t> m_recvBuffer;
-    size_t m_recvBufferPos = 0;
-    size_t m_recvBufferWritePos = 0;
+    asp::Mutex<SlidingBuffer> m_recvBuffer, m_sendBuffer;
+    size_t m_sendBufferSentPos = 0;
 
     TransportResult<size_t> doSend(size_t count);
 
-    // Geometric growth utility
-    size_t calculateNextBufferSize(size_t current, size_t needed);
-
     TransportResult<size_t> deliverToRecvBuffer(const uint8_t* data, size_t len);
-    size_t fillFromRecvBuffer(uint8_t* buffer, size_t len);
 };
 
 }

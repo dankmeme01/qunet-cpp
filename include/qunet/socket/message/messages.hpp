@@ -4,6 +4,7 @@
 #include <qunet/buffers/ByteReader.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/util/assert.hpp>
+#include <fmt/format.h>
 
 #define QN_NO_ENCODE(t) MessageEncodeResult encode(auto& writer) const { \
     QN_ASSERT(false && "Message of type " #t " cannot be encoded"); \
@@ -107,7 +108,39 @@ struct HandshakeFailureMessage {
 
 struct ClientCloseMessage {};
 
-struct ServerCloseMessage {};
+struct ServerCloseMessage {
+    uint32_t errorCode;
+    std::string errorMessage;
+
+    std::string_view message() const {
+        switch (errorCode) {
+            case 0: return errorMessage;
+            case 1: return "Fragmentation not allowed";
+            case 2: return "Requested QDB chunk is too long";
+            case 3: return "Requested QDB chunk is invalid (offset/length are out of bounds)";
+            case 4: return "Client requested a QDB chunk but a QDB isn't available";
+            case 5: return "Protocol violation: client send a malformed zero-length message";
+            case 6: return "Protocol violation: client sent a stream message that exceeds the maximum allowed length";
+            case 7: return "Internal server error";
+            default: {
+                const_cast<std::string&>(errorMessage) = fmt::format("Unknown connection error code: {}", errorCode);
+                return errorMessage;
+            }
+        }
+    }
+
+    static MessageDecodeResult<ServerCloseMessage> decode(ByteReader& writer) {
+        ServerCloseMessage out;
+        out.errorCode = GEODE_UNWRAP(writer.readU32());
+        if (out.errorCode == 0) {
+            out.errorMessage = GEODE_UNWRAP(writer.readString());
+        }
+
+        return Ok(std::move(out));
+    }
+
+    QN_NO_ENCODE(ServerCloseMessage);
+};
 
 struct ClientReconnectMessage {};
 

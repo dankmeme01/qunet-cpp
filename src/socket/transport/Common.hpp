@@ -38,11 +38,13 @@ TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
     }
 
     auto data = writer.written();
+
     GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
 
     return Ok();
 }
 
+// The logic here is pretty much taken from stream transports in the qunet server
 TransportResult<QunetMessage> receiveMessage(auto&& socket, std::vector<uint8_t>& readBufferStorage, size_t& readBufferPos, size_t messageSizeLimit) {
     auto readBuffer = std::span<uint8_t>(readBufferStorage.begin(), readBufferStorage.end());
 

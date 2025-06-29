@@ -70,6 +70,10 @@ private:
     TransportResult<> waitForBufferSpace(int64_t streamId);
 
     TransportResult<> doRecv();
+
+    // Returns true if the given error is related to congestion, flow control or buffering,
+    // and the application should wait before sending more data.
+    bool isCongestionRelatedError(const TransportError& err);
 };
 
 }
