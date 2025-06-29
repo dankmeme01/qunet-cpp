@@ -304,7 +304,20 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
         return;
     }
 
-    auto sock = Socket::connect(addr, type, m_connTimeout);
+    // if this connection requires TLS, check if we have a TLS context
+    if (type == ConnectionType::Quic && !m_tlsContext) {
+        auto tlsres = ClientTlsContext::create(!m_tlsCertVerification);
+        if (!tlsres) {
+            log::warn("Failed to create TLS context: {}", tlsres.unwrapErr().message());
+            return;
+        }
+
+        m_tlsContext = std::move(tlsres).unwrap();
+    }
+
+    auto tlsPtr = m_tlsContext ? &*m_tlsContext : nullptr;
+
+    auto sock = Socket::connect(addr, type, m_connTimeout, tlsPtr);
     if (!sock) {
         // try next..
         log::debug("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), sock.unwrapErr().message());
@@ -485,6 +498,15 @@ void Connection::setIpv6Enabled(bool enabled) {
     m_ipv6Enabled = enabled;
 }
 
+void Connection::setTlsCertVerification(bool verify) {
+    auto _lock = m_internalMutex.lock();
+
+    if (!this->disconnected()) return;
+
+    m_tlsCertVerification = verify;
+    m_tlsContext.reset();
+}
+
 void Connection::setConnectTimeout(Duration dur) {
     m_connTimeout = dur;
 }
@@ -495,6 +517,10 @@ bool Connection::connecting() const {
 
 bool Connection::connected() const {
     return m_connState == ConnectionState::Connected;
+}
+
+bool Connection::disconnected() const {
+    return m_connState == ConnectionState::Disconnected;
 }
 
 ConnectionState Connection::state() const {

@@ -1,0 +1,70 @@
+#pragma once
+
+#include <qunet/socket/message/QunetMessage.hpp>
+#include <qunet/util/Error.hpp>
+#include <qunet/buffers/Error.hpp>
+#include <qsox/Error.hpp>
+
+// Various transport errors
+
+namespace qn {
+
+QSOX_MAKE_OPAQUE_ERROR_STRUCT(QuicError, int);
+QSOX_MAKE_OPAQUE_ERROR_STRUCT(TlsError, unsigned long);
+
+// Transport error
+
+struct TransportError {
+    typedef enum {
+        ConnectionTimedOut,
+        NotImplemented,
+        UnexpectedMessage,
+        MessageTooLong,
+        ZeroLengthMessage,
+        NoBufferSpace,
+    } CustomCode;
+
+    struct CustomKind {
+        CustomCode code;
+
+        std::string_view message() const;
+    };
+
+    struct HandshakeFailure {
+        std::string reason;
+
+        HandshakeFailure(std::string_view reason) : reason(reason) {}
+        HandshakeFailure(std::string reason) : reason(std::move(reason)) {}
+
+        std::string_view message() const {
+            return reason;
+        }
+    };
+
+    TransportError(const qsox::Error& err) : m_kind(err) {}
+    TransportError(QuicError err) : m_kind(std::move(err)) {}
+    TransportError(TlsError err) : m_kind(std::move(err)) {}
+    TransportError(ByteReaderError err) : m_kind(std::move(err)) {}
+    TransportError(ByteWriterError err) : m_kind(std::move(err)) {}
+    TransportError(HandshakeFailure err) : m_kind(std::move(err)) {}
+    TransportError(MessageDecodeError err) : m_kind(std::move(err)) {}
+    TransportError(CustomCode code) : m_kind(CustomKind{code}) {}
+
+    std::variant<
+        qsox::Error,
+        QuicError,
+        TlsError,
+        ByteReaderError,
+        ByteWriterError,
+        HandshakeFailure,
+        MessageDecodeError,
+        CustomKind
+    > m_kind;
+
+    std::string message() const;
+};
+
+template <typename T = void>
+using TransportResult = geode::Result<T, TransportError>;
+
+}

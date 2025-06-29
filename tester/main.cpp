@@ -20,6 +20,8 @@ int main(int argc, const char** argv) {
     });
 
     qn::Connection conn;
+    conn.setTlsCertVerification(false);
+
     auto res = conn.connect(argv[1]);
     if (!res) {
         std::cerr << "Failed to connect: " << res.unwrapErr().message() << std::endl;
@@ -35,7 +37,6 @@ int main(int argc, const char** argv) {
     } else {
         log::warn("Failed to connect: {}", conn.lastError().message());
     }
-
 }
 
 

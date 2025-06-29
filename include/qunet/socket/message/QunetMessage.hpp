@@ -1,6 +1,7 @@
 #pragma once
 
 #include <qunet/util/assert.hpp>
+#include <qunet/util/visit.hpp>
 #include "messages.hpp"
 #include <variant>
 
@@ -10,9 +11,6 @@ QN_MAKE_ERROR_STRUCT(MessageDecodeError,
     InvalidMessageType,
     InvalidData
 );
-
-template<class... Ts> struct makeVisitor : Ts... { using Ts::operator()...; };
-template<class... Ts> makeVisitor(Ts...) -> makeVisitor<Ts...>;
 
 class QunetMessage {
     using VariantTy = std::variant<

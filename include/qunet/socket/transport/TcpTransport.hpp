@@ -9,7 +9,7 @@ class TcpTransport : public BaseTransport {
 public:
     ~TcpTransport() override;
 
-    static qsox::NetResult<TcpTransport> connect(const qsox::SocketAddress& address);
+    static qsox::NetResult<TcpTransport> connect(const qsox::SocketAddress& address, const asp::time::Duration& timeout);
 
     TcpTransport(TcpTransport&&) = default;
     TcpTransport& operator=(TcpTransport&&) = default;

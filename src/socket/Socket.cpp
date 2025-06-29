@@ -1,6 +1,7 @@
 #include <qunet/socket/Socket.hpp>
 #include <qunet/socket/transport/UdpTransport.hpp>
 #include <qunet/socket/transport/TcpTransport.hpp>
+#include <qunet/socket/transport/QuicTransport.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Log.hpp>
@@ -12,12 +13,15 @@ using namespace asp::time;
 
 namespace qn {
 
-TransportResult<Socket> Socket::connect(const qsox::SocketAddress& address, ConnectionType type, const Duration& timeout) {
+TransportResult<Socket> Socket::connect(
+    const qsox::SocketAddress& address,
+    ConnectionType type,
+    const Duration& timeout,
+    const ClientTlsContext* tlsContext
+) {
     auto startedAt = Instant::now();
 
-    auto transport = GEODE_UNWRAP(createTransport(address, type, timeout).mapErr([](const auto& err) {
-        return TransportError::TransportCreationFailed;
-    }));
+    auto transport = GEODE_UNWRAP(createTransport(address, type, timeout, tlsContext));
 
     if (startedAt.elapsed() > timeout) {
         return Err(TransportError::ConnectionTimedOut);
@@ -56,7 +60,7 @@ TransportResult<> Socket::waitForHandshakeResponse(Duration timeout) {
 
     if (msg.is<HandshakeFinishMessage>()) {
         auto& hf = msg.as<HandshakeFinishMessage>();
-        log::debug("Handshake finished, connection ID: {}", hf.connectionId);
+        log::debug("Handshake finished, connection ID: {}, qdb size: {}", hf.connectionId, hf.qdbData ? hf.qdbData->uncompressedSize : 0);
 
         m_transport->setConnectionId(hf.connectionId);
 
@@ -65,13 +69,18 @@ TransportResult<> Socket::waitForHandshakeResponse(Duration timeout) {
         auto& hf = msg.as<HandshakeFailureMessage>();
         log::warn("Handshake failed: {}", hf.message());
 
-        return Err(TransportError::HandshakeFailed);
+        return Err(TransportError::HandshakeFailure(hf.message()));
     } else {
-        return Err(TransportError::InvalidMessage);
+        return Err(TransportError::UnexpectedMessage);
     }
 }
 
-NetResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const SocketAddress& address, ConnectionType type, const Duration& timeout) {
+TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(
+    const SocketAddress& address,
+    ConnectionType type,
+    const Duration& timeout,
+    const ClientTlsContext* tlsContext
+) {
     switch (type) {
         case ConnectionType::Udp: {
             auto transport = GEODE_UNWRAP(UdpTransport::connect(address));
@@ -80,13 +89,19 @@ NetResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const SocketAd
         } break;
 
         case ConnectionType::Tcp: {
-            auto transport = GEODE_UNWRAP(TcpTransport::connect(address));
+            auto transport = GEODE_UNWRAP(TcpTransport::connect(address, timeout));
             auto ptr = std::make_shared<TcpTransport>(std::move(transport));
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 
+        case ConnectionType::Quic: {
+            auto transport = GEODE_UNWRAP(QuicTransport::connect(address, timeout, tlsContext));
+            auto ptr = std::make_shared<QuicTransport>(std::move(transport));
+            return Ok(std::static_pointer_cast<BaseTransport>(ptr));
+        } break;
+
         default: {
-            return Err(Error::Unimplemented);
+            return Err(TransportError::NotImplemented);
         }
     }
 }

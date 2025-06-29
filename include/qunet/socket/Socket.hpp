@@ -1,6 +1,7 @@
 #pragma once
 
 #include "transport/BaseTransport.hpp"
+#include "transport/tls/ClientTlsContext.hpp"
 
 #include <asp/time/Duration.hpp>
 #include <qsox/SocketAddress.hpp>
@@ -21,7 +22,8 @@ public:
     static TransportResult<Socket> connect(
         const qsox::SocketAddress& address,
         ConnectionType type,
-        const asp::time::Duration& timeout
+        const asp::time::Duration& timeout,
+        const ClientTlsContext* tlsContext = nullptr
     );
 
 private:
@@ -29,10 +31,11 @@ private:
 
     Socket(std::shared_ptr<BaseTransport> transport) : m_transport(std::move(transport)) {}
 
-    static qsox::NetResult<std::shared_ptr<BaseTransport>> createTransport(
+    static TransportResult<std::shared_ptr<BaseTransport>> createTransport(
         const qsox::SocketAddress& address,
         ConnectionType type,
-        const asp::time::Duration& timeout
+        const asp::time::Duration& timeout,
+        const ClientTlsContext* tlsContext = nullptr
     );
 
     TransportResult<> sendHandshake();

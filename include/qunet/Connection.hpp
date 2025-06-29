@@ -1,6 +1,7 @@
 #pragma once
 
 #include "socket/Socket.hpp"
+#include "socket/transport/tls/ClientTlsContext.hpp"
 #include "Pinger.hpp"
 
 #include <asp/sync/Channel.hpp>
@@ -107,13 +108,24 @@ public:
     // Set whether to enable IPv6 connections. If `false`, only IPv4 connections will be attempted.
     void setIpv6Enabled(bool enabled);
 
+    // Set whether to verify TLS certificates. If `false`, TLS (QUIC) connections will be established without certificate verification.
+    // This will do nothing if a connection is established, otherwise it will invalidate the current TLS context.
+    void setTlsCertVerification(bool verify);
+
     // Set the connection timeout. This is applied per a specific connection attempt to a single IP address with a single protocol.
     // If multiple IPv4/IPv6 addresses and protocols are available, the full connection attempt may take way longer than this.
     // Default is 5 seconds.
     void setConnectTimeout(asp::time::Duration dur);
 
+    // Returns whether a connection is currently in progress.
     bool connecting() const;
+
+    // Returns whether a connection is established.
     bool connected() const;
+
+    // Returns whether there is no connection established and no connection attempt is in progress.
+    bool disconnected() const;
+
     ConnectionState state() const;
 
     // Returns the last error that occurred during the connection process.
@@ -126,7 +138,11 @@ private:
     bool m_preferIpv6 = true;
     bool m_ipv4Enabled = true;
     bool m_ipv6Enabled = true;
+    bool m_tlsCertVerification = true;
     asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
+
+    // vvv long lived fields vvv
+    std::optional<ClientTlsContext> m_tlsContext;
 
     // vvv semi-public fields vvv
     ConnectionState m_connState = ConnectionState::Disconnected;

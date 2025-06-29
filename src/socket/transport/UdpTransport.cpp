@@ -25,54 +25,34 @@ NetResult<UdpTransport> UdpTransport::connect(const SocketAddress& address) {
 
 TransportResult<> UdpTransport::sendMessage(QunetMessage message) {
     HeapByteWriter writer;
-    MAP_UNWRAP(message.encodeHeader(writer, m_connectionId));
 
-    auto res = message.encode(writer);
-    if (!res) {
-        log::warn("Failed to encode message: {}", res.unwrapErr().message());
-        return Err(TransportError::EncodingFailed);
-    }
+    GEODE_UNWRAP(message.encodeHeader(writer, m_connectionId));
+    GEODE_UNWRAP(message.encode(writer));
 
     auto data = writer.written();
-    auto cres = (m_socket.send(data.data(), data.size()));
-
-    if (!cres) {
-        auto err = cres.unwrapErr();
-        return Err(this->makeError(err));
-    }
+    auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
 
     return Ok();
 }
 
 TransportResult<bool> UdpTransport::poll(const Duration& dur) {
-    auto res = qsox::pollOne(m_socket.handle(), PollType::Read, dur.millis());
-    if (!res) {
-        return Err(this->makeError(res.unwrapErr()));
-    }
+    auto res = GEODE_UNWRAP(qsox::pollOne(m_socket, PollType::Read, dur.millis()));
 
-    return Ok(res.unwrap() == PollResult::Readable);
+    return Ok(res == PollResult::Readable);
 }
 
 TransportResult<QunetMessage> UdpTransport::receiveMessage() {
     uint8_t buffer[UDP_PACKET_LIMIT];
 
-    auto res = m_socket.recv(buffer, sizeof(buffer));
-    if (!res) {
-        return Err(this->makeError(res.unwrapErr()));
-    }
+    auto bytesRead = GEODE_UNWRAP(m_socket.recv(buffer, sizeof(buffer)));
 
-    auto bytesRead = res.unwrap();
     if (bytesRead == 0) {
-        return Err(TransportError::DecodingFailed);
+        return Err(TransportError::ZeroLengthMessage);
     }
 
     ByteReader reader(buffer, bytesRead);
-    auto msgRes = QunetMessage::decode(reader);
-    if (!msgRes) {
-        return Err(TransportError::DecodingFailed);
-    }
+    auto msg = GEODE_UNWRAP(QunetMessage::decode(reader));
 
-    auto msg = std::move(msgRes).unwrap();
     return Ok(std::move(msg));
 }
 
