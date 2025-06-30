@@ -25,12 +25,12 @@ public:
     } Code;
 
     constexpr inline ConnectionError(Code code) : m_err(code) {}
-    constexpr inline ConnectionError(qsox::Error err) : m_err(err) {}
+    inline ConnectionError(TransportError err) : m_err(err) {}
 
-    bool isSocketError() const;
     bool isOtherError() const;
+    bool isTransportError() const;
 
-    qsox::Error asSocketError() const;
+    const TransportError& asTransportError() const;
     Code asOtherError() const;
 
     bool operator==(const ConnectionError& other) const = default;
@@ -41,7 +41,7 @@ public:
     std::string message() const;
 
 private:
-    std::variant<Code, qsox::Error> m_err;
+    std::variant<Code, TransportError> m_err;
 };
 
 template <typename T = void>
@@ -53,6 +53,14 @@ enum class ConnectionState {
     Pinging,
     Connecting,
     Connected,
+};
+
+// Various Debug options for the connection. Note that some of those do nothing in Release builds.
+struct ConnectionDebugOptions {
+    // Print verbose wolfSSL debug output (QUIC)
+    bool verboseSsl = false;
+    // Print verbose ngtcp2 debug output (QUIC)
+    bool verboseQuic = false;
 };
 
 // Connection is a class that is a manager for connecting to a specific endpoint.
@@ -112,6 +120,9 @@ public:
     // This will do nothing if a connection is established, otherwise it will invalidate the current TLS context.
     void setTlsCertVerification(bool verify);
 
+    // Set the debug options for the connection.
+    void setDebugOptions(const ConnectionDebugOptions& opts);
+
     // Set the connection timeout. This is applied per a specific connection attempt to a single IP address with a single protocol.
     // If multiple IPv4/IPv6 addresses and protocols are available, the full connection attempt may take way longer than this.
     // Default is 5 seconds.
@@ -131,10 +142,14 @@ public:
     // Returns the last error that occurred during the connection process.
     ConnectionError lastError() const;
 
+    // Sends a keepalive message to the server.
+    void sendKeepalive();
+
 private:
     // vvv settings vvv
     std::string m_srvPrefix = "_qunet";
     ConnectionType m_preferredConnType = ConnectionType::Tcp;
+    ConnectionDebugOptions m_debugOptions{};
     bool m_preferIpv6 = true;
     bool m_ipv4Enabled = true;
     bool m_ipv6Enabled = true;
@@ -189,6 +204,7 @@ private:
     ConnectionResult<> fetchIpAndConnect(const std::string& hostname, uint16_t port, ConnectionType type);
 
     void onFatalConnectionError(const ConnectionError& err);
+    void onConnectionError(const ConnectionError& err);
     void finishCancellation();
     void clearLastError();
     void resetConnectionState();

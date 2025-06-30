@@ -36,16 +36,16 @@ namespace qn {
 
 // ConnectionError
 
-bool ConnectionError::isSocketError() const {
-    return std::holds_alternative<qsox::Error>(m_err);
+bool ConnectionError::isTransportError() const {
+    return std::holds_alternative<TransportError>(m_err);
 
 }
 bool ConnectionError::isOtherError() const {
     return std::holds_alternative<Code>(m_err);
 }
 
-qsox::Error ConnectionError::asSocketError() const {
-    return std::get<qsox::Error>(m_err);
+const TransportError& ConnectionError::asTransportError() const {
+    return std::get<TransportError>(m_err);
 }
 
 ConnectionError::Code ConnectionError::asOtherError() const {
@@ -61,8 +61,8 @@ bool ConnectionError::operator!=(Code code) const {
 }
 
 std::string ConnectionError::message() const {
-    if (this->isSocketError()) {
-        return this->asSocketError().message();
+    if (this->isTransportError()) {
+        return this->asTransportError().message();
     } else switch (this->asOtherError()) {
         case Code::Success: return "Success";
         case Code::InvalidProtocol: return "Invalid protocol specified";
@@ -248,7 +248,14 @@ Connection::Connection() {
             } break;
 
             case ConnectionState::Connected: {
-
+                // TODO Idk ?
+                auto pkt = this->m_socket->receiveMessage(Duration::fromSecs(1));
+                if (!pkt) {
+                    this->onConnectionError(pkt.unwrapErr());
+                } else {
+                    auto msg = std::move(pkt).unwrap();
+                    log::debug("Got message: {}", msg.typeStr());
+                }
             } break;
         }
     });
@@ -316,8 +323,16 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
     }
 
     auto tlsPtr = m_tlsContext ? &*m_tlsContext : nullptr;
+    TransportOptions opts {
+        .address = addr,
+        .type = type,
+        .timeout = m_connTimeout,
+        .debugOptions = &m_debugOptions,
+        .tlsContext = tlsPtr
+    };
 
-    auto sock = Socket::connect(addr, type, m_connTimeout, tlsPtr);
+    auto sock = Socket::connect(opts);
+
     if (!sock) {
         // try next..
         log::debug("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), sock.unwrapErr().message());
@@ -686,9 +701,28 @@ ConnectionResult<> Connection::connectIp(const qsox::SocketAddress& address, Con
     return Ok();
 }
 
+void Connection::sendKeepalive() {
+    auto _lock = m_internalMutex.lock();
+
+    if (!this->connected()) {
+        return;
+    }
+
+    auto res = m_socket->sendMessage(KeepaliveMessage{});
+    if (!res) {
+        this->onConnectionError(res.unwrapErr());
+    }
+}
+
 void Connection::onFatalConnectionError(const ConnectionError& err) {
     m_lastError = err;
     m_connState = ConnectionState::Disconnected;
+    log::error("Fatal connection error: {}", err.message());
+}
+
+void Connection::onConnectionError(const ConnectionError& err) {
+    m_lastError = err;
+    log::warn("Connection error: {}", err.message());
 }
 
 void Connection::finishCancellation() {

@@ -144,10 +144,14 @@ TransportResult<size_t> QuicStream::doSend(bool fin) {
 
     GEODE_UNWRAP(m_conn->m_socket->send(outBuf, written));
 
+    // log how many bytes we sent
+    m_conn->m_totalBytesSent.fetch_add(written, std::memory_order::relaxed);
+
     if (datalen == -1) {
         return Ok(0);
     }
 
+    m_conn->m_totalDataBytesSent.fetch_add(datalen, std::memory_order::relaxed);
     m_sendBufferSentPos += datalen;
 
     return Ok(datalen);
@@ -170,6 +174,8 @@ TransportResult<size_t> QuicStream::deliverToRecvBuffer(const uint8_t* data, siz
     auto rcvbuf = m_recvBuffer.lock();
 
     log::debug("QUIC stream {}: received {} stream bytes", m_streamId, len);
+
+    m_conn->m_totalDataBytesReceived.fetch_add(len, std::memory_order::relaxed);
 
     if (rcvbuf->write(data, len)) {
         return Ok(len);

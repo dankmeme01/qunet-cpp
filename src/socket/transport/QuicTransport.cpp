@@ -1,4 +1,5 @@
 #include <qunet/socket/transport/QuicTransport.hpp>
+#include <qunet/Connection.hpp>
 #include "quic/QuicConnection.hpp"
 #include "Common.hpp"
 
@@ -22,9 +23,12 @@ QuicTransport::~QuicTransport() {}
 TransportResult<QuicTransport> QuicTransport::connect(
     const SocketAddress& address,
     const Duration& timeout,
-    const ClientTlsContext* tlsContext
+    const ClientTlsContext* tlsContext,
+    const ConnectionDebugOptions* debugOptions
 ) {
-    auto conn = GEODE_UNWRAP(QuicConnection::connect(address, timeout, tlsContext));
+    auto conn = GEODE_UNWRAP(QuicConnection::connect(
+        address, timeout, tlsContext, debugOptions
+    ));
 
     QN_DEBUG_ASSERT(conn != nullptr);
 
@@ -39,8 +43,12 @@ TransportResult<bool> QuicTransport::poll(const Duration& dur) {
     return Ok(GEODE_UNWRAP(m_conn->pollReadable(dur)));
 }
 
-// The logic here is pretty much taken from QuicTransport in the qunet server
 TransportResult<QunetMessage> QuicTransport::receiveMessage() {
+    // TODO: temporary
+    auto stats = m_conn->connStats();
+    log::debug("QUIC: total sent: {}, total received: {}, total data sent: {}, total data received: {}",
+        stats.totalSent, stats.totalReceived, stats.totalDataSent, stats.totalDataReceived);
+
     return streamcommon::receiveMessage(*m_conn, m_readBuffer, m_readBufferPos, m_messageSizeLimit);
 }
 

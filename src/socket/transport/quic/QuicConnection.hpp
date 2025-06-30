@@ -21,6 +21,10 @@ inline uint64_t timestamp() {
     ).count());
 }
 
+struct QuicConnectionStats {
+    size_t totalSent = 0, totalReceived = 0, totalDataSent = 0, totalDataReceived = 0;
+};
+
 class QuicConnection {
 public:
     ~QuicConnection();
@@ -33,7 +37,8 @@ public:
     static TransportResult<std::unique_ptr<QuicConnection>> connect(
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
-        const ClientTlsContext* tlsContext
+        const ClientTlsContext* tlsContext,
+        const struct ConnectionDebugOptions* debugOptions
     );
 
     // Blocks until data is available to be received, or the timeout expires.
@@ -51,6 +56,8 @@ public:
     // Receives data from the QUIC stream. Returns the number of bytes received, or an error.
     // Blocks until data is available or an error occurs.
     TransportResult<size_t> receive(uint8_t* buffer, size_t len);
+
+    QuicConnectionStats connStats() const;
 
     ngtcp2_conn* rawHandle() const;
     ngtcp2_crypto_conn_ref* connRef() const;
@@ -80,6 +87,12 @@ private:
     asp::AtomicBool m_terminating{false};
 
     std::binary_semaphore m_connectionReadySema{0};
+
+    // for tracking total bytes sent and received
+    std::atomic_size_t m_totalBytesSent = 0;
+    std::atomic_size_t m_totalBytesReceived = 0;
+    std::atomic_size_t m_totalDataBytesSent = 0;
+    std::atomic_size_t m_totalDataBytesReceived = 0;
 
     QuicConnection(ngtcp2_conn* conn);
 

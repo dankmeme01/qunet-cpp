@@ -23,6 +23,7 @@ struct TransportError {
         ZeroLengthMessage,
         NoBufferSpace,
         CongestionLimited,
+        TimedOut,
         Other,
     } CustomCode;
 
@@ -30,6 +31,9 @@ struct TransportError {
         CustomCode code;
 
         std::string_view message() const;
+
+        bool operator==(const CustomKind& other) const = default;
+        bool operator!=(const CustomKind& other) const = default;
     };
 
     struct HandshakeFailure {
@@ -41,6 +45,9 @@ struct TransportError {
         std::string_view message() const {
             return reason;
         }
+
+        bool operator==(const HandshakeFailure& other) const = default;
+        bool operator!=(const HandshakeFailure& other) const = default;
     };
 
     TransportError(const qsox::Error& err) : m_kind(err) {}
@@ -51,6 +58,9 @@ struct TransportError {
     TransportError(HandshakeFailure err) : m_kind(std::move(err)) {}
     TransportError(MessageDecodeError err) : m_kind(std::move(err)) {}
     TransportError(CustomCode code) : m_kind(CustomKind{code}) {}
+
+    bool operator==(const TransportError& other) const = default;
+    bool operator!=(const TransportError& other) const = default;
 
     std::variant<
         qsox::Error,

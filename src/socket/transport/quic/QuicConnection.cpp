@@ -1,7 +1,8 @@
 #include "QuicConnection.hpp"
-#include <qunet/Log.hpp>
-#include <qunet/util/Error.hpp>
+#include <qunet/Connection.hpp>
 #include <qunet/protocol/constants.hpp>
+#include <qunet/util/Error.hpp>
+#include <qunet/Log.hpp>
 
 #include <ngtcp2/ngtcp2_crypto.h>
 #include <wolfssl/options.h>
@@ -143,11 +144,20 @@ ngtcp2_crypto_conn_ref* QuicConnection::connRef() const {
 TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
     const SocketAddress& address,
     const Duration& timeout,
-    const ClientTlsContext* tlsContext
+    const ClientTlsContext* tlsContext,
+    const ConnectionDebugOptions* debugOptions
 ) {
     QN_ASSERT(tlsContext != nullptr && "TLS context must not be null");
 
-    // wolfSSL_Debugging_ON();
+    if (debugOptions && debugOptions->verboseSsl) {
+        wolfSSL_SetLoggingCb([](int logLevel, const char* logMessage) {
+            log::debug("(wolfSSL) {}", logMessage);
+        });
+
+        wolfSSL_Debugging_ON();
+    } else {
+        wolfSSL_Debugging_OFF();
+    }
 
     // Create the connection to return
     std::unique_ptr<QuicConnection> ret{new QuicConnection(nullptr)};
@@ -159,7 +169,7 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
     // Initialize settings
     ngtcp2_settings settings;
     ngtcp2_settings_default(&settings);
-    settings.log_printf = &logPrintfCallback;
+    settings.log_printf = (debugOptions && debugOptions->verboseQuic) ? &logPrintfCallback : nullptr;
     settings.cc_algo = NGTCP2_CC_ALGO_CUBIC;
     settings.initial_ts = timestamp();
     settings.handshake_timeout = timeout.nanos();
@@ -438,6 +448,8 @@ TransportResult<> QuicConnection::doRecv() {
     size_t recvRes = GEODE_UNWRAP(m_socket->recv(outBuf, sizeof(outBuf)));
     log::debug("QUIC: read {} bytes from the socket", recvRes);
 
+    m_totalBytesReceived.fetch_add(recvRes, std::memory_order::relaxed);
+
     QuicError res = ngtcp2_conn_read_pkt(m_conn, &m_networkPath.path, &pi, outBuf, recvRes, timestamp());
     if (!res.ok()) {
         log::warn("QUIC: failed to read the packet: {}", res.message());
@@ -511,7 +523,7 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
 
             if (shouldPoll) {
                 auto timeout = Duration::fromNanos(expiry - now);
-                log::debug("QUIC: until expiry: {}", timeout.toString());
+                // log::debug("QUIC: until expiry: {}", timeout.toString());
 
                 if (timeout.millis() > 50) {
                     timeout = Duration::fromMillis(50);
@@ -519,7 +531,7 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
                     timeout = Duration::fromMillis(5);
                 }
 
-                log::debug("QUIC: polling for incoming data, timeout: {}", timeout.toString());
+                // log::debug("QUIC: polling for incoming data, timeout: {}", timeout.toString());
 
                 auto res = this->thrPoll(timeout);
                 hasIncomingData = res.sockReadable;
@@ -527,7 +539,7 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
                 didExpire = timestamp() >= expiry;
             }
 
-            log::debug("QUIC: poll result - hasIncomingData: {}, wantSendData: {}, didExpire: {}", hasIncomingData, wantSendData, didExpire);
+            // log::debug("QUIC: poll result - hasIncomingData: {}, wantSendData: {}, didExpire: {}", hasIncomingData, wantSendData, didExpire);
 
             // If the socket is readable, read the data and push to the receive buffer
             if (hasIncomingData) {
@@ -543,7 +555,7 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
 
             // handle expired timer
             if (didExpire) {
-                log::debug("QUIC: handling conn expiry");
+                // log::debug("QUIC: handling conn expiry");
                 ngtcp2_conn_handle_expiry(m_conn, timestamp());
             }
 
@@ -618,7 +630,6 @@ TransportResult<> QuicConnection::sendNonStreamPacket(bool handshake) {
             log::error("QUIC: failed to write handshake packet to buffer, written == 0");
             return Err(TransportError::Other);
         } else {
-            log::debug("QUIC: nothing to send");
             return Ok(); // nothing to send
         }
     }
@@ -626,6 +637,8 @@ TransportResult<> QuicConnection::sendNonStreamPacket(bool handshake) {
     ngtcp2_conn_update_pkt_tx_time(m_conn, timestamp());
 
     log::debug("QUIC: sending {} packet, size: {}", handshake ? "handshake" : "non-stream", written);
+
+    m_totalBytesSent.fetch_add(written, std::memory_order::relaxed);
 
     GEODE_UNWRAP(m_socket->send(outBuf, written));
 
@@ -650,6 +663,15 @@ bool QuicConnection::isCongestionRelatedError(const TransportError& err) {
     }
 
     return false;
+}
+
+QuicConnectionStats QuicConnection::connStats() const {
+    return QuicConnectionStats {
+        .totalSent = m_totalBytesSent.load(std::memory_order::relaxed),
+        .totalReceived = m_totalBytesReceived.load(std::memory_order::relaxed),
+        .totalDataSent = m_totalDataBytesSent.load(std::memory_order::relaxed),
+        .totalDataReceived = m_totalDataBytesReceived.load(std::memory_order::relaxed),
+    };
 }
 
 

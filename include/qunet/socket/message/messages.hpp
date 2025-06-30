@@ -3,6 +3,7 @@
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/buffers/ByteReader.hpp>
 #include <qunet/protocol/constants.hpp>
+#include <qunet/protocol/errors.hpp>
 #include <qunet/util/assert.hpp>
 #include <fmt/format.h>
 
@@ -23,9 +24,38 @@ struct PingMessage {};
 
 struct PongMessage {};
 
-struct KeepaliveMessage {};
+struct KeepaliveMessage {
+    uint64_t timestamp;
 
-struct KeepaliveResponseMessage {};
+    MessageEncodeResult encode(auto& writer) const {
+        writer.writeU64(timestamp);
+        writer.writeU8(0);
+        return Ok();
+    }
+
+    QN_NO_DECODE(KeepaliveMessage);
+};
+
+struct KeepaliveResponseMessage {
+    uint64_t timestamp;
+    std::vector<uint8_t> data;
+
+    QN_NO_ENCODE(KeepaliveResponseMessage);
+
+    static MessageDecodeResult<KeepaliveResponseMessage> decode(ByteReader& reader) {
+        KeepaliveResponseMessage out;
+
+        out.timestamp = GEODE_UNWRAP(reader.readU64());
+        auto dataSize = GEODE_UNWRAP(reader.readU16());
+
+        if (dataSize > 0) {
+            out.data.resize(dataSize);
+            GEODE_UNWRAP(reader.readBytes(out.data.data(), dataSize));
+        }
+
+        return Ok(std::move(out));
+    }
+};
 
 struct HandshakeStartMessage {
     uint16_t majorVersion;
@@ -84,12 +114,16 @@ struct HandshakeFailureMessage {
     std::string errorMessage;
 
     std::string_view message() const {
-        switch (errorCode) {
-            case 0: return errorMessage;
-            case 1: return "Client qunet version is too old";
-            case 2: return "Client qunet version is too new";
-            case 3: return "Reconnect failed, unknown connection ID";
-            default: return "Unknown error, invalid error code";
+        if (errorCode == 0) {
+            return errorMessage;
+        }
+
+        auto err = messageForHandshakeError(errorCode);
+        if (err.empty()) {
+            const_cast<std::string&>(errorMessage) = fmt::format("Unknown handshake error code: {}", errorCode);
+            return errorMessage;
+        } else {
+            return err;
         }
     }
 
@@ -113,19 +147,16 @@ struct ServerCloseMessage {
     std::string errorMessage;
 
     std::string_view message() const {
-        switch (errorCode) {
-            case 0: return errorMessage;
-            case 1: return "Fragmentation not allowed";
-            case 2: return "Requested QDB chunk is too long";
-            case 3: return "Requested QDB chunk is invalid (offset/length are out of bounds)";
-            case 4: return "Client requested a QDB chunk but a QDB isn't available";
-            case 5: return "Protocol violation: client send a malformed zero-length message";
-            case 6: return "Protocol violation: client sent a stream message that exceeds the maximum allowed length";
-            case 7: return "Internal server error";
-            default: {
-                const_cast<std::string&>(errorMessage) = fmt::format("Unknown connection error code: {}", errorCode);
-                return errorMessage;
-            }
+        if (errorCode == 0) {
+            return errorMessage;
+        }
+
+        auto err = messageForServerCloseError(errorCode);
+        if (err.empty()) {
+            const_cast<std::string&>(errorMessage) = fmt::format("Unknown server close error code: {}", errorCode);
+            return errorMessage;
+        } else {
+            return err;
         }
     }
 
@@ -144,7 +175,30 @@ struct ServerCloseMessage {
 
 struct ClientReconnectMessage {};
 
-struct ConnectionErrorMessage {};
+struct ConnectionErrorMessage {
+    uint32_t errorCode;
+
+    std::string_view message() const {
+        auto err = messageForConnectionError(errorCode);
+        if (err.empty()) {
+            static thread_local auto message = fmt::format("Unknown server close error code: {}", errorCode);
+            return message;
+        } else {
+            return err;
+        }
+    }
+
+    MessageEncodeResult encode(auto& writer) const {
+        writer.writeU32(errorCode);
+        return Ok();
+    }
+
+    static MessageDecodeResult<ConnectionErrorMessage> decode(ByteReader& writer) {
+        return Ok(ConnectionErrorMessage {
+            .errorCode = GEODE_UNWRAP(writer.readU32()),
+        });
+    }
+};
 
 struct QdbChunkRequestMessage {};
 

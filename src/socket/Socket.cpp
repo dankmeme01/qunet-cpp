@@ -13,17 +13,12 @@ using namespace asp::time;
 
 namespace qn {
 
-TransportResult<Socket> Socket::connect(
-    const qsox::SocketAddress& address,
-    ConnectionType type,
-    const Duration& timeout,
-    const ClientTlsContext* tlsContext
-) {
+TransportResult<Socket> Socket::connect(const TransportOptions& options) {
     auto startedAt = Instant::now();
 
-    auto transport = GEODE_UNWRAP(createTransport(address, type, timeout, tlsContext));
+    auto transport = GEODE_UNWRAP(createTransport(options));
 
-    if (startedAt.elapsed() > timeout) {
+    if (startedAt.elapsed() > options.timeout) {
         return Err(TransportError::ConnectionTimedOut);
     }
 
@@ -31,7 +26,7 @@ TransportResult<Socket> Socket::connect(
 
     GEODE_UNWRAP(socket.sendHandshake());
 
-    auto handshakeTimeout = timeout - startedAt.elapsed();
+    auto handshakeTimeout = options.timeout - startedAt.elapsed();
     if (handshakeTimeout.millis() <= 0) {
         return Err(TransportError::ConnectionTimedOut);
     }
@@ -41,8 +36,22 @@ TransportResult<Socket> Socket::connect(
     return Ok(std::move(socket));
 }
 
+TransportResult<> Socket::sendMessage(const QunetMessage& message) {
+    return m_transport->sendMessage(message);
+}
+
+TransportResult<QunetMessage> Socket::receiveMessage( const Duration& timeout) {
+    bool res = GEODE_UNWRAP(m_transport->poll(timeout));
+
+    if (res) {
+        return m_transport->receiveMessage();
+    } else {
+        return Err(TransportError::TimedOut);
+    }
+}
+
 TransportResult<> Socket::sendHandshake() {
-    return m_transport->sendMessage(HandshakeStartMessage {
+    return this->sendMessage(HandshakeStartMessage {
         .majorVersion = MAJOR_VERSION,
         .fragLimit = UDP_PACKET_LIMIT,
         // TODO: qdb hash
@@ -75,27 +84,27 @@ TransportResult<> Socket::waitForHandshakeResponse(Duration timeout) {
     }
 }
 
-TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(
-    const SocketAddress& address,
-    ConnectionType type,
-    const Duration& timeout,
-    const ClientTlsContext* tlsContext
-) {
-    switch (type) {
+TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const TransportOptions& options) {
+    switch (options.type) {
         case ConnectionType::Udp: {
-            auto transport = GEODE_UNWRAP(UdpTransport::connect(address));
+            auto transport = GEODE_UNWRAP(UdpTransport::connect(options.address));
             auto ptr = std::make_shared<UdpTransport>(std::move(transport));
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 
         case ConnectionType::Tcp: {
-            auto transport = GEODE_UNWRAP(TcpTransport::connect(address, timeout));
+            auto transport = GEODE_UNWRAP(TcpTransport::connect(options.address, options.timeout));
             auto ptr = std::make_shared<TcpTransport>(std::move(transport));
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 
         case ConnectionType::Quic: {
-            auto transport = GEODE_UNWRAP(QuicTransport::connect(address, timeout, tlsContext));
+            auto transport = GEODE_UNWRAP(QuicTransport::connect(
+                options.address,
+                options.timeout,
+                options.tlsContext,
+                options.debugOptions
+            ));
             auto ptr = std::make_shared<QuicTransport>(std::move(transport));
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;

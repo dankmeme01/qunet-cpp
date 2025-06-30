@@ -16,15 +16,15 @@ class QunetMessage {
     using VariantTy = std::variant<
         // PingMessage,
         // PongMessage,
-        // KeepaliveMessage,
-        // KeepaliveResponseMessage,
+        KeepaliveMessage,
+        KeepaliveResponseMessage,
         HandshakeStartMessage,
         HandshakeFinishMessage,
         HandshakeFailureMessage,
         // ClientCloseMessage,
         ServerCloseMessage,
         // ClientReconnectMessage,
-        // ConnectionErrorMessage,
+        ConnectionErrorMessage,
         // QdbChunkRequestMessage,
         // QdbChunkResponseMessage,
         // QdbgToggleMessage,
@@ -36,15 +36,15 @@ public:
     // oh well
     // QunetMessage(PingMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(PongMessage msg) : m_kind(std::move(msg)) {}
-    // QunetMessage(KeepaliveMessage msg) : m_kind(std::move(msg)) {}
-    // QunetMessage(KeepaliveResponseMessage msg) : m_kind(std::move(msg)) {}
+    QunetMessage(KeepaliveMessage msg) : m_kind(std::move(msg)) {}
+    QunetMessage(KeepaliveResponseMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(HandshakeStartMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(HandshakeFinishMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(HandshakeFailureMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(ClientCloseMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ServerCloseMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(ClientReconnectMessage msg) : m_kind(std::move(msg)) {}
-    // QunetMessage(ConnectionErrorMessage msg) : m_kind(std::move(msg)) {}
+    QunetMessage(ConnectionErrorMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbChunkRequestMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbChunkResponseMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbgToggleMessage msg) : m_kind(std::move(msg)) {}
@@ -90,16 +90,16 @@ public:
     ) const {
         // Write the header byte
         std::visit(makeVisitor {
-            [&](PingMessage msg) {
+            [&](const PingMessage& msg) {
                 return writer.writeU8(MSG_PING);
             },
-            [&](PongMessage msg) {
+            [&](const PongMessage& msg) {
                 return writer.writeU8(MSG_PONG);
             },
-            [&](KeepaliveMessage msg) {
+            [&](const KeepaliveMessage& msg) {
                 return writer.writeU8(MSG_KEEPALIVE);
             },
-            [&](KeepaliveResponseMessage msg) {
+            [&](const KeepaliveResponseMessage& msg) {
                 return writer.writeU8(MSG_KEEPALIVE_RESPONSE);
             },
             [&](const HandshakeStartMessage& msg) {
@@ -111,28 +111,28 @@ public:
             [&](const HandshakeFailureMessage& msg) {
                 return writer.writeU8(MSG_HANDSHAKE_FAILURE);
             },
-            [&](ClientCloseMessage msg) {
+            [&](const ClientCloseMessage& msg) {
                 return writer.writeU8(MSG_CLIENT_CLOSE);
             },
-            [&](ServerCloseMessage msg) {
+            [&](const ServerCloseMessage& msg) {
                 return writer.writeU8(MSG_SERVER_CLOSE);
             },
-            [&](ClientReconnectMessage msg) {
+            [&](const ClientReconnectMessage& msg) {
                 return writer.writeU8(MSG_CLIENT_RECONNECT);
             },
-            [&](ConnectionErrorMessage msg) {
+            [&](const ConnectionErrorMessage& msg) {
                 return writer.writeU8(MSG_CONNECTION_ERROR);
             },
-            [&](QdbChunkRequestMessage msg) {
+            [&](const QdbChunkRequestMessage& msg) {
                 return writer.writeU8(MSG_QDB_CHUNK_REQUEST);
             },
-            [&](QdbChunkResponseMessage msg) {
+            [&](const QdbChunkResponseMessage& msg) {
                 return writer.writeU8(MSG_QDB_CHUNK_RESPONSE);
             },
-            [&](QdbgToggleMessage msg) {
+            [&](const QdbgToggleMessage& msg) {
                 return writer.writeU8(MSG_QDBG_TOGGLE);
             },
-            [&](QdbgReportMessage msg) {
+            [&](const QdbgReportMessage& msg) {
                 return writer.writeU8(MSG_QDBG_REPORT);
             },
             [&](const DataMessage& msg) {
@@ -148,6 +148,59 @@ public:
         }
 
         return Ok();
+    }
+
+    std::string_view typeStr() const {
+        return std::visit(makeVisitor {
+            [&](const PingMessage& msg) {
+                return "PingMessage";
+            },
+            [&](const PongMessage& msg) {
+                return "PongMessage";
+            },
+            [&](const KeepaliveMessage& msg) {
+                return "KeepaliveMessage";
+            },
+            [&](const KeepaliveResponseMessage& msg) {
+                return "KeepaliveResponseMessage";
+            },
+            [&](const HandshakeStartMessage& msg) {
+                return "HandshakeStartMessage";
+            },
+            [&](const HandshakeFinishMessage& msg) {
+                return "HandshakeFinishMessage";
+            },
+            [&](const HandshakeFailureMessage& msg) {
+                return "HandshakeFailureMessage";
+            },
+            [&](const ClientCloseMessage& msg) {
+                return "ClientCloseMessage";
+            },
+            [&](const ServerCloseMessage& msg) {
+                return "ServerCloseMessage";
+            },
+            [&](const ClientReconnectMessage& msg) {
+                return "ClientReconnectMessage";
+            },
+            [&](const ConnectionErrorMessage& msg) {
+                return "ConnectionErrorMessage";
+            },
+            [&](const QdbChunkRequestMessage& msg) {
+                return "QdbChunkRequestMessage";
+            },
+            [&](const QdbChunkResponseMessage& msg) {
+                return "QdbChunkResponseMessage";
+            },
+            [&](const QdbgToggleMessage& msg) {
+                return "QdbgToggleMessage";
+            },
+            [&](const QdbgReportMessage& msg) {
+                return "QdbgReportMessage";
+            },
+            [&](const DataMessage& msg) {
+                return "DataMessage";
+            }
+        }, m_kind);
     }
 
     static geode::Result<QunetMessage, MessageDecodeError> decode(ByteReader& reader);

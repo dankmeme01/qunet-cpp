@@ -17,7 +17,8 @@ public:
     static TransportResult<QuicTransport> connect(
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
-        const ClientTlsContext* tlsContext = nullptr
+        const ClientTlsContext* tlsContext = nullptr,
+        const struct ConnectionDebugOptions* debugOptions = nullptr
     );
 
     QuicTransport(QuicTransport&&);

@@ -23,8 +23,28 @@ geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decode(ByteReader&
     }
 
     switch (msgType) {
+        case MSG_KEEPALIVE: {
+            return Ok(MAP_UNWRAP(KeepaliveMessage::decode(reader)));
+        } break;
+
+        case MSG_KEEPALIVE_RESPONSE: {
+            return Ok(MAP_UNWRAP(KeepaliveResponseMessage::decode(reader)));
+        } break;
+
         case MSG_HANDSHAKE_FINISH: {
             return Ok(MAP_UNWRAP(HandshakeFinishMessage::decode(reader)));
+        } break;
+
+        case MSG_HANDSHAKE_FAILURE: {
+            return Ok(MAP_UNWRAP(HandshakeFailureMessage::decode(reader)));
+        } break;
+
+        case MSG_SERVER_CLOSE: {
+            return Ok(MAP_UNWRAP(ServerCloseMessage::decode(reader)));
+        } break;
+
+        case MSG_CONNECTION_ERROR: {
+            return Ok(MAP_UNWRAP(ConnectionErrorMessage::decode(reader)));
         } break;
     }
 

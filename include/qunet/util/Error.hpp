@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Geode/Result.hpp>
+#include <cassert>
 #include <string_view>
 
 // taken from qsox
@@ -26,6 +27,7 @@ namespace qn {
 using geode::Ok;
 using geode::Err;
 
+#ifndef QUNET_DEBUG
 [[noreturn]] inline void unreachable() {
 #if defined __clang__ || defined __GNUC__
     __builtin_unreachable();
@@ -33,5 +35,14 @@ using geode::Err;
     __assume(0);
 #endif
 }
+
+#else
+
+[[noreturn]] inline void unreachable() {
+    assert(false && "Unreachable code reached!");
+    __builtin_trap();
+}
+
+#endif
 
 }
