@@ -17,6 +17,7 @@
 
 // TODO: i don't know how to handle retransmissions,
 // and i probably should somehow handle a dead server by seeing if packets don't arrive for a while
+// TODO: see if this can be optimized further, maybe we send acks too often or something
 
 using namespace asp::time;
 using namespace qsox;
