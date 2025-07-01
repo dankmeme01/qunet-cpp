@@ -6,9 +6,15 @@ using Result = qn::ByteReader::Result<T>;
 
 namespace qn {
 
-ByteReader::ByteReader(std::span<const uint8_t> data) : m_data(data) {}
-ByteReader::ByteReader(const uint8_t* data, size_t size) : m_data(data, data + size) {}
-ByteReader::ByteReader(const std::vector<uint8_t>& data) : m_data(data.begin(), data.end()) {}
+ByteReader::ByteReader(std::span<const uint8_t> data) : m_data(data), m_reserve({}) {}
+ByteReader::ByteReader(const uint8_t* data, size_t size) : m_data(data, data + size), m_reserve({}) {}
+ByteReader::ByteReader(const std::vector<uint8_t>& data) : m_data(data.begin(), data.end()), m_reserve({}) {}
+
+ByteReader ByteReader::withTwoSpans(std::span<const uint8_t> first, std::span<const uint8_t> second) {
+    return ByteReader(first, second);
+}
+
+ByteReader::ByteReader(std::span<const uint8_t> first, std::span<const uint8_t> second) : m_data(first), m_reserve(second) {}
 
 Result<void> ByteReader::readBytes(uint8_t* data, size_t size) {
     auto span = GEODE_UNWRAP(this->readBytes(size));
@@ -17,6 +23,7 @@ Result<void> ByteReader::readBytes(uint8_t* data, size_t size) {
 }
 
 Result<std::span<const uint8_t>> ByteReader::readBytes(size_t size) {
+    // TODO: redo this to utilize the second span
     if (m_pos + size > m_data.size()) {
         return Err(ByteReaderError::OutOfBoundsRead);
     }

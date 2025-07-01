@@ -19,6 +19,8 @@ public:
     ByteReader(const uint8_t* data, size_t size);
     ByteReader(const std::vector<uint8_t>& data);
 
+    static ByteReader withTwoSpans(std::span<const uint8_t> first, std::span<const uint8_t> second);
+
     Result<void> readBytes(uint8_t* data, size_t size);
     Result<std::span<const uint8_t>> readBytes(size_t size);
     Result<void> skip(size_t size);
@@ -54,7 +56,10 @@ public:
 
 private:
     std::span<const uint8_t> m_data;
+    std::span<const uint8_t> m_reserve{};
     size_t m_pos = 0;
+
+    ByteReader(std::span<const uint8_t> first, std::span<const uint8_t> second);
 
     template <typename T>
     Result<T> readBytesAs() {

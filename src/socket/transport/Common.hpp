@@ -1,5 +1,6 @@
 #pragma once
 
+#include <qunet/buffers/CircularByteBuffer.hpp>
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/Log.hpp>
@@ -8,7 +9,7 @@
 
 namespace qn::streamcommon {
 
-TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
+inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
     HeapByteWriter writer;
 
     bool isHandshake = message.is<HandshakeStartMessage>();
@@ -45,13 +46,14 @@ TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
 }
 
 // The logic here is pretty much taken from stream transports in the qunet server
-TransportResult<QunetMessage> receiveMessage(auto&& socket, std::vector<uint8_t>& readBufferStorage, size_t& readBufferPos, size_t messageSizeLimit) {
-    auto readBuffer = std::span<uint8_t>(readBufferStorage.begin(), readBufferStorage.end());
-
+inline TransportResult<QunetMessage> receiveMessage(auto&& socket, CircularByteBuffer& buffer, size_t messageSizeLimit) {
     while (true) {
         // first, try to parse a message from the buffer
-        if (readBufferPos >= sizeof(uint32_t)) {
-            size_t length = ByteReader{readBuffer.subspan(0, sizeof(uint32_t))}.readU32().unwrap();
+        if (buffer.size() >= sizeof(uint32_t)) {
+            uint8_t lenbuf[sizeof(uint32_t)];
+            buffer.peek(lenbuf, sizeof(uint32_t));
+
+            size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
 
             if (length == 0) {
                 return Err(TransportError::ZeroLengthMessage);
@@ -61,40 +63,33 @@ TransportResult<QunetMessage> receiveMessage(auto&& socket, std::vector<uint8_t>
             }
 
             size_t totalLen = sizeof(uint32_t) + length;
-            if (readBufferPos >= totalLen) {
+            if (buffer.size() >= totalLen) {
                 // we have a full message in the buffer
-                auto data = readBuffer.subspan(sizeof(uint32_t), length);
+                buffer.skip(sizeof(uint32_t));
+                auto wrpread = buffer.peek(length);
+                buffer.skip(length);
 
-                ByteReader reader(data);
+                ByteReader reader = ByteReader::withTwoSpans(wrpread.first, wrpread.second);
                 auto msg = QunetMessage::decode(reader);
 
-                // shift leftover bytes in the buffer
-                auto leftoverBytes = readBufferPos - totalLen;
-                if (leftoverBytes > 0) {
-                    std::memmove(readBuffer.data(), readBuffer.data() + totalLen, leftoverBytes);
-                }
-                readBufferPos = leftoverBytes;
-
                 return Ok(GEODE_UNWRAP(msg));
-            }
-
-            // if there is not enough data but we know the length, check if additional space needs to be allocated
-            if (totalLen > readBuffer.size()) {
-                // geometric growth
-                size_t newSize = std::max(totalLen, readBuffer.size() * 2);
-                readBufferStorage.resize(newSize);
-                readBuffer = std::span<uint8_t>(readBufferStorage.begin(), readBufferStorage.end());
             }
         }
 
         // read from the socket
-        size_t len = GEODE_UNWRAP(socket.receive(readBuffer.data() + readBufferPos, readBuffer.size() - readBufferPos));
+        auto wnd = buffer.writeWindow();
+        if (wnd.size() < 1024) {
+            buffer.reserve(1024);
+            wnd = buffer.writeWindow();
+        }
+
+        size_t len = GEODE_UNWRAP(socket.receive(wnd.data(), wnd.size()));
 
         if (len == 0) {
             return Err(qsox::Error{qsox::Error::ConnectionClosed});
         }
 
-        readBufferPos += len;
+        buffer.advanceWrite(len);
     }
 }
 

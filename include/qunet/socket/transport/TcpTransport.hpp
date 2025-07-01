@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BaseTransport.hpp"
+#include <qunet/buffers/CircularByteBuffer.hpp>
 #include <qsox/TcpStream.hpp>
 
 namespace qn {
@@ -20,8 +21,7 @@ public:
 
 private:
     qsox::TcpStream m_socket;
-    std::vector<uint8_t> m_readBuffer;
-    size_t m_readBufferPos = 0;
+    CircularByteBuffer m_recvBuffer;
 
     TcpTransport(qsox::TcpStream socket);
 };

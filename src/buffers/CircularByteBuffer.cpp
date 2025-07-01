@@ -77,6 +77,8 @@ void CircularByteBuffer::clear() {
 
 void CircularByteBuffer::reserve(size_t extra) {
     this->growUntilAtLeast(this->capacity() + extra);
+
+    QN_DEBUG_ASSERT(this->writeWindow().size() >= extra);
 }
 
 size_t CircularByteBuffer::capacity() const {
@@ -108,40 +110,62 @@ void CircularByteBuffer::write(std::span<const uint8_t> data) {
 
     QN_DEBUG_ASSERT(this->capacity() >= this->size() + data.size());
 
-    // now, there are two possible cases:
+    auto wnd1 = this->writeWindow();
+    size_t write1Len = std::min<size_t>(data.size(), wnd1.size());
 
-    // 1. end < start, we have a guarantee that we can always write everything without wrapping
-    if (m_end < m_start) {
-        QN_DEBUG_ASSERT(m_end + data.size() <= m_start);
-        QN_DEBUG_ASSERT(m_end + data.size() <= m_endAlloc);
+    std::memcpy(wnd1.data(), data.data(), write1Len);
+    this->advanceWrite(write1Len);
 
-        std::memcpy(m_end, data.data(), data.size());
-        m_end += data.size();
+    if (write1Len < data.size()) {
+        // wrapping around
+        auto wnd2 = this->writeWindow();
+        size_t write2Len = data.size() - write1Len;
+
+        QN_DEBUG_ASSERT(wnd2.size() >= write2Len && "CircularByteBuffer::write: not enough space in the second window");
+
+        std::memcpy(wnd2.data(), data.data() + write1Len, write2Len);
+        this->advanceWrite(write2Len);
     }
-    // 2. end >= start, depending on the length of the input data, we may need to wrap around
-    else {
-        size_t tailSpace = m_endAlloc - m_end;
-        size_t written = std::min<size_t>(data.size(), tailSpace);
-        std::memcpy(m_end, data.data(), written);
+}
 
-        QN_DEBUG_ASSERT(m_end + written <= m_endAlloc);
+std::span<uint8_t> CircularByteBuffer::writeWindow() {
+    size_t size = m_start < m_end ?
+            m_endAlloc - m_end
+            : m_start - m_end;
 
-        // if we wrote everything, we are done here!
-        if (written == data.size()) {
-            m_end += written;
+    if (size == 0) {
+        // this means m_start == m_end, which means buffer is either full or empty.
+        if (m_size == 0) {
+            QN_ASSERT(m_start == m_data);
+            QN_ASSERT(m_end == m_data);
+
+            return std::span<uint8_t>{
+                m_data,
+                this->capacity()
+            };
         } else {
-            // otherwise, we need to wrap around and write the rest of the data
-            size_t remaining = data.size() - written;
-            std::memcpy(m_data, data.data() + written, remaining);
-            m_end = m_data + remaining;
-
-            QN_DEBUG_ASSERT(m_end <= m_endAlloc);
-            QN_DEBUG_ASSERT(m_end >= m_data);
-            QN_DEBUG_ASSERT(m_end <= m_start && "CircularByteBuffer::write overwrote unread data");
+            // buffer is full
+            return std::span<uint8_t>{m_end, 0};
         }
     }
 
-    m_size += data.size();
+    return std::span<uint8_t>{
+        m_end,
+        size
+    };
+}
+
+void CircularByteBuffer::advanceWrite(size_t len) {
+    if (len > this->capacity() - this->size()) {
+        throw std::out_of_range("CircularByteBuffer::advanceWrite called with len > available space");
+    }
+
+    m_end += len;
+    if (m_end >= m_endAlloc) {
+        m_end -= m_endAlloc - m_data; // wrap around
+    }
+
+    m_size += len;
 }
 
 void CircularByteBuffer::read(void* dest, size_t len) {
@@ -154,10 +178,6 @@ void CircularByteBuffer::read(void* dest, size_t len) {
 
 void CircularByteBuffer::peek(void* dest, size_t len) const {
     QN_ASSERT(dest && "CircularByteBuffer::peek called with null destination");
-
-    if (len > this->size()) {
-        throw std::out_of_range("CircularByteBuffer::peek called with len > size()");
-    }
 
     auto bufs = this->peek(len);
     std::memcpy(dest, bufs.first.data(), bufs.first.size());
@@ -176,7 +196,7 @@ CircularByteBuffer::WrappedRead CircularByteBuffer::peek(size_t len) const {
 
     out.first = std::span<const uint8_t>{
         m_start,
-        std::min<size_t>(len, m_end - m_start)
+        std::min<size_t>(len, m_endAlloc - m_start)
     };
 
     size_t remaining = len - out.first.size();
@@ -191,7 +211,7 @@ CircularByteBuffer::WrappedRead CircularByteBuffer::peek(size_t len) const {
 
     QN_DEBUG_ASSERT(out.first.size() + out.second.size() == len);
     QN_DEBUG_ASSERT(out.first.data() >= m_data && out.first.data() < m_endAlloc);
-    QN_DEBUG_ASSERT(out.second.data() >= m_data && out.second.data() < m_endAlloc);
+    QN_DEBUG_ASSERT(out.second.empty() || (out.second.data() >= m_data && out.second.data() < m_endAlloc));
 
     return out;
 }
@@ -207,6 +227,12 @@ void CircularByteBuffer::skip(size_t len) {
     }
 
     m_size -= len;
+
+    // if size is 0, reset start and end to the beginning of the buffer
+    if (m_size == 0) {
+        m_start = m_data;
+        m_end = m_data;
+    }
 }
 
 void CircularByteBuffer::growUntilAtLeast(size_t newcap) {
@@ -243,8 +269,6 @@ void CircularByteBuffer::growTo(size_t newCap) {
     if (m_start < m_end || (m_start == m_end && m_size == 0)) {
         // case 1 and 3
         std::memcpy(newData, m_start, m_size);
-        m_start = newData;
-        m_end = newData + m_size;
     } else {
         // case 2 and 4
         size_t startPartSize = m_end - m_data;
@@ -252,10 +276,10 @@ void CircularByteBuffer::growTo(size_t newCap) {
 
         std::memcpy(newData, m_start, endPartSize);
         std::memcpy(newData + endPartSize, m_data, startPartSize);
-        m_start = newData;
-        m_end = newData + m_size;
     }
 
+    m_start = newData;
+    m_end = newData + m_size;
     m_endAlloc = newData + newCap;
 
     delete[] m_data;

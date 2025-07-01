@@ -13,9 +13,7 @@ using namespace asp::time;
 
 namespace qn {
 
-TcpTransport::TcpTransport(qsox::TcpStream socket) : m_socket(std::move(socket)) {
-    m_readBuffer.resize(512);
-}
+TcpTransport::TcpTransport(qsox::TcpStream socket) : m_socket(std::move(socket)), m_recvBuffer(512) {}
 
 TcpTransport::~TcpTransport() {}
 
@@ -36,7 +34,7 @@ TransportResult<bool> TcpTransport::poll(const Duration& dur) {
 }
 
 TransportResult<QunetMessage> TcpTransport::receiveMessage() {
-    return streamcommon::receiveMessage(m_socket, m_readBuffer, m_readBufferPos, m_messageSizeLimit);
+    return streamcommon::receiveMessage(m_socket, m_recvBuffer, m_messageSizeLimit);
 }
 
 }

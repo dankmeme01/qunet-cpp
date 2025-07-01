@@ -10,9 +10,7 @@ using namespace asp::time;
 
 namespace qn {
 
-QuicTransport::QuicTransport(std::unique_ptr<QuicConnection> conn) : m_conn(std::move(conn)) {
-    m_readBuffer.resize(512);
-}
+QuicTransport::QuicTransport(std::unique_ptr<QuicConnection> conn) : m_conn(std::move(conn)), m_recvBuffer(512) {}
 
 QuicTransport::QuicTransport(QuicTransport&&) = default;
 
@@ -49,7 +47,7 @@ TransportResult<QunetMessage> QuicTransport::receiveMessage() {
     log::debug("QUIC: total sent: {}, total received: {}, total data sent: {}, total data received: {}",
         stats.totalSent, stats.totalReceived, stats.totalDataSent, stats.totalDataReceived);
 
-    return streamcommon::receiveMessage(*m_conn, m_readBuffer, m_readBufferPos, m_messageSizeLimit);
+    return streamcommon::receiveMessage(*m_conn, m_recvBuffer, m_messageSizeLimit);
 }
 
 }

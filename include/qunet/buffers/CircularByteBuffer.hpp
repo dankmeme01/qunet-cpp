@@ -9,7 +9,7 @@ namespace qn {
 // Circular byte buffer implementation.
 // This buffer allows efficient amortized read/write operations, which are a simple memcpy,
 // while also efficiently storing the data and only reallocating when the reader is significantly behind the writer.
-// Due to this, random access is not easy, `subspan` may return 2 spans if the requested data wraps around the end of the buffer.
+// Due to this, random access is not easy, `peek(size_t)` may return 2 spans if the requested data wraps around the end of the buffer.
 
 class CircularByteBuffer {
 public:
@@ -27,7 +27,8 @@ public:
     void clear();
 
     // Reserves extra capacity in the buffer.
-    // After calling this, `capacity()` will be greater than or equal to previous value of `capacity()` + `extraCap`
+    // After calling this, `capacity()` will be greater than or equal to previous value of `capacity()` + `extraCap`.
+    // There is also a guarantee that `writeWindow().size()` will be at least `extraCap` bytes after this call.
     void reserve(size_t extraCap);
 
     size_t capacity() const;
@@ -37,6 +38,13 @@ public:
     // Appends more data to the end of the buffer. This will reallocate if `size() + len > capacity()`.
     void write(const void* data, size_t len);
     void write(std::span<const uint8_t> data);
+
+    // Returns the window where the next write can happen.
+    // This allows zero-copy writes, for example calling `recv` on a socket to write directly into the buffer.
+    // Make sure to call `advanceWrite(size)` after writing to the window.
+    std::span<uint8_t> writeWindow();
+
+    void advanceWrite(size_t len);
 
     // Reads the next unread data from the buffer. Throws if `len > size()`.
     void read(void* dest, size_t len);

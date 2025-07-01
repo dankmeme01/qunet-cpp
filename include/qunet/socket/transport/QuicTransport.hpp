@@ -2,6 +2,7 @@
 
 #include "BaseTransport.hpp"
 #include "tls/ClientTlsContext.hpp"
+#include <qunet/buffers/CircularByteBuffer.hpp>
 #include <qsox/SocketAddress.hpp>
 #include <memory>
 
@@ -30,8 +31,7 @@ public:
 
 private:
     std::unique_ptr<class QuicConnection> m_conn = nullptr;
-    std::vector<uint8_t> m_readBuffer;
-    size_t m_readBufferPos = 0;
+    CircularByteBuffer m_recvBuffer;
 
     QuicTransport(std::unique_ptr<QuicConnection> connection);
 };

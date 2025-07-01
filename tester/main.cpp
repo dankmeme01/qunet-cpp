@@ -14,11 +14,12 @@ int main(int argc, const char** argv) {
     static Instant start = Instant::now();
 
     qn::log::setLogFunction([&](qn::log::Level level, const std::string& message) {
+        auto timestr = fmt::format("{:.6f}", start.elapsed().seconds<double>());
         switch (level) {
-            case qn::log::Level::Debug: fmt::println("[{}] [DEBUG] {}", start.elapsed().toString(), message); break;
-            case qn::log::Level::Info: fmt::println("[{}] [INFO] {}", start.elapsed().toString(),message); break;
-            case qn::log::Level::Warning: fmt::println("[{}] [WARN] {}", start.elapsed().toString(),message); break;
-            case qn::log::Level::Error: fmt::println("[{}] [ERROR] {}", start.elapsed().toString(),message); break;
+            case qn::log::Level::Debug: fmt::println("[{}] [DEBUG] {}", timestr, message); break;
+            case qn::log::Level::Info: fmt::println("[{}] [INFO] {}", timestr, message); break;
+            case qn::log::Level::Warning: fmt::println("[{}] [WARN] {}", timestr, message); break;
+            case qn::log::Level::Error: fmt::println("[{}] [ERROR] {}", timestr, message); break;
         }
     });
 
@@ -42,6 +43,7 @@ int main(int argc, const char** argv) {
     }
 
     while (true) {
+        conn.sendKeepalive();
         asp::time::sleep(asp::time::Duration::fromMillis(100));
     }
 }

@@ -14,7 +14,7 @@ namespace qn {
 QuicStream::QuicStream(QuicConnection* conn, int64_t streamId)
     : m_conn(conn),
       m_streamId(streamId),
-      m_recvBuffer(asp::Mutex<SlidingBuffer>({INITIAL_BUFFER_SIZE, MAX_BUFFER_SIZE})),
+      m_recvBuffer(asp::Mutex<CircularByteBuffer>(INITIAL_BUFFER_SIZE)),
       m_sendBuffer(asp::Mutex<SlidingBuffer>({INITIAL_BUFFER_SIZE, MAX_BUFFER_SIZE}))
       {}
 
@@ -158,7 +158,10 @@ TransportResult<size_t> QuicStream::doSend(bool fin) {
 }
 
 TransportResult<size_t> QuicStream::read(uint8_t* buffer, size_t len) {
-    size_t read = m_recvBuffer.lock()->read(buffer, len);
+    auto buf = m_recvBuffer.lock();
+
+    size_t read = std::min<size_t>(len, buf->size());
+    buf->read(buffer, read);
 
     log::debug("QUIC stream {}: read {} bytes from receive buffer", m_streamId, read);
 
@@ -177,7 +180,10 @@ TransportResult<size_t> QuicStream::deliverToRecvBuffer(const uint8_t* data, siz
 
     m_conn->m_totalDataBytesReceived.fetch_add(len, std::memory_order::relaxed);
 
-    if (rcvbuf->write(data, len)) {
+    size_t spaceUntilMax = MAX_BUFFER_SIZE - rcvbuf->size();
+
+    if (len < spaceUntilMax) {
+        rcvbuf->write(data, len);
         return Ok(len);
     } else {
         log::warn("QUIC stream {}: failed to write to receive buffer, no space left!", m_streamId);
@@ -186,7 +192,7 @@ TransportResult<size_t> QuicStream::deliverToRecvBuffer(const uint8_t* data, siz
 }
 
 size_t QuicStream::toReceive() const {
-    return m_recvBuffer.lock()->canRead();
+    return m_recvBuffer.lock()->size();
 }
 
 bool QuicStream::writable() const {

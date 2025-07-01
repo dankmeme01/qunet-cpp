@@ -2,8 +2,8 @@
 
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/util/SlidingBuffer.hpp>
+#include <qunet/buffers/CircularByteBuffer.hpp>
 #include <asp/sync/Mutex.hpp>
-#include <vector>
 
 namespace qn {
 
@@ -59,7 +59,8 @@ private:
     int64_t m_streamId = -1;
 
     asp::Mutex<void, true> m_mutex;
-    asp::Mutex<SlidingBuffer> m_recvBuffer, m_sendBuffer;
+    asp::Mutex<SlidingBuffer> m_sendBuffer;
+    asp::Mutex<CircularByteBuffer> m_recvBuffer;
     size_t m_sendBufferSentPos = 0;
 
     TransportResult<size_t> doSend(bool fin = false);
