@@ -15,6 +15,8 @@ public:
     TcpTransport(TcpTransport&&) = default;
     TcpTransport& operator=(TcpTransport&&) = default;
 
+    TransportResult<> close() override;
+    bool isClosed() const override;
     TransportResult<> sendMessage(QunetMessage data) override;
     TransportResult<bool> poll(const asp::time::Duration& dur) override;
     TransportResult<QunetMessage> receiveMessage() override;
@@ -22,6 +24,7 @@ public:
 private:
     qsox::TcpStream m_socket;
     CircularByteBuffer m_recvBuffer;
+    bool m_closed = false;
 
     TcpTransport(qsox::TcpStream socket);
 };

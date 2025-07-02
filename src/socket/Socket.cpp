@@ -36,6 +36,14 @@ TransportResult<Socket> Socket::connect(const TransportOptions& options) {
     return Ok(std::move(socket));
 }
 
+TransportResult<> Socket::close() {
+    return m_transport->close();
+}
+
+bool Socket::isClosed() const {
+    return m_transport->isClosed();
+}
+
 TransportResult<> Socket::sendMessage(const QunetMessage& message) {
     return m_transport->sendMessage(message);
 }

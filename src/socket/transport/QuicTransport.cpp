@@ -18,6 +18,14 @@ QuicTransport& QuicTransport::operator=(QuicTransport&&) = default;
 
 QuicTransport::~QuicTransport() {}
 
+TransportResult<> QuicTransport::close() {
+    return m_conn->close();
+}
+
+bool QuicTransport::isClosed() const {
+    return m_conn->finishedClosing();
+}
+
 TransportResult<QuicTransport> QuicTransport::connect(
     const SocketAddress& address,
     const Duration& timeout,

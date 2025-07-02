@@ -23,6 +23,16 @@ NetResult<UdpTransport> UdpTransport::connect(const SocketAddress& address) {
     return Ok(UdpTransport(std::move(socket)));
 }
 
+TransportResult<> UdpTransport::close()  {
+    // udp, of course, does not have any cleanup
+    m_closed = true;
+    return Ok();
+}
+
+bool UdpTransport::isClosed() const {
+    return m_closed;
+}
+
 TransportResult<> UdpTransport::sendMessage(QunetMessage message) {
     HeapByteWriter writer;
 

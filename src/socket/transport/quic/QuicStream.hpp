@@ -45,6 +45,9 @@ public:
     // Returns whether the receive buffer has any data that can be read.
     bool readable() const;
 
+    // Returns whether there is any data that has been sent but not yet acknowledged by the peer.
+    bool hasDataInFlight() const;
+
     // Read data from the receive buffer, returns the number of bytes that were read.
     // This does not block and does not receive data from the stream, you should ensure
     // `toReceive()` is greater than 0 before calling this method.
@@ -59,9 +62,12 @@ private:
     int64_t m_streamId = -1;
 
     asp::Mutex<void, true> m_mutex;
-    asp::Mutex<SlidingBuffer> m_sendBuffer;
+    asp::Mutex<CircularByteBuffer> m_writeBuffer;
     asp::Mutex<CircularByteBuffer> m_recvBuffer;
-    size_t m_sendBufferSentPos = 0;
+    std::atomic_size_t m_unackedBytes = 0;
+
+    uint64_t m_streamOffset = 0;
+    uint64_t m_ackOffset = 0;
 
     TransportResult<size_t> doSend(bool fin = false);
 

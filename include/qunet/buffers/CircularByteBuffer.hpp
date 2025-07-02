@@ -54,6 +54,26 @@ public:
     struct WrappedRead {
         std::span<const uint8_t> first;
         std::span<const uint8_t> second;
+
+        inline size_t size() const {
+            return first.size() + second.size();
+        }
+
+        inline void skip(size_t len) {
+            if (len <= first.size()) {
+                first = first.subspan(len);
+                return;
+            }
+
+            len -= first.size();
+            first = std::span<const uint8_t>{};
+
+            if (len <= second.size()) {
+                second = second.subspan(len);
+            } else {
+                second = std::span<const uint8_t>{};
+            }
+        }
     };
 
     // Returns a span of the next unread data. If the data wraps around the end of the buffer, it will return two spans,

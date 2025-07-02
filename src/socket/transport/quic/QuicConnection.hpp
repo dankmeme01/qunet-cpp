@@ -11,7 +11,6 @@
 #include <asp/time/Instant.hpp>
 #include <asp/sync/Atomic.hpp>
 #include <asp/thread/Thread.hpp>
-#include <chrono>
 #include <semaphore>
 
 namespace qn {
@@ -58,6 +57,13 @@ public:
 
     QuicConnectionStats connStats() const;
 
+    // Attempts to cleanly close the connection. If this returns an error, consider it fatal and destroy the connection.
+    // Destroying will not send a close packet and will abruptly terminate the connection.
+    TransportResult<> close();
+
+    // Returns whether the connection is fully closed now.
+    bool finishedClosing() const;
+
     ngtcp2_conn* rawHandle() const;
     ngtcp2_crypto_conn_ref* connRef() const;
 
@@ -65,9 +71,11 @@ private:
     friend class ClientTlsSession;
     friend class QuicStream;
 
-    ngtcp2_conn* m_conn = nullptr;
+    asp::Mutex<ngtcp2_conn*, true> m_conn = nullptr;
     ngtcp2_crypto_conn_ref m_connRef;
     ngtcp2_path_storage m_networkPath;
+
+    float m_lossSimulation = 0.0f;
 
     std::optional<ClientTlsSession> m_tlsSession;
     std::optional<qsox::UdpSocket> m_socket;
@@ -80,10 +88,13 @@ private:
         Stopping,
         Stopped,
     } m_connThreadState = ThreadState::Idle;
+    ngtcp2_tstamp m_connThrExpiry = UINT64_MAX;
     asp::time::Duration m_connTimeout;
     TransportResult<> m_handshakeResult = Ok();
     std::optional<TransportError> m_fatalError;
     asp::AtomicBool m_terminating{false};
+    asp::AtomicBool m_terminateCleanly{false};
+    asp::AtomicBool m_closed{false};
 
     std::binary_semaphore m_connectionReadySema{0};
 
@@ -103,6 +114,7 @@ private:
     TransportResult<bool> pollReadableSocket(const asp::time::Duration& dur);
 
     TransportResult<> sendNonStreamPacket(bool handshake = false);
+    TransportResult<> sendClosePacket();
 
     // vvv notifications and waiters vvv
     /// the waiter functions release the lock for you before waiting, you MUST hold it before calling them
@@ -142,9 +154,12 @@ private:
 
     void thrPlatformSetup();
     void thrPlatformCleanup();
+    void thrOnIdleTimeout();
     void thrOnFatalError(const TransportError& err);
+    void thrHandleError(const TransportError& err);
     ThrPollResult thrPoll(const asp::time::Duration& timeout);
 
+    bool shouldLosePacket() const;
 };
 
 }

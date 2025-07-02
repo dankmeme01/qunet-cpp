@@ -29,6 +29,12 @@ public:
     // Attempts to connect to the specified address using the given connection type.
     static TransportResult<Socket> connect(const TransportOptions& options);
 
+    // Closes the transport. This does not send a `ClientClose` message. This may or may not block - see notes in BaseTransport::close.
+    TransportResult<> close();
+
+    // Returns true if `close()` was called and the transport finished closing.
+    bool isClosed() const;
+
     TransportResult<> sendMessage(const QunetMessage& message);
     TransportResult<QunetMessage> receiveMessage(const asp::time::Duration& timeout);
 

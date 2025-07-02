@@ -68,7 +68,9 @@ std::string ConnectionError::message() const {
         case Code::InvalidProtocol: return "Invalid protocol specified";
         case Code::InvalidPort: return "Invalid port specified";
         case Code::InProgress: return "Connection is already in progress";
+        case Code::NotConnected: return "Not connected to a server";
         case Code::AlreadyConnected: return "Already connected to a server";
+        case Code::AlreadyClosing: return "Connection is already closing";
         case Code::DnsResolutionFailed: return "DNS resolution failed";
         case Code::AllAddressesFailed: return "Failed to connect to all possible addresses";
         case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
@@ -248,7 +250,13 @@ Connection::Connection() {
             } break;
 
             case ConnectionState::Connected: {
+                // TODO: some kind of pipe? to close immediately
+                if (m_reqClosure) {
+                    m_connState = ConnectionState::Closing;
+                    return;
+                }
                 // TODO Idk ?
+
                 auto pkt = this->m_socket->receiveMessage(Duration::fromSecs(1));
                 if (!pkt) {
                     this->onConnectionError(pkt.unwrapErr());
@@ -256,6 +264,32 @@ Connection::Connection() {
                     auto msg = std::move(pkt).unwrap();
                     log::debug("Got message: {}", msg.typeStr());
                 }
+            } break;
+
+            case ConnectionState::Closing: {
+                auto _lock = m_internalMutex.lock();
+
+                auto res = m_socket->close();
+
+                if (!res) {
+                    log::warn("Failed to close socket: {}", res.unwrapErr().message());
+                    this->onFatalConnectionError(res.unwrapErr());
+                    m_socket.reset();
+                    return;
+                }
+
+                while (!m_socket->isClosed()) {
+                    // wait for the socket to close
+                    _lock.unlock();
+                    asp::time::sleep(Duration::fromMillis(10));
+                    _lock.relock();
+                }
+
+                // done!
+                log::debug("Connection closed cleanly");
+                m_socket.reset();
+                m_connState = ConnectionState::Disconnected;
+
             } break;
         }
     });
@@ -489,6 +523,20 @@ void Connection::cancelConnection() {
     }
 }
 
+ConnectionResult<> Connection::disconnect() {
+    auto _lock = m_internalMutex.lock();
+
+    if (m_connState == ConnectionState::Closing) {
+        return Err(ConnectionError::AlreadyClosing);
+    } else if (m_connState != ConnectionState::Connected) {
+        return Err(ConnectionError::NotConnected);
+    }
+
+    m_reqClosure = true;
+
+    return Ok();
+}
+
 void Connection::setSrvPrefix(std::string_view pfx) {
     auto _lock = m_internalMutex.lock();
 
@@ -520,6 +568,12 @@ void Connection::setTlsCertVerification(bool verify) {
 
     m_tlsCertVerification = verify;
     m_tlsContext.reset();
+}
+
+void Connection::setDebugOptions(const ConnectionDebugOptions& opts) {
+    auto _lock = m_internalMutex.lock();
+
+    m_debugOptions = opts;
 }
 
 void Connection::setConnectTimeout(Duration dur) {
@@ -736,10 +790,11 @@ void Connection::finishCancellation() {
 void Connection::resetConnectionState() {
     auto _lock = m_internalMutex.lock();
 
-    m_cancelling = false;
-    m_resolvingIp = false;
     m_connState = ConnectionState::Disconnected;
     m_lastError = ConnectionError::Success;
+    m_cancelling = false;
+    m_reqClosure = false;
+    m_resolvingIp = false;
     m_waitingForA = false;
     m_waitingForAAAA = false;
     m_dnsASuccess = false;
@@ -749,14 +804,16 @@ void Connection::resetConnectionState() {
     m_chosenConnType = ConnectionType::Unknown;
     m_usedIps.clear();
     m_usedPort = 0;
+    m_thrStartedPingingAt = {};
+    m_thrLastDnsResponseCount = 0;
+    m_thrArrivedPings = 0;
+    m_thrPingResults.clear();
+    m_thrPingerSupportedProtocols.clear();
     m_thrConnIpIndex = 0;
     m_thrConnTypeIndex = 0;
     m_socket = std::nullopt;
-    m_usedConnTypes.clear();
-    m_thrPingResults.clear();
-    m_thrPingerSupportedProtocols.clear();
-    m_thrLastDnsResponseCount = 0;
     m_connStartedAt = SystemTime::now();
+    m_usedConnTypes.clear();
 }
 
 void Connection::sortUsedIps() {

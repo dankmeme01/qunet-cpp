@@ -23,6 +23,18 @@ NetResult<TcpTransport> TcpTransport::connect(const SocketAddress& address, cons
     return Ok(TcpTransport(std::move(socket)));
 }
 
+TransportResult<> TcpTransport::close() {
+    GEODE_UNWRAP(m_socket.shutdown(ShutdownMode::Both));
+
+    m_closed = true;
+
+    return Ok();
+}
+
+bool TcpTransport::isClosed() const {
+    return m_closed;
+}
+
 TransportResult<> TcpTransport::sendMessage(QunetMessage message) {
     return streamcommon::sendMessage(std::move(message), m_socket);
 }

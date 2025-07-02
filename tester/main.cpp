@@ -6,11 +6,27 @@
 #include <qunet/Log.hpp>
 #include <asp/time.hpp>
 
+#include <csignal>
+
 using namespace qsox;
 using namespace qn;
 using namespace asp::time;
 
+std::atomic_bool g_running = true;
+
+void signalHandler(int signal) {
+    g_running = false;
+}
+
 int main(int argc, const char** argv) {
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <address>" << std::endl;
+        return 1;
+    }
+
     static Instant start = Instant::now();
 
     qn::log::setLogFunction([&](qn::log::Level level, const std::string& message) {
@@ -25,6 +41,9 @@ int main(int argc, const char** argv) {
 
     qn::Connection conn;
     conn.setTlsCertVerification(false);
+    conn.setDebugOptions(ConnectionDebugOptions {
+        .packetLossSimulation = 0.0f,
+    });
 
     auto res = conn.connect(argv[1]);
     if (!res) {
@@ -32,19 +51,34 @@ int main(int argc, const char** argv) {
         return 1;
     }
 
-    while (conn.connecting()) {
+    while (conn.connecting() && g_running) {
         asp::time::sleep(asp::time::Duration::fromMillis(100));
     }
 
     if (conn.connected()) {
         log::info("Connected!");
-    } else {
+    } else if (g_running) {
         log::warn("Failed to connect: {}", conn.lastError().message());
+        return 1;
+    } else {
+        log::info("Aborted");
+        return 0;
     }
 
-    while (true) {
+    while (g_running) {
         conn.sendKeepalive();
-        asp::time::sleep(asp::time::Duration::fromMillis(100));
+        asp::time::sleep(asp::time::Duration::fromMillis(1000));
+    }
+
+    res = conn.disconnect();
+    if (!res) {
+        log::warn("Failed to disconnect: {}", res.unwrapErr().message());
+    } else {
+        log::info("Disconnected successfully");
+    }
+
+    while (!conn.disconnected()) {
+        asp::time::sleep(asp::time::Duration::fromMillis(10));
     }
 }
 

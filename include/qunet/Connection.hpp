@@ -17,7 +17,9 @@ public:
         InvalidProtocol,
         InvalidPort,
         InProgress,
+        NotConnected,
         AlreadyConnected,
+        AlreadyClosing,
         DnsResolutionFailed,
         AllAddressesFailed,
         ProtocolDisabled,
@@ -53,6 +55,7 @@ enum class ConnectionState {
     Pinging,
     Connecting,
     Connected,
+    Closing,
 };
 
 // Various Debug options for the connection. Note that some of those do nothing in Release builds.
@@ -61,6 +64,8 @@ struct ConnectionDebugOptions {
     bool verboseSsl = false;
     // Print verbose ngtcp2 debug output (QUIC)
     bool verboseQuic = false;
+    // Simulate packet loss, 0.0f means no packet loss, 1.0f means 100% packet loss
+    float packetLossSimulation = 0.0f;
 };
 
 // Connection is a class that is a manager for connecting to a specific endpoint.
@@ -100,6 +105,9 @@ public:
     // Cancel the current connection attempt. The actual cancellation might take some time, and this function does not block.
     // Cancellation is complete when `connecting()` returns false.
     void cancelConnection();
+
+    // Disconnect from the server. Errors if not connected, or if already disconnecting.
+    ConnectionResult<> disconnect();
 
     // Set the SRV query name prefix, by default it is `_qunet`.
     void setSrvPrefix(std::string_view pfx);
@@ -163,6 +171,7 @@ private:
     ConnectionState m_connState = ConnectionState::Disconnected;
     ConnectionError m_lastError = ConnectionError::Success;
     asp::AtomicBool m_cancelling = false;
+    asp::AtomicBool m_reqClosure = false;
 
     // vvv these fields are temporary fields for async dns resolution vvv
     asp::time::SystemTime m_startedResolvingIpAt;

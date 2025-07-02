@@ -25,6 +25,8 @@ public:
     QuicTransport(QuicTransport&&);
     QuicTransport& operator=(QuicTransport&&);
 
+    TransportResult<> close() override;
+    bool isClosed() const override;
     TransportResult<> sendMessage(QunetMessage data) override;
     TransportResult<bool> poll(const asp::time::Duration& dur) override;
     TransportResult<QunetMessage> receiveMessage() override;

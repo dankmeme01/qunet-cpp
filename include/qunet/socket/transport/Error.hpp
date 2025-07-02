@@ -24,6 +24,7 @@ struct TransportError {
         NoBufferSpace,
         CongestionLimited,
         TimedOut,
+        Closed,
         Other,
     } CustomCode;
 
