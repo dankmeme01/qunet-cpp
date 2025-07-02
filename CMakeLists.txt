@@ -23,7 +23,7 @@ endif()
 
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#main")
-CPMAddPackage("gh:dankmeme01/asp2#d0073ae")
+CPMAddPackage("gh:dankmeme01/asp2#007dc57")
 CPMAddPackage("gh:c-ares/c-ares#v1.34.5")
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 

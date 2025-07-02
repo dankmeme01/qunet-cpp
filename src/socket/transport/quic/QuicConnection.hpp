@@ -8,6 +8,7 @@
 #include <ngtcp2/ngtcp2.h>
 #include <ngtcp2/ngtcp2_crypto.h>
 #include <asp/time/Duration.hpp>
+#include <asp/time/Instant.hpp>
 #include <asp/sync/Atomic.hpp>
 #include <asp/thread/Thread.hpp>
 #include <chrono>
@@ -15,10 +16,8 @@
 
 namespace qn {
 
-inline uint64_t timestamp() {
-    return static_cast<ngtcp2_tstamp>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()
-    ).count());
+inline ngtcp2_tstamp timestamp() {
+    return asp::time::Instant::now().rawNanos();
 }
 
 struct QuicConnectionStats {
