@@ -23,8 +23,8 @@ endif()
 
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#main")
-CPMAddPackage("gh:dankmeme01/asp2#df5a56ed")
-CPMAddPackage("gh:c-ares/c-ares#v1.34.5")
+CPMAddPackage("gh:dankmeme01/asp2#411081b")
+CPMAddPackage("gh:dankmeme01/c-ares#main") # TODO: use upstream when the fix is merged
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 
 target_link_libraries(qunet PRIVATE c-ares fmt)
@@ -79,7 +79,7 @@ if (QUNET_QUIC_SUPPORT)
         target_include_directories(ngtcp2_crypto_wolfssl_static PRIVATE ${WOLFSSL_INCLUDE_DIRS})
     endif()
 
-    target_link_libraries(qunet PRIVATE wolfssl ngtcp2 ngtcp2_crypto_wolfssl_static)
+    target_link_libraries(qunet PRIVATE wolfssl ngtcp2_static ngtcp2_crypto_wolfssl_static)
 endif()
 
 # Qunet tester

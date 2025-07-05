@@ -10,6 +10,7 @@
 #include <asp/time/Duration.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/sync/Atomic.hpp>
+#include <asp/sync/Notify.hpp>
 #include <asp/thread/Thread.hpp>
 #include <semaphore>
 
@@ -119,10 +120,6 @@ private:
     // vvv notifications and waiters vvv
     /// the waiter functions release the lock for you before waiting, you MUST hold it before calling them
     void notifyDataWritten();
-    void notifyWritable(asp::MutexGuard<void>& lock);
-    void notifyReadable(asp::MutexGuard<void>& lock);
-    bool waitUntilWritable(const asp::time::Duration& timeout, asp::MutexGuard<void>& lock);
-    bool waitUntilReadable(const asp::time::Duration& timeout, asp::MutexGuard<void>& lock);
 
     // Returns true if the given error is related to congestion, flow control or buffering,
     // and the application should wait before sending more data.
@@ -138,16 +135,13 @@ private:
 
     asp::Mutex<> m_waiterMutex;
 
+    // for [notify|waitUntil]Writable
+    asp::Notify m_writableNotify;
+    // for [notify|waitUntil]Readable
+    asp::Notify m_readableNotify;
+
 #ifdef _WIN32
 #else
-    // for [notify|waitUntil]Writable
-    int ackPipeRead = -1, ackPipeWrite = -1;
-    size_t m_ackPipeWaiters = 0;
-
-    // for [notify|waitUntil]Readable
-    int recvPipeRead = -1, recvPipeWrite = -1;
-    size_t m_recvPipeWaiters = 0;
-
     // for notifyDataWritten
     int wrbPipeRead = -1, wrbPipeWrite = -1;
 #endif

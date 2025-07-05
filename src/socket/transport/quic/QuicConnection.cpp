@@ -228,8 +228,7 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
                 return -1;
             }
 
-            auto mtx = quicConn->m_waiterMutex.lock();
-            quicConn->notifyReadable(mtx);
+            quicConn->m_readableNotify.notifyAll();
 
             return 0;
         },
@@ -241,8 +240,7 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
 
             // Data acknowledgement may result in buffer space being freed and the stream becoming writable again,
             // so notify any waiters.
-            auto mtx = quicConn->m_waiterMutex.lock();
-            quicConn->notifyWritable(mtx);
+            quicConn->m_writableNotify.notifyAll();
 
             return 0;
         },
@@ -374,15 +372,13 @@ TransportResult<bool> QuicConnection::pollReadable(const Duration& dur) {
         return Err(TransportError::Closed);
     }
 
-    auto lock = m_waiterMutex.lock();
-
     if (m_mainStream->readable()) {
         return Ok(true); // stream is readable, no need to wait
     }
 
-    this->waitUntilReadable(dur, lock);
-
-    return Ok(m_mainStream->readable());
+    return Ok(m_readableNotify.wait(dur, [&] {
+        return m_mainStream->readable();
+    }));
 }
 
 TransportResult<bool> QuicConnection::pollReadableSocket(const asp::time::Duration& dur) {
@@ -396,15 +392,13 @@ TransportResult<bool> QuicConnection::pollWritable(const Duration& dur) {
         return Err(TransportError::Closed);
     }
 
-    auto lock = m_waiterMutex.lock();
-
     if (m_mainStream->writable()) {
         return Ok(true); // stream is writable, no need to wait
     }
 
-    this->waitUntilWritable(dur, lock);
-
-    return Ok(m_mainStream->writable());
+    return Ok(m_writableNotify.wait(dur, [&] {
+        return m_mainStream->writable();
+    }));
 }
 
 TransportResult<size_t> QuicConnection::send(const uint8_t* data, size_t len) {

@@ -16,8 +16,6 @@ void QuicConnection::thrPlatformSetup() {
     };
 
     makePipe(wrbPipeRead, wrbPipeWrite);
-    makePipe(ackPipeRead, ackPipeWrite);
-    makePipe(recvPipeRead, recvPipeWrite);
 }
 
 void QuicConnection::thrPlatformCleanup() {
@@ -30,10 +28,6 @@ void QuicConnection::thrPlatformCleanup() {
 
     closePipe(wrbPipeRead);
     closePipe(wrbPipeWrite);
-    closePipe(ackPipeRead);
-    closePipe(ackPipeWrite);
-    closePipe(recvPipeRead);
-    closePipe(recvPipeWrite);
 }
 
 static bool pollPipe(int fd, const Duration& timeout) {
@@ -59,56 +53,6 @@ static bool pollPipe(int fd, const Duration& timeout) {
     }
 
     return false;
-}
-
-void QuicConnection::notifyWritable(asp::MutexGuard<void>& lock) {
-    // if there are no waiters, do nothing
-    if (m_ackPipeWaiters == 0) {
-        lock.unlock();
-        return;
-    }
-
-    lock.unlock();
-
-    // notify waiters
-    ::write(ackPipeWrite, "x", 1);
-}
-
-bool QuicConnection::waitUntilWritable(const Duration& timeout, asp::MutexGuard<void>& lock) {
-    m_ackPipeWaiters++;
-    lock.unlock();
-
-    bool result = pollPipe(ackPipeRead, timeout);
-
-    lock.relock();
-    m_ackPipeWaiters--;
-
-    return result;
-}
-
-void QuicConnection::notifyReadable(asp::MutexGuard<void>& lock) {
-    // if there are no waiters, do nothing
-    if (m_recvPipeWaiters == 0) {
-        lock.unlock();
-        return;
-    }
-
-    lock.unlock();
-
-    // notify waiters
-    ::write(recvPipeWrite, "x", 1);
-}
-
-bool QuicConnection::waitUntilReadable(const Duration& timeout, asp::MutexGuard<void>& lock) {
-    m_recvPipeWaiters++;
-    lock.unlock();
-
-    bool result = pollPipe(recvPipeRead, timeout);
-
-    lock.relock();
-    m_recvPipeWaiters--;
-
-    return result;
 }
 
 void QuicConnection::notifyDataWritten() {

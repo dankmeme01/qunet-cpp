@@ -1,12 +1,14 @@
-#include <netinet/in.h>
 #include <qunet/Connection.hpp>
 #include <qunet/dns/Resolver.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Log.hpp>
 #include <qunet/util/assert.hpp>
+#include <qunet/util/Poll.hpp>
 
 #include <asp/time/Duration.hpp>
 #include <asp/time/sleep.hpp>
+
+#include <algorithm>
 
 using namespace asp::time;
 

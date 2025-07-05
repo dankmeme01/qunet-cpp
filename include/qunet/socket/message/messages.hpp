@@ -6,6 +6,7 @@
 #include <qunet/protocol/errors.hpp>
 #include <qunet/util/assert.hpp>
 #include <fmt/format.h>
+#include <array>
 
 #define QN_NO_ENCODE(t) MessageEncodeResult encode(auto& writer) const { \
     QN_ASSERT(false && "Message of type " #t " cannot be encoded"); \
