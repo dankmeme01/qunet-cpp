@@ -150,8 +150,10 @@ public:
     // Returns the last error that occurred during the connection process.
     ConnectionError lastError() const;
 
-    // Sends a keepalive message to the server.
+    // Sends a keepalive message to the server. Does nothing if not connected.
     void sendKeepalive();
+    // Sends a data message to the server. Does nothing if not connected.
+    void sendData(std::vector<uint8_t> data);
 
 private:
     // vvv settings vvv
@@ -218,6 +220,8 @@ private:
     void clearLastError();
     void resetConnectionState();
     void sortUsedIps();
+
+    void doSend(const QunetMessage& message);
 
     // Call when DNS resolution is over, we can proceed to either pinging or connecting to the destination
     void doneResolving();

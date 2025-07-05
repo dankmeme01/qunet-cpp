@@ -209,12 +209,15 @@ struct QdbgToggleMessage {};
 struct QdbgReportMessage {};
 
 struct DataMessage {
+    std::vector<uint8_t> data;
+
     MessageEncodeResult encode(auto& writer) const {
+        writer.writeBytes(data.data(), data.size());
         return Ok();
     }
 
     static MessageDecodeResult<DataMessage> decode(ByteReader& reader) {
-        return Ok(DataMessage{});
+        return Ok(DataMessage{ reader.readToEnd() });
     }
 };
 

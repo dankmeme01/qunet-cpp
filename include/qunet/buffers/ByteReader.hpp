@@ -22,7 +22,7 @@ public:
     static ByteReader withTwoSpans(std::span<const uint8_t> first, std::span<const uint8_t> second);
 
     Result<void> readBytes(uint8_t* data, size_t size);
-    Result<std::span<const uint8_t>> readBytes(size_t size);
+    std::vector<uint8_t> readToEnd();
     Result<void> skip(size_t size);
 
     Result<uint8_t> readU8();
@@ -49,7 +49,6 @@ public:
     Result<std::string> readString();
     Result<std::string> readFixedString(size_t len);
 
-    std::span<const uint8_t> remaining() const;
     size_t remainingSize() const;
     size_t position() const;
     void setPosition(size_t pos);

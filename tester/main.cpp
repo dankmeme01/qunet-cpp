@@ -67,7 +67,8 @@ int main(int argc, const char** argv) {
 
     while (g_running) {
         conn.sendKeepalive();
-        asp::time::sleep(asp::time::Duration::fromMillis(1000));
+        conn.sendData({0, 1, 2, 3, 4, 5, 6});
+        asp::time::sleep(asp::time::Duration::fromMillis(2500));
     }
 
     res = conn.disconnect();

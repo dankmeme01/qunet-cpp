@@ -1,4 +1,5 @@
 #include <qunet/buffers/ByteReader.hpp>
+#include <qunet/util/assert.hpp>
 #include <cstring>
 
 template <typename T = void>
@@ -17,22 +18,40 @@ ByteReader ByteReader::withTwoSpans(std::span<const uint8_t> first, std::span<co
 ByteReader::ByteReader(std::span<const uint8_t> first, std::span<const uint8_t> second) : m_data(first), m_reserve(second) {}
 
 Result<void> ByteReader::readBytes(uint8_t* data, size_t size) {
-    auto span = GEODE_UNWRAP(this->readBytes(size));
-    std::memcpy(data, span.data(), size);
-    return Ok();
-}
-
-Result<std::span<const uint8_t>> ByteReader::readBytes(size_t size) {
-    // TODO: redo this to utilize the second span
-    if (m_pos + size > m_data.size()) {
+    if (size > this->remainingSize()) {
         return Err(ByteReaderError::OutOfBoundsRead);
     }
 
-    auto begin = m_data.begin() + m_pos;
-    auto end = begin + size;
+    // read from 1st span if applicable
+    if (m_pos < m_data.size()) {
+        size_t toRead = std::min(size, m_data.size() - m_pos);
+        std::memcpy(data, m_data.data() + m_pos, toRead);
+        m_pos += toRead;
+        data += toRead;
+        size -= toRead;
+    }
+
+    // read from 2nd span if needed
+    if (size == 0) {
+        return Ok();
+    }
+
+    // position relative to the reserve span
+    size_t relPos = m_pos - m_data.size();
+
+    QN_DEBUG_ASSERT(relPos + size <= m_reserve.size());
+
+    std::memcpy(data, m_reserve.data() + relPos, size);
     m_pos += size;
 
-    return Ok(std::span{begin, end});
+    return Ok();
+}
+
+std::vector<uint8_t> ByteReader::readToEnd() {
+    std::vector<uint8_t> out;
+    out.resize(this->remainingSize());
+    this->readBytes(out.data(), out.size()).unwrap();
+    return out;
 }
 
 Result<void> ByteReader::skip(size_t size) {
@@ -136,12 +155,8 @@ Result<std::string> ByteReader::readFixedString(size_t len) {
     return Ok(std::move(out));
 }
 
-std::span<const uint8_t> ByteReader::remaining() const {
-    return std::span{m_data.begin() + m_pos, m_data.end()};
-}
-
 size_t ByteReader::remainingSize() const {
-    return m_data.size() - m_pos;
+    return m_data.size() + m_reserve.size() - m_pos;
 }
 
 size_t ByteReader::position() const {

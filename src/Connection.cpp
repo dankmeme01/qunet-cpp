@@ -257,7 +257,7 @@ Connection::Connection() {
                 }
                 // TODO Idk ?
 
-                auto pkt = this->m_socket->receiveMessage(Duration::fromSecs(1));
+                auto pkt = this->m_socket->receiveMessage(Duration::fromSecs(5));
                 if (!pkt) {
                     this->onConnectionError(pkt.unwrapErr());
                 } else {
@@ -756,13 +756,21 @@ ConnectionResult<> Connection::connectIp(const qsox::SocketAddress& address, Con
 }
 
 void Connection::sendKeepalive() {
+    return this->doSend(KeepaliveMessage{});
+}
+
+void Connection::sendData(std::vector<uint8_t> data) {
+    return this->doSend(DataMessage{std::move(data)});
+}
+
+void Connection::doSend(const QunetMessage& message) {
     auto _lock = m_internalMutex.lock();
 
     if (!this->connected()) {
         return;
     }
 
-    auto res = m_socket->sendMessage(KeepaliveMessage{});
+    auto res = m_socket->sendMessage(message);
     if (!res) {
         this->onConnectionError(res.unwrapErr());
     }
