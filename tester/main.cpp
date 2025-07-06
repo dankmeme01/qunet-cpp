@@ -67,8 +67,9 @@ int main(int argc, const char** argv) {
 
     while (g_running) {
         conn.sendKeepalive();
-        conn.sendData({0, 1, 2, 3, 4, 5, 6});
-        asp::time::sleep(asp::time::Duration::fromMillis(100));
+        std::vector megabyte(1024 * 1023, (uint8_t) 0x42); // 1 MB of data
+        conn.sendData(megabyte);
+        asp::time::sleep(asp::time::Duration::fromMillis(1000));
     }
 
     res = conn.disconnect();

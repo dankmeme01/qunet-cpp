@@ -96,6 +96,8 @@ private:
     asp::AtomicBool m_terminating{false};
     asp::AtomicBool m_terminateCleanly{false};
     asp::AtomicBool m_closed{false};
+    size_t m_congErrors = 0;
+    asp::time::Instant m_lastSendAttempt = asp::time::Instant::now();
 
     asp::Notify m_connectionReady;
 
@@ -140,6 +142,7 @@ private:
     void thrOnFatalError(const TransportError& err);
     void thrHandleError(const TransportError& err);
     ThrPollResult thrPoll(const asp::time::Duration& timeout);
+    asp::time::Duration thrGetSendBackoff();
 
     bool shouldLosePacket() const;
 };

@@ -257,10 +257,16 @@ Connection::Connection() {
                     m_connState = ConnectionState::Closing;
                     return;
                 }
+
                 // TODO Idk ?
 
-                auto pkt = this->m_socket->receiveMessage(Duration::fromSecs(5));
+                auto pkt = this->m_socket->receiveMessage(Duration::fromMillis(100));
                 if (!pkt) {
+                    if (pkt.unwrapErr() == TransportError::TimedOut) {
+                        // no data, just continue
+                        return;
+                    }
+
                     this->onConnectionError(pkt.unwrapErr());
                 } else {
                     auto msg = std::move(pkt).unwrap();

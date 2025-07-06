@@ -309,7 +309,7 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
 
     conn.unlock();
 
-    // Setup poller
+    // Setup poller, prioritize the socket
     ret->m_poller.addSocket(*ret->m_socket, PollType::Read);
     ret->m_poller.addPipe(ret->m_dataWrittenPipe, PollType::Read);
 
@@ -556,42 +556,33 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
             }
 
             auto now = timestamp();
-
-            bool wantSendData = false;
-            size_t toFlush = m_mainStream->toFlush();
-
-            if (toFlush > 0) {
-                // // check if we are allowed to send data
-                // auto count = ngtcp2_conn_get_cwnd_left(m_conn);
-                // log::debug("QUIC: stream {} has {} bytes to flush, congestion window: {}", m_mainStream->id(), toFlush, count);
-
-                // wantSendData = count > 0;
-
-                wantSendData = true;
+            if (m_connThrExpiry == UINT64_MAX || m_connThrExpiry < now) {
+                m_connThrExpiry = now; // force reset timer
             }
 
-            bool didExpire = now >= m_connThrExpiry;
+            // log::debug("QUIC: timer expiry in {}", m_connThrExpiry, now, Duration::fromNanos(m_connThrExpiry - now).toString());
 
-            // only poll if expiry isn't reached yet and there's no data
-            bool shouldPoll = !didExpire && !wantSendData;
+            bool didExpire = now >= m_connThrExpiry;
+            bool wantSendData = m_mainStream->toFlush() > 0;
+
+            // if we are getting limited due to congestion/flow control, stop trying to send data for a while
+            Duration sendBackoff = wantSendData ? this->thrGetSendBackoff() : Duration{};
+
+            // only poll if timer hasn't expired yet and there's no data to send
+            bool shouldPoll = !didExpire && (!wantSendData || !sendBackoff.isZero());
 
             bool hasIncomingData = false;
 
             if (shouldPoll) {
-                auto timeout = Duration::fromNanos(m_connThrExpiry - now);
-                // log::debug("QUIC: until expiry: {}", timeout.toString());
-
-                if (timeout.millis() > 100) {
-                    timeout = Duration::fromMillis(100);
-                } else if (timeout.millis() < 2) {
-                    timeout = Duration::fromMillis(2);
-                }
+                // sleep until either the timer expires or we can try sending data again
+                auto timeout = std::min(Duration::fromNanos(m_connThrExpiry - now), sendBackoff);
+                timeout = std::clamp(timeout, Duration::fromMillis(5), Duration::fromMillis(250));
 
                 // log::debug("QUIC: polling for incoming data, timeout: {}", timeout.toString());
 
                 auto res = this->thrPoll(timeout);
                 hasIncomingData = res.sockReadable;
-                wantSendData = res.newDataAvail;
+                wantSendData = this->thrGetSendBackoff().isZero() && m_mainStream->toFlush() > 0;
 
                 now = timestamp();
                 didExpire = now >= m_connThrExpiry;
@@ -625,20 +616,24 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
             }
 
             // check if there's any buffered data to send
-            if (wantSendData) while (true) {
-                auto res = m_mainStream->tryFlush();
-                if (res.isOk()) {
-                    size_t written = res.unwrap();
-                    if (written == 0) {
-                        // no more data to send
-                        break;
-                    }
+            if (wantSendData) {
+                while (true) {
+                    auto res = m_mainStream->tryFlush();
+                    if (res.isOk()) {
+                        m_congErrors = 0;
 
-                    // otherwise, keep trying to send
-                } else {
-                    conn.unlock();
-                    this->thrHandleError(res.unwrapErr());
-                    return;
+                        size_t written = res.unwrap();
+                        if (written == 0) {
+                            // no more data to send
+                            break;
+                        }
+
+                        // otherwise, keep trying to send
+                    } else {
+                        conn.unlock();
+                        this->thrHandleError(res.unwrapErr());
+                        return;
+                    }
                 }
             }
 
@@ -649,6 +644,8 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
             if (!res) {
                 conn.unlock();
                 this->thrHandleError(res.unwrapErr());
+            } else {
+                m_congErrors = 0;
             }
         } break;
 
@@ -689,6 +686,13 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
     }
 }
 
+Duration QuicConnection::thrGetSendBackoff() {
+    auto sinceLastAttempt = m_lastSendAttempt.elapsed();
+    auto fullBackoff = Duration::fromMicros(32ULL << m_congErrors);
+
+    return fullBackoff - sinceLastAttempt;
+}
+
 TransportResult<> QuicConnection::sendNonStreamPacket(bool handshake) {
     uint8_t outBuf[1500];
     ngtcp2_pkt_info pi{};
@@ -716,6 +720,7 @@ TransportResult<> QuicConnection::sendNonStreamPacket(bool handshake) {
     log::debug("QUIC: sending {} packet, size: {}", handshake ? "handshake" : "non-stream", written);
 
     m_totalBytesSent.fetch_add(written, std::memory_order::relaxed);
+    m_lastSendAttempt = Instant::now();
 
     if (!this->shouldLosePacket()) {
         GEODE_UNWRAP(m_socket->send(outBuf, written));
@@ -765,8 +770,8 @@ void QuicConnection::thrOnIdleTimeout() {
 
 void QuicConnection::thrHandleError(const TransportError& err) {
     if (this->isCongestionRelatedError(err)) {
-        log::debug("QUIC: packet blocked due to congestion control, can't send pending data");
-        asp::time::yield();
+        m_congErrors++;
+        log::debug("QUIC: packet blocked due to congestion/flow control ({} consecutive errors)", m_congErrors);
     } else {
         this->thrOnFatalError(err);
     }

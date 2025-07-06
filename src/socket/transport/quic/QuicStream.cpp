@@ -177,6 +177,7 @@ TransportResult<size_t> QuicStream::doSend(bool fin) {
 
     // log how many bytes we sent
     m_conn->m_totalBytesSent.fetch_add(written, std::memory_order::relaxed);
+    m_conn->m_lastSendAttempt = asp::time::Instant::now();
 
     if (streamDataWritten == -1) {
         return Ok(0);
