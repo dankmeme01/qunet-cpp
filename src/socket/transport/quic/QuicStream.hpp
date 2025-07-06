@@ -4,6 +4,7 @@
 #include <qunet/util/SlidingBuffer.hpp>
 #include <qunet/buffers/CircularByteBuffer.hpp>
 #include <asp/sync/Mutex.hpp>
+#include <atomic>
 
 namespace qn {
 
