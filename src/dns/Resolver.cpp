@@ -1,4 +1,5 @@
 #include <qunet/dns/Resolver.hpp>
+#include <qunet/util/Platform.hpp>
 #include <qunet/Log.hpp>
 
 #include <qsox/BaseSocket.hpp>
@@ -33,12 +34,50 @@ Resolver::Resolver() {
     options.evsys = ARES_EVSYS_DEFAULT;
     options.timeout = 1500;
 
+    if (qn::isWine()) {
+        this->wineWorkaround();
+    }
+
     res = ares_init_options((ares_channel_t**)&m_channel, &options, optmask);
     if (res != ARES_SUCCESS) {
         log::error("ares_init_options failed with code {}: {}", res, ares_strerror(res));
         m_channel = nullptr;
         return;
     }
+}
+
+void Resolver::wineWorkaround() {
+#ifdef _WIN32
+    // the registry keys here don't exist in wine for some reason, so we need to create them
+    // https://github.com/c-ares/c-ares/blob/2a3e30361c180adc6a622fe7955a2235f18e0436/src/lib/event/ares_event_configchg.c#L324
+
+    auto createIfNeeded = [](const wchar_t* name) {
+        HKEY hKey;
+        DWORD disp;
+
+        LONG res = RegCreateKeyExW(
+            HKEY_LOCAL_MACHINE,
+            name,
+            0,
+            nullptr,
+            REG_OPTION_NON_VOLATILE,
+            KEY_NOTIFY,
+            nullptr,
+            &hKey,
+            &disp
+        );
+
+        if (res == ERROR_SUCCESS) {
+            log::debug("Created registry key!");
+            RegCloseKey(hKey);
+        } else {
+            log::warn("Failed to create registry key: {}", res);
+        }
+    };
+
+    createIfNeeded(L"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces");
+    createIfNeeded(L"SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters\\Interfaces");
+#endif
 }
 
 Resolver::~Resolver() {

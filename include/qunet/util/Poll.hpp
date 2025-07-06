@@ -43,9 +43,9 @@ private:
 class MultiPoller {
 public:
     void addSocket(qsox::BaseSocket& socket, qsox::PollType interest);
-    void addSocket(qsox::BaseSocket::SockFd socket, qsox::PollType interest);
+    void addSocket(qsox::SockFd socket, qsox::PollType interest);
     void removeSocket(qsox::BaseSocket& socket);
-    void removeSocket(qsox::BaseSocket::SockFd fd);
+    void removeSocket(qsox::SockFd fd);
 
     void addPipe(const PollPipe& pipe, qsox::PollType interest);
 
@@ -59,7 +59,14 @@ public:
         bool isPipe(const PollPipe& pipe) const;
     };
 
+    /// Polls all the registered handles. Note: **this does not clear readiness.**
+    /// Depending on the platform, this function may either return immediately if a handle is ready, or it may block until another event occurs.
+    /// Even if you read data from a socket, this function will still consider it ready during the next call.
+    /// You must manually clear the readiness. For pipes, call `consume()` on the pipe.
+    /// For sockets, call `clearReadiness()` on this poller with the socket, **before** receiving data.
     std::optional<PollResult> poll(const std::optional<asp::time::Duration>& timeout);
+
+    void clearReadiness(qsox::BaseSocket& socket);
 
 private:
     asp::Mutex<void, true> m_mtx;
@@ -69,6 +76,7 @@ private:
             Socket,
             Pipe,
         } type;
+        qsox::SockFd origFd = -1; // used on windows
     };
 
     std::vector<HandleMeta> m_metas;
@@ -79,8 +87,8 @@ private:
     std::vector<struct pollfd> m_handles;
 #endif
 
-    size_t findHandle(qsox::BaseSocket::SockFd fd) const;
-    void addHandle(HandleMeta meta, qsox::BaseSocket::SockFd fd, qsox::PollType interest);
+    size_t findHandle(qsox::SockFd fd) const;
+    void addHandle(HandleMeta meta, qsox::SockFd fd, qsox::PollType interest);
     void removeByIdx(size_t idx);
     void runCleanupFor(size_t idx);
 };

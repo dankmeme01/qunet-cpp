@@ -23,12 +23,22 @@ endif()
 
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#main")
-CPMAddPackage("gh:dankmeme01/asp2#411081b")
-CPMAddPackage("gh:dankmeme01/c-ares#main") # TODO: use upstream when the fix is merged
+CPMAddPackage("gh:dankmeme01/asp2#a48149f6")
+CPMAddPackage(
+    NAME c-ares
+    GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
+    GIT_TAG "main" # TODO: use stable version when a 1.34.6 or 1.35 is out
+    OPTIONS "CARES_STATIC ON"
+            "CARES_SHARED OFF"
+            "CARES_INSTALL OFF"
+            "CARES_BUILD_TOOLS OFF"
+)
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 
-target_link_libraries(qunet PRIVATE c-ares fmt)
-target_link_libraries(qunet PUBLIC qsox asp)
+target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
+
+target_link_libraries(qunet PRIVATE c-ares)
+target_link_libraries(qunet PUBLIC qsox asp fmt)
 
 if (QUNET_QUIC_SUPPORT)
     # TODO: we might move this out of here if we will need TLS but not for QUIC

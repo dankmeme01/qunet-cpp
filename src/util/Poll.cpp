@@ -6,7 +6,7 @@ void MultiPoller::addSocket(qsox::BaseSocket& socket, qsox::PollType interest) {
     return this->addSocket(socket.handle(), interest);
 }
 
-void MultiPoller::addSocket(qsox::BaseSocket::SockFd fd, qsox::PollType interest) {
+void MultiPoller::addSocket(qsox::SockFd fd, qsox::PollType interest) {
     auto _lock = m_mtx.lock();
 
     this->addHandle(HandleMeta { HandleMeta::Type::Socket }, fd, interest);
@@ -16,19 +16,10 @@ void MultiPoller::removeSocket(qsox::BaseSocket& socket) {
     return this->removeSocket(socket.handle());
 }
 
-void MultiPoller::removeSocket(qsox::BaseSocket::SockFd fd) {
+void MultiPoller::removeSocket(qsox::SockFd fd) {
     auto _lock = m_mtx.lock();
 
     this->removeByIdx(this->findHandle(fd));
-}
-
-void MultiPoller::addPipe(const PollPipe& pipe, qsox::PollType interest) {
-    auto _lock = m_mtx.lock();
-
-    this->addHandle(
-        HandleMeta { HandleMeta::Type::Pipe },
-        interest == qsox::PollType::Read ? pipe.m_readFd : pipe.m_writeFd, interest
-    );
 }
 
 void MultiPoller::removeByIdx(size_t idx) {

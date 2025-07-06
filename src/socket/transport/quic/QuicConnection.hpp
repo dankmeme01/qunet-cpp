@@ -13,7 +13,6 @@
 #include <asp/sync/Atomic.hpp>
 #include <asp/sync/Notify.hpp>
 #include <asp/thread/Thread.hpp>
-#include <semaphore>
 
 namespace qn {
 
@@ -98,7 +97,7 @@ private:
     asp::AtomicBool m_terminateCleanly{false};
     asp::AtomicBool m_closed{false};
 
-    std::binary_semaphore m_connectionReadySema{0};
+    asp::Notify m_connectionReady;
 
     // for tracking total bytes sent and received
     std::atomic_size_t m_totalBytesSent = 0;

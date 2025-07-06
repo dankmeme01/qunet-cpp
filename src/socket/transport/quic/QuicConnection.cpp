@@ -317,7 +317,7 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
     ret->m_connThreadState = ThreadState::Handshaking;
     ret->m_connTimeout = timeout;
     ret->m_connThread.start();
-    ret->m_connectionReadySema.acquire();
+    ret->m_connectionReady.wait();
 
     // done!! :)
 
@@ -477,6 +477,8 @@ TransportResult<> QuicConnection::doRecv() {
     ngtcp2_pkt_info pi{};
     uint8_t outBuf[1500];
 
+    m_poller.clearReadiness(*m_socket);
+
     size_t recvRes = GEODE_UNWRAP(m_socket->recv(outBuf, sizeof(outBuf)));
     log::debug("QUIC: read {} bytes from the socket", recvRes);
 
@@ -539,7 +541,7 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
                 log::warn("QUIC: handshake failed: {}", m_handshakeResult.unwrapErr().message());
             }
 
-            m_connectionReadySema.release();
+            m_connectionReady.notifyOne();
         } break;
 
         case ThreadState::Running: {
@@ -788,6 +790,7 @@ QuicConnection::ThrPollResult QuicConnection::thrPoll(const asp::time::Duration&
         res.sockReadable = true;
     } else if (result->isPipe(m_dataWrittenPipe)) {
         res.newDataAvail = true;
+        m_dataWrittenPipe.consume();
     }
 
     return res;

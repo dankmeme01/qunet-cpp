@@ -58,6 +58,7 @@ private:
 
     Resolver();
     ~Resolver();
+    void wineWorkaround();
 };
 
 }

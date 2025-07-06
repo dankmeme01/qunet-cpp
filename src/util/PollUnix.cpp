@@ -40,7 +40,17 @@ void PollPipe::consume() {
     ::read(m_readFd, buf, sizeof(buf));
 }
 
-void MultiPoller::addHandle(HandleMeta meta, qsox::BaseSocket::SockFd fd, qsox::PollType interest) {
+void MultiPoller::addPipe(const PollPipe& pipe, qsox::PollType interest) {
+    auto _lock = m_mtx.lock();
+
+    this->addHandle(
+        HandleMeta { HandleMeta::Type::Pipe },
+        interest == qsox::PollType::Read ? pipe.m_readFd : pipe.m_writeFd,
+        interest
+    );
+}
+
+void MultiPoller::addHandle(HandleMeta meta, qsox::SockFd fd, qsox::PollType interest) {
     m_metas.push_back(meta);
 
     struct pollfd pfd;
@@ -50,7 +60,7 @@ void MultiPoller::addHandle(HandleMeta meta, qsox::BaseSocket::SockFd fd, qsox::
     m_handles.push_back(pfd);
 }
 
-size_t MultiPoller::findHandle(qsox::BaseSocket::SockFd fd) const {
+size_t MultiPoller::findHandle(qsox::SockFd fd) const {
     for (size_t i = 0; i < m_handles.size(); ++i) {
         if (m_handles[i].fd == fd) {
             return i;
@@ -90,18 +100,15 @@ std::optional<MultiPoller::PollResult> MultiPoller::poll(const std::optional<Dur
 
         if (handle.revents & (POLLIN | POLLOUT)) {
             res.which = i;
-
-            if (meta.type == HandleMeta::Type::Pipe && handle.revents & POLLIN) {
-                // clear the pipe!
-                char buf[32];
-                ::read(handle.fd, buf, sizeof(buf));
-            }
-
             return res;
         }
     }
 
     return std::nullopt;
+}
+
+void MultiPoller::clearReadiness(qsox::BaseSocket& socket) {
+    // Fortunately, on sane systems we don't need to do anything here.
 }
 
 }
