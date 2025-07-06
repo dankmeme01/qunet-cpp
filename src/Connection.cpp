@@ -6,6 +6,7 @@
 #include <qunet/util/Poll.hpp>
 
 #include <asp/time/Duration.hpp>
+#include <asp/time/Instant.hpp>
 #include <asp/time/sleep.hpp>
 
 #include <algorithm>
@@ -96,53 +97,55 @@ Connection::Connection() {
     m_thread.setLoopFunction([this](auto& stopToken) {
         switch (m_connState) {
             case ConnectionState::Disconnected: {
-                // TODO: yeah this could be more efficient
-                asp::time::sleep(Duration::fromMillis(50));
+                m_connStartedNotify.wait(Duration::fromMillis(200), [&] {
+                    return m_connState != ConnectionState::Disconnected;
+                });
             } break;
 
             case ConnectionState::DnsResolving: {
-                if (!m_resolvingIp) {
-                    asp::time::sleep(Duration::fromMillis(25));
-                    break;
-                }
+                // wait until we are resolving IPs, not SRV queries
+                bool timedOut = !m_resolvingIpNotify.wait(Duration::fromMillis(1000), [&] {
+                    return m_resolvingIp.load();
+                });
 
-                auto _lock = m_internalMutex.lock();
+                if (timedOut) return;
 
-                size_t remaining = m_dnsRequests - m_dnsResponses;
+                constexpr Duration RESOLVE_LIMIT = Duration::fromMillis(2500);
 
-                if (remaining == 0) {
-                    // all responses, we are done and can try connecting
-                    this->doneResolving();
-                } else if (m_dnsResponses > m_thrLastDnsResponseCount) {
-                    m_thrLastDnsResponseCount = m_dnsResponses;
-                    m_thrFirstDnsResponseTime = SystemTime::now();
+                auto started = Instant::now();
 
-                    _lock.unlock();
-                    asp::time::sleep(Duration::fromMillis(10));
-                } else if (m_dnsResponses > 0) {
-                    // we did not get any new responses, check how long has it been
-                    auto elapsed = m_thrFirstDnsResponseTime.elapsed();
-                    if (elapsed > Duration::fromMillis(100) && !m_usedIps.empty()) {
-                        // one of the queries is taking 100ms more than the other, we can skip it and use addresses we got from the first
-                        // if the query arrives eventually, the ips will be added to the vector and could be used too
-                        this->doneResolving();
-                    } else {
-                        _lock.unlock();
-                        asp::time::sleep(Duration::fromMillis(10));
-                    }
-                } else {
-                    // no responses at all this far, keep waiting
-                    auto elapsed = m_startedResolvingIpAt.elapsed();
-                    if (elapsed > Duration::fromMillis(2500)) {
-                        // something really went wrong
-                        log::warn("DNS resolution took too long (no responses after {}), aborting", elapsed.toString());
-                        this->onFatalConnectionError(ConnectionError::DnsResolutionFailed);
-                        return;
+                size_t lastResponseCount = m_dnsResponses.load();
+
+                while (lastResponseCount < m_dnsRequests) {
+                    auto timeout = RESOLVE_LIMIT - started.elapsed();
+                    if (timeout.isZero()) {
+                        break;
                     }
 
-                    _lock.unlock();
-                    asp::time::sleep(Duration::fromMillis(10));
+                    // If at least one response arrived, clamp max response time to 75ms.
+                    // the other query may still arrive eventually, and their addresses will be considered too
+                    if (lastResponseCount > 0) {
+                        timeout = std::min(timeout, Duration::fromMillis(75));
+                    }
+
+                    bool timedOut = !m_dnsResponseNotify.wait(timeout, [&] {
+                        return m_dnsResponses.load() >= lastResponseCount;
+                    });
+
+                    if (timedOut) {
+                        break;
+                    }
+
+                    lastResponseCount = m_dnsResponses.load();
                 }
+
+                if (m_dnsResponses == 0) {
+                    log::warn("DNS resolution took too long (no responses after {}), aborting", started.elapsed().toString());
+                    this->onFatalConnectionError(ConnectionError::DnsResolutionFailed);
+                    return;
+                }
+
+                this->doneResolving();
             } break;
 
             case ConnectionState::Pinging: {
@@ -150,7 +153,7 @@ Connection::Connection() {
                 // compare the response times, and choose the best one (prefer IPv6 by default unless overriden)
                 auto _lock = m_internalMutex.lock();
 
-                if (m_thrStartedPingingAt.timeSinceEpoch().isZero()) {
+                if (!m_thrStartedPingingAt) {
                     m_thrStartedPingingAt = SystemTime::now();
                     m_thrArrivedPings = 0;
                     m_thrPingResults.clear();
@@ -169,6 +172,8 @@ Connection::Connection() {
                             auto _lock = m_internalMutex.lock();
 
                             m_thrArrivedPings++;
+                            m_pingArrivedNotify.notifyOne();
+
                             if (res.timedOut) {
                                 log::debug("Ping to {} timed out", addr.toString());
                                 return;
@@ -185,14 +190,14 @@ Connection::Connection() {
 
                 bool remainingPings = m_thrArrivedPings < m_usedIps.size();
                 bool anyArrived = m_thrArrivedPings > 0;
-                auto elapsed = m_thrStartedPingingAt.elapsed();
+                auto elapsed = m_thrStartedPingingAt->elapsed();
                 auto sinceLastPing = m_thrLastArrivedPing.elapsed();
 
                 bool finishNow = remainingPings == 0 || (anyArrived && sinceLastPing > Duration::fromMillis(50)) || (elapsed > Duration::fromSecs(3));
 
                 if (!finishNow)  {
                     _lock.unlock();
-                    asp::time::sleep(Duration::fromMillis(5));
+                    m_pingArrivedNotify.wait(Duration::fromMillis(100));
                     break;
                 }
 
@@ -689,6 +694,7 @@ ConnectionResult<> Connection::connectDomain(std::string_view hostname, std::opt
     auto srvName = fmt::format("{}.{}.{}", m_srvPrefix, getSrvProto(type), hostname);
 
     m_connState = ConnectionState::DnsResolving;
+    m_connStartedNotify.notifyOne();
 
     auto& resolver = Resolver::get();
 
@@ -757,6 +763,7 @@ ConnectionResult<> Connection::fetchIpAndConnect(const std::string& hostname, ui
 
             m_waitingForA = false;
             m_dnsResponses++;
+            m_dnsResponseNotify.notifyOne();
 
             if (record) {
                 m_dnsASuccess = true;
@@ -786,6 +793,7 @@ ConnectionResult<> Connection::fetchIpAndConnect(const std::string& hostname, ui
 
             m_waitingForA = false;
             m_dnsResponses++;
+            m_dnsResponseNotify.notifyOne();
 
             if (record) {
                 m_dnsAAAASuccess = true;
@@ -813,6 +821,7 @@ ConnectionResult<> Connection::fetchIpAndConnect(const std::string& hostname, ui
     }
 
     // the worker thread will wait for dns results.
+    m_resolvingIpNotify.notifyOne();
 
     return Ok();
 }
@@ -898,8 +907,7 @@ void Connection::resetConnectionState() {
     m_chosenConnType = ConnectionType::Unknown;
     m_usedIps.clear();
     m_usedPort = 0;
-    m_thrStartedPingingAt = {};
-    m_thrLastDnsResponseCount = 0;
+    m_thrStartedPingingAt.reset();
     m_thrArrivedPings = 0;
     m_thrPingResults.clear();
     m_thrPingerSupportedProtocols.clear();
@@ -960,6 +968,8 @@ void Connection::doneResolving() {
     } else {
         m_connState = ConnectionState::Pinging;
     }
+
+    m_connStartedNotify.notifyOne();
 }
 
 }

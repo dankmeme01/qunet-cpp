@@ -12,6 +12,7 @@ namespace qn {
 
 Pinger::Pinger() {
     m_pingThread.setLoopFunction([this](auto& stopToken) {
+        // TODO: might refactor this to not use condvars
         auto item = m_channel.popTimeout(std::chrono::milliseconds{1000});
 
         if (item) {
@@ -24,7 +25,10 @@ Pinger::Pinger() {
     m_recvThread.setLoopFunction([this](auto& sotpToken) {
         if (!m_socket) {
             // block until we have a socket
-            m_socketSema.acquire();
+            m_socketNotify.wait({}, [&] {
+                return m_socket.has_value();
+            });
+
             return;
         }
 
@@ -98,7 +102,7 @@ void Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
         }
 
         m_socket = std::move(res).unwrap();
-        m_socketSema.release();
+        m_socketNotify.notifyAll();
 
         if (auto err = m_socket->setReadTimeout(100).err()) {
             log::error("Failed to set read timeout on pinger UDP socket: {}", err->message());

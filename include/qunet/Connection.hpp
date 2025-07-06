@@ -6,6 +6,7 @@
 #include "Pinger.hpp"
 
 #include <asp/sync/Channel.hpp>
+#include <asp/sync/Notify.hpp>
 #include <asp/thread/Thread.hpp>
 #include <optional>
 
@@ -184,8 +185,8 @@ private:
     bool m_waitingForAAAA = false;
     bool m_dnsASuccess = false;
     bool m_dnsAAAASuccess = false;
-    size_t m_dnsRequests = 0;
-    size_t m_dnsResponses = 0;
+    std::atomic_size_t m_dnsRequests = 0;
+    std::atomic_size_t m_dnsResponses = 0;
     ConnectionType m_chosenConnType = ConnectionType::Unknown;
     std::vector<qsox::IpAddress> m_usedIps;
     uint16_t m_usedPort;
@@ -198,12 +199,14 @@ private:
     asp::Mutex<std::queue<QunetMessage>> m_msgChannel;
     PollPipe m_msgPipe;
     PollPipe m_disconnectPipe;
+    asp::Notify m_connStartedNotify;
+    asp::Notify m_resolvingIpNotify;
+    asp::Notify m_dnsResponseNotify;
+    asp::Notify m_pingArrivedNotify;
 
     // vvv these are internal fields used by the thread vvv
-    asp::time::SystemTime m_thrFirstDnsResponseTime;
-    asp::time::SystemTime m_thrStartedPingingAt;
+    std::optional<asp::time::SystemTime> m_thrStartedPingingAt;
     asp::time::SystemTime m_thrLastArrivedPing;
-    size_t m_thrLastDnsResponseCount = 0;
     size_t m_thrArrivedPings = 0;
     std::vector<std::pair<qsox::SocketAddress, asp::time::Duration>> m_thrPingResults;
     std::vector<SupportedProtocol> m_thrPingerSupportedProtocols;
