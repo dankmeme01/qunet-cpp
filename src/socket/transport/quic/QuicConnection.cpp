@@ -309,6 +309,10 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
 
     conn.unlock();
 
+    // Setup poller
+    ret->m_poller.addSocket(*ret->m_socket, PollType::Read);
+    ret->m_poller.addPipe(ret->m_dataWrittenPipe, PollType::Read);
+
     // Start the connection thread
     ret->m_connThreadState = ThreadState::Handshaking;
     ret->m_connTimeout = timeout;
@@ -416,7 +420,7 @@ TransportResult<size_t> QuicConnection::send(const uint8_t* data, size_t len) {
         return Err(TransportError::NoBufferSpace);
     }
 
-    this->notifyDataWritten();
+    m_dataWrittenPipe.notify();
 
     return Ok(len);
 }
@@ -530,7 +534,6 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
 
             if (m_handshakeResult.isOk()) {
                 m_connThreadState = ThreadState::Running;
-                this->thrPlatformSetup();
             } else {
                 m_connThreadState = ThreadState::Stopped;
                 log::warn("QUIC: handshake failed: {}", m_handshakeResult.unwrapErr().message());
@@ -772,6 +775,22 @@ void QuicConnection::thrOnFatalError(const TransportError& err) {
     log::error("QUIC: fatal error, terminating: {}", err.message());
     m_terminateCleanly = false;
     m_terminating = true;
+}
+
+QuicConnection::ThrPollResult QuicConnection::thrPoll(const asp::time::Duration& timeout) {
+    auto result = m_poller.poll(timeout);
+    if (!result) {
+        return {};
+    }
+
+    ThrPollResult res{};
+    if (result->isSocket(*m_socket)) {
+        res.sockReadable = true;
+    } else if (result->isPipe(m_dataWrittenPipe)) {
+        res.newDataAvail = true;
+    }
+
+    return res;
 }
 
 bool QuicConnection::isCongestionRelatedError(const TransportError& err) {

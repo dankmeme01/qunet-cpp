@@ -1,6 +1,7 @@
 #pragma once
 
 #include <qunet/socket/transport/QuicTransport.hpp>
+#include <qunet/util/Poll.hpp>
 #include "QuicStream.hpp"
 #include "../tls/ClientTlsSession.hpp"
 
@@ -117,10 +118,6 @@ private:
     TransportResult<> sendNonStreamPacket(bool handshake = false);
     TransportResult<> sendClosePacket();
 
-    // vvv notifications and waiters vvv
-    /// the waiter functions release the lock for you before waiting, you MUST hold it before calling them
-    void notifyDataWritten();
-
     // Returns true if the given error is related to congestion, flow control or buffering,
     // and the application should wait before sending more data.
     bool isCongestionRelatedError(const TransportError& err);
@@ -133,21 +130,13 @@ private:
         bool newDataAvail = false;
     };
 
-    asp::Mutex<> m_waiterMutex;
-
     // for [notify|waitUntil]Writable
     asp::Notify m_writableNotify;
     // for [notify|waitUntil]Readable
     asp::Notify m_readableNotify;
+    qn::PollPipe m_dataWrittenPipe;
+    qn::MultiPoller m_poller;
 
-#ifdef _WIN32
-#else
-    // for notifyDataWritten
-    int wrbPipeRead = -1, wrbPipeWrite = -1;
-#endif
-
-    void thrPlatformSetup();
-    void thrPlatformCleanup();
     void thrOnIdleTimeout();
     void thrOnFatalError(const TransportError& err);
     void thrHandleError(const TransportError& err);
