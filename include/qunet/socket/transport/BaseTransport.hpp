@@ -3,9 +3,10 @@
 #include "Error.hpp"
 #include <qunet/socket/message/QunetMessage.hpp>
 
-#include <stdint.h>
 #include <qsox/Error.hpp>
 #include <asp/time/Duration.hpp>
+#include <stdint.h>
+#include <queue>
 
 namespace qn {
 
@@ -13,8 +14,20 @@ class BaseTransport {
 public:
     virtual ~BaseTransport() = default;
     virtual TransportResult<> sendMessage(QunetMessage message) = 0;
-    virtual TransportResult<bool> poll(const asp::time::Duration& dur) = 0;
-    virtual TransportResult<QunetMessage> receiveMessage() = 0;
+
+    /// Polls until any kind of data is available to be read.
+    virtual TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) = 0;
+
+    /// Processes incoming data from the transport. This function may block until data is available,
+    /// but it will only block for a single read call, rather than until a whole message is available.
+    /// Returns whether an entire message is available to be read with `receiveMessage()`.
+    virtual TransportResult<bool> processIncomingData() = 0;
+
+    /// Returns whether there is a message available to be read from the transport.
+    virtual bool messageAvailable();
+
+    /// Receives a message from the transport. If no message is available, this will block until a message is received or an error occurs.
+    virtual TransportResult<QunetMessage> receiveMessage();
 
     // Closes the transport. This method may or may not block until the transport is fully closed.
     // This does not send a `ClientClose` message.
@@ -26,6 +39,7 @@ public:
     virtual void setMessageSizeLimit(size_t limit);
 
 protected:
+    std::queue<QunetMessage> m_recvMsgQueue;
     uint64_t m_connectionId = 0;
     size_t m_messageSizeLimit = -1;
 };

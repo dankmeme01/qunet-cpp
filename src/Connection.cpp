@@ -62,6 +62,14 @@ bool ConnectionError::operator!=(Code code) const {
     return !(*this == code);
 }
 
+bool ConnectionError::operator==(const TransportError& err) const {
+    return std::holds_alternative<TransportError>(m_err) && std::get<TransportError>(m_err) == err;
+}
+
+bool ConnectionError::operator!=(const TransportError& err) const {
+    return !(*this == err);
+}
+
 std::string ConnectionError::message() const {
     if (this->isTransportError()) {
         return this->asTransportError().message();
@@ -252,25 +260,77 @@ Connection::Connection() {
             } break;
 
             case ConnectionState::Connected: {
-                // TODO: some kind of pipe? to close immediately
-                if (m_reqClosure) {
-                    m_connState = ConnectionState::Closing;
-                    return;
+                bool disconnect = false, messages = false, qsocket = false;
+
+                if (m_msgChannel.lock()->size() > 0) {
+                    messages = true;
                 }
 
-                // TODO Idk ?
+                if (m_socket->messageAvailable()) {
+                    qsocket = true;
+                }
 
-                auto pkt = this->m_socket->receiveMessage(Duration::fromMillis(100));
-                if (!pkt) {
-                    if (pkt.unwrapErr() == TransportError::TimedOut) {
-                        // no data, just continue
+                bool shouldPoll = !disconnect && !messages && !qsocket;
+
+                if (shouldPoll) {
+                    auto result = m_poller.poll(Duration::fromSecs(1));
+
+                    if (!result) {
+                        // timed out
                         return;
                     }
 
-                    this->onConnectionError(pkt.unwrapErr());
-                } else {
-                    auto msg = std::move(pkt).unwrap();
-                    log::debug("Got message: {}", msg.typeStr());
+                    disconnect = result->isPipe(m_disconnectPipe);
+                    messages = result->isPipe(m_msgPipe);
+                    qsocket = result->isQSocket(*m_socket);
+
+                    if (messages) m_msgPipe.consume();
+                    if (disconnect) m_disconnectPipe.consume();
+                    if (qsocket) m_poller.clearReadiness(*m_socket);
+                }
+
+                // check which events are ready
+                if (disconnect) {
+                    m_connState = ConnectionState::Closing;
+                } else if (messages) {
+                    auto chan = m_msgChannel.lock();
+
+                    while (!chan->empty()) {
+                        auto msg = std::move(chan->front());
+                        chan->pop();
+
+                        auto res = m_socket->sendMessage(msg);
+                        if (!res) {
+                            auto err = res.unwrapErr();
+                            this->onConnectionError(err);
+                            continue;
+                        }
+                    }
+                } else if (qsocket) {
+                    // always process data!
+                    auto res = m_socket->processIncomingData();
+                    if (!res) {
+                        this->onConnectionError(res.unwrapErr());
+                        return;
+                    }
+
+                    auto avail = res.unwrap();
+
+                    // if no message is available, continue
+                    if (!avail) {
+                        return;
+                    }
+
+                    // receive a message
+                    auto msgRes = m_socket->receiveMessage(std::nullopt);
+                    if (!msgRes) {
+                        auto err = msgRes.unwrapErr();
+                        this->onConnectionError(err);
+                        return;
+                    }
+
+                    auto msg = std::move(msgRes).unwrap();
+                    log::debug("Received message: {}", msg.typeStr());
                 }
             } break;
 
@@ -305,7 +365,12 @@ Connection::Connection() {
 }
 
 Connection::~Connection() {
-    // TODO: disconnect
+    // Let's try to avoid any mutex locks in the destructor
+
+    if (this->connected()) {
+        m_disconnectPipe.notify();
+    }
+
     m_thread.stopAndWait();
 }
 
@@ -390,6 +455,14 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
 
 void Connection::thrConnected() {
     m_connState = ConnectionState::Connected;
+
+    QN_ASSERT(m_socket.has_value());
+
+    // Setup poller
+    m_poller.clear();
+    m_poller.addPipe(m_msgPipe, qsox::PollType::Read);
+    m_poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
+    m_poller.addQSocket(*m_socket, qsox::PollType::Read);
 }
 
 void Connection::thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr) {
@@ -540,7 +613,7 @@ ConnectionResult<> Connection::disconnect() {
         return Err(ConnectionError::NotConnected);
     }
 
-    m_reqClosure = true;
+    m_disconnectPipe.notify();
 
     return Ok();
 }
@@ -771,17 +844,15 @@ void Connection::sendData(std::vector<uint8_t> data) {
     return this->doSend(DataMessage{std::move(data)});
 }
 
-void Connection::doSend(const QunetMessage& message) {
+void Connection::doSend(QunetMessage&& message) {
     auto _lock = m_internalMutex.lock();
 
     if (!this->connected()) {
         return;
     }
 
-    auto res = m_socket->sendMessage(message);
-    if (!res) {
-        this->onConnectionError(res.unwrapErr());
-    }
+    m_msgChannel.lock()->push(std::move(message));
+    m_msgPipe.notify();
 }
 
 void Connection::onFatalConnectionError(const ConnectionError& err) {
@@ -791,6 +862,10 @@ void Connection::onFatalConnectionError(const ConnectionError& err) {
 }
 
 void Connection::onConnectionError(const ConnectionError& err) {
+    if (err == TransportError::Closed) {
+        this->onUnexpectedClosure();
+    }
+
     m_lastError = err;
     log::warn("Connection error: {}", err.message());
 }
@@ -809,7 +884,6 @@ void Connection::resetConnectionState() {
     m_connState = ConnectionState::Disconnected;
     m_lastError = ConnectionError::Success;
     m_cancelling = false;
-    m_reqClosure = false;
     m_resolvingIp = false;
     m_waitingForA = false;
     m_waitingForAAAA = false;
@@ -830,6 +904,10 @@ void Connection::resetConnectionState() {
     m_socket = std::nullopt;
     m_connStartedAt = SystemTime::now();
     m_usedConnTypes.clear();
+    m_poller.clear();
+    *m_msgChannel.lock() = {};
+    m_msgPipe.clear();
+    m_disconnectPipe.clear();
 }
 
 void Connection::sortUsedIps() {
@@ -852,6 +930,10 @@ void Connection::sortUsedIps() {
             }
         }
     });
+}
+
+void Connection::onUnexpectedClosure() {
+    m_disconnectPipe.notify();
 }
 
 void Connection::doneResolving() {

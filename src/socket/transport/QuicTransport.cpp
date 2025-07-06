@@ -45,17 +45,25 @@ TransportResult<> QuicTransport::sendMessage(QunetMessage message) {
     return streamcommon::sendMessage(std::move(message), *m_conn);
 }
 
-TransportResult<bool> QuicTransport::poll(const Duration& dur) {
-    return Ok(GEODE_UNWRAP(m_conn->pollReadable(dur)));
+TransportResult<bool> QuicTransport::poll(const std::optional<Duration>& dur) {
+    return m_conn->pollReadable(dur);
 }
 
-TransportResult<QunetMessage> QuicTransport::receiveMessage() {
+TransportResult<bool> QuicTransport::processIncomingData() {
+    GEODE_UNWRAP(streamcommon::processIncomingData(
+        *m_conn, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue
+    ));
+
     // TODO: temporary
     auto stats = m_conn->connStats();
     log::debug("QUIC: total sent: {}, total received: {}, total data sent: {}, total data received: {}",
         stats.totalSent, stats.totalReceived, stats.totalDataSent, stats.totalDataReceived);
 
-    return streamcommon::receiveMessage(*m_conn, m_recvBuffer, m_messageSizeLimit);
+    return Ok(!m_recvMsgQueue.empty());
+}
+
+class QuicConnection& QuicTransport::connection() {
+    return *m_conn;
 }
 
 }

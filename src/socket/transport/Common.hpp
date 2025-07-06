@@ -4,6 +4,7 @@
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/Log.hpp>
+#include <queue>
 
 // Common operations for stream-like transport layers (TCP, QUIC, etc.)
 
@@ -45,52 +46,60 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
     return Ok();
 }
 
-// The logic here is pretty much taken from stream transports in the qunet server
-inline TransportResult<QunetMessage> receiveMessage(auto&& socket, CircularByteBuffer& buffer, size_t messageSizeLimit) {
-    while (true) {
-        // first, try to parse a message from the buffer
-        if (buffer.size() >= sizeof(uint32_t)) {
-            uint8_t lenbuf[sizeof(uint32_t)];
-            buffer.peek(lenbuf, sizeof(uint32_t));
-
-            size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
-
-            if (length == 0) {
-                return Err(TransportError::ZeroLengthMessage);
-            } else if (messageSizeLimit && length > messageSizeLimit) {
-                log::warn("Received message larger than limit: {} > {}", length, messageSizeLimit);
-                return Err(TransportError::MessageTooLong);
-            }
-
-            size_t totalLen = sizeof(uint32_t) + length;
-            if (buffer.size() >= totalLen) {
-                // we have a full message in the buffer
-                buffer.skip(sizeof(uint32_t));
-                auto wrpread = buffer.peek(length);
-                buffer.skip(length);
-
-                ByteReader reader = ByteReader::withTwoSpans(wrpread.first, wrpread.second);
-                auto msg = QunetMessage::decode(reader);
-
-                return Ok(GEODE_UNWRAP(msg));
-            }
-        }
-
-        // read from the socket
-        auto wnd = buffer.writeWindow();
-        if (wnd.size() < 1024) {
-            buffer.reserve(1024);
-            wnd = buffer.writeWindow();
-        }
-
-        size_t len = GEODE_UNWRAP(socket.receive(wnd.data(), wnd.size()));
-
-        if (len == 0) {
-            return Err(qsox::Error{qsox::Error::ConnectionClosed});
-        }
-
-        buffer.advanceWrite(len);
+// The logic here is similar to the one in rust implementation
+inline TransportResult<> processIncomingData(
+    auto&& socket,
+    CircularByteBuffer& buffer,
+    size_t messageSizeLimit,
+    std::queue<QunetMessage>& msgQueue
+) {
+    // read from the socket if applicable
+    auto wnd = buffer.writeWindow();
+    if (wnd.size() < 2048) {
+        buffer.reserve(2048);
+        wnd = buffer.writeWindow();
     }
+
+    size_t len = GEODE_UNWRAP(socket.receive(wnd.data(), wnd.size()));
+
+    if (len == 0) {
+        return Err(TransportError::Closed);
+    }
+
+    buffer.advanceWrite(len);
+
+    // see if we can decode a message from the buffer
+    if (buffer.size() < sizeof(uint32_t)) {
+        // not enough data to read the length
+        return Ok();
+    }
+
+    uint8_t lenbuf[sizeof(uint32_t)];
+    buffer.peek(lenbuf, sizeof(uint32_t));
+
+    size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
+
+    if (length == 0) {
+        return Err(TransportError::ZeroLengthMessage);
+    } else if (messageSizeLimit && length > messageSizeLimit) {
+        log::warn("Received message larger than limit: {} > {}", length, messageSizeLimit);
+        return Err(TransportError::MessageTooLong);
+    }
+
+    size_t totalLen = sizeof(uint32_t) + length;
+    if (buffer.size() >= totalLen) {
+        // we have a full message in the buffer
+        buffer.skip(sizeof(uint32_t));
+        auto wrpread = buffer.peek(length);
+        buffer.skip(length);
+
+        ByteReader reader = ByteReader::withTwoSpans(wrpread.first, wrpread.second);
+        auto msg = QunetMessage::decode(reader);
+
+        msgQueue.push(GEODE_UNWRAP(msg));
+    }
+
+    return Ok();
 }
 
 }

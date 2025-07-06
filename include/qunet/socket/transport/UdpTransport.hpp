@@ -17,10 +17,12 @@ public:
     TransportResult<> close() override;
     bool isClosed() const override;
     TransportResult<> sendMessage(QunetMessage data) override;
-    TransportResult<bool> poll(const asp::time::Duration& dur) override;
-    TransportResult<QunetMessage> receiveMessage() override;
+    TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) override;
+    TransportResult<bool> processIncomingData() override;
 
 private:
+    friend class MultiPoller;
+
     qsox::UdpSocket m_socket;
     bool m_closed = false;
 

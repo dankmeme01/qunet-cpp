@@ -2,6 +2,9 @@
 
 #ifdef _WIN32
 
+#include <qunet/socket/Socket.hpp>
+#include <qunet/socket/transport/QuicTransport.hpp>
+#include "../socket/transport/quic/QuicConnection.hpp"
 #include <qunet/util/assert.hpp>
 #include <WinSock2.h>
 #include <Windows.h>
@@ -15,20 +18,39 @@ PollPipe::PollPipe() {
     QN_ASSERT(m_event != nullptr && "Failed to create event for PollPipe");
 }
 
+PollPipe::PollPipe(PollPipe&& other) noexcept {
+    m_event = other.m_event;
+    other.m_event = nullptr;
+}
+
+PollPipe& PollPipe::operator=(PollPipe&&) noexcept {
+    if (this != &other) {
+        if (m_event) CloseHandle(m_event);
+        m_event = other.m_event;
+        other.m_event = nullptr;
+    }
+}
+
 PollPipe::~PollPipe() {
-    CloseHandle(m_event);
+    if (m_event) CloseHandle(m_event);
 }
 
 void PollPipe::notify() {
-    SetEvent(m_event);
+    if (m_event) SetEvent(m_event);
 }
 
 void PollPipe::consume() {
-    ResetEvent(m_event);
+    if (m_event) ResetEvent(m_event);
+}
+
+void PollPipe::clear() {
+    this->consume();
 }
 
 void MultiPoller::addPipe(const PollPipe& pipe, qsox::PollType interest) {
     auto _lock = m_mtx.lock();
+
+    QN_ASSERT(pipe.m_event != nullptr && "PollPipe event is null");
 
     this->addHandle(
         HandleMeta { HandleMeta::Type::Pipe },
@@ -70,15 +92,30 @@ void MultiPoller::addHandle(HandleMeta meta, qsox::SockFd fd, qsox::PollType int
     m_metas.push_back(meta);
 }
 
-size_t MultiPoller::findHandle(qsox::SockFd fd) const {
+size_t MultiPoller::findHandle(const qsox::BaseSocket& s) const {
     for (size_t i = 0; i < m_handles.size(); ++i) {
         auto& meta = m_metas[i];
-        if (meta.type == HandleMeta::Type::Socket && meta.origFd == fd) {
+        if (meta.type == HandleMeta::Type::Socket && meta.origFd == s.handle()) {
             return i;
         }
     }
 
     return -1; // not found
+}
+
+size_t MultiPoller::findHandle(const PollPipe& fd) const {
+    for (size_t i = 0; i < m_handles.size(); ++i) {
+        if (m_handles[i] == (void*) fd.m_event) {
+            return i;
+        }
+    }
+
+    return -1; // not found
+}
+
+size_t MultiPoller::findHandle(const qn::Socket& fd) const {
+    // wowie
+    return -1;
 }
 
 void MultiPoller::runCleanupFor(size_t idx) {
@@ -93,6 +130,8 @@ void MultiPoller::runCleanupFor(size_t idx) {
         // WSAEventSelect(meta.origFd, ev, 0);
 
         WSACloseEvent(ev);
+    } else if (meta.type == HandleMeta::Type::QSocket) {
+        this->cleanupQSocket(idx);
     }
 }
 
@@ -106,6 +145,10 @@ bool MultiPoller::PollResult::isSocket(const qsox::BaseSocket& socket) const {
 
 bool MultiPoller::PollResult::isPipe(const PollPipe& pipe) const {
     return poller.m_handles[which] == pipe.m_event;
+}
+
+bool MultiPoller::PollResult::isQSocket(const qn::Socket& socket) const {
+    return false; // todo
 }
 
 std::optional<MultiPoller::PollResult> MultiPoller::poll(const std::optional<Duration>& timeout) {

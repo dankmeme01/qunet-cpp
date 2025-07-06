@@ -45,13 +45,15 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message) {
     return Ok();
 }
 
-TransportResult<bool> UdpTransport::poll(const Duration& dur) {
-    auto res = GEODE_UNWRAP(qsox::pollOne(m_socket, PollType::Read, dur.millis()));
+TransportResult<bool> UdpTransport::poll(const std::optional<Duration>& dur) {
+    int timeout = dur ? dur->millis() : -1;
+
+    auto res = GEODE_UNWRAP(qsox::pollOne(m_socket, PollType::Read, timeout));
 
     return Ok(res == PollResult::Readable);
 }
 
-TransportResult<QunetMessage> UdpTransport::receiveMessage() {
+TransportResult<bool> UdpTransport::processIncomingData() {
     uint8_t buffer[UDP_PACKET_LIMIT];
 
     auto bytesRead = GEODE_UNWRAP(m_socket.recv(buffer, sizeof(buffer)));
@@ -63,7 +65,9 @@ TransportResult<QunetMessage> UdpTransport::receiveMessage() {
     ByteReader reader(buffer, bytesRead);
     auto msg = GEODE_UNWRAP(QunetMessage::decode(reader));
 
-    return Ok(std::move(msg));
+    m_recvMsgQueue.push(std::move(msg));
+
+    return Ok(true);
 }
 
 }

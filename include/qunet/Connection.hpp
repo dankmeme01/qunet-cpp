@@ -2,6 +2,7 @@
 
 #include "socket/Socket.hpp"
 #include "socket/transport/tls/ClientTlsContext.hpp"
+#include "util/Poll.hpp"
 #include "Pinger.hpp"
 
 #include <asp/sync/Channel.hpp>
@@ -39,6 +40,8 @@ public:
     bool operator!=(const ConnectionError& other) const = default;
     bool operator==(Code code) const;
     bool operator!=(Code code) const;
+    bool operator==(const TransportError& err) const;
+    bool operator!=(const TransportError& err) const;
 
     std::string message() const;
 
@@ -173,7 +176,6 @@ private:
     ConnectionState m_connState = ConnectionState::Disconnected;
     ConnectionError m_lastError = ConnectionError::Success;
     asp::AtomicBool m_cancelling = false;
-    asp::AtomicBool m_reqClosure = false;
 
     // vvv these fields are temporary fields for async dns resolution vvv
     asp::time::SystemTime m_startedResolvingIpAt;
@@ -190,6 +192,12 @@ private:
 
     asp::Mutex<void, true> m_internalMutex; // Guards certain fields above
     asp::Thread<> m_thread;
+
+    // vvv notifications, messages for the thread vvv
+    MultiPoller m_poller;
+    asp::Mutex<std::queue<QunetMessage>> m_msgChannel;
+    PollPipe m_msgPipe;
+    PollPipe m_disconnectPipe;
 
     // vvv these are internal fields used by the thread vvv
     asp::time::SystemTime m_thrFirstDnsResponseTime;
@@ -221,10 +229,12 @@ private:
     void resetConnectionState();
     void sortUsedIps();
 
-    void doSend(const QunetMessage& message);
+    void doSend(QunetMessage&& message);
 
     // Call when DNS resolution is over, we can proceed to either pinging or connecting to the destination
     void doneResolving();
+
+    void onUnexpectedClosure();
 
     // vvv thread functions, do not call outside of the thread vvv
     void thrTryConnectNext();

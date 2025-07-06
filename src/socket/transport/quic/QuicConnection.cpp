@@ -229,6 +229,11 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
             }
 
             quicConn->m_readableNotify.notifyAll();
+            auto rpipe = quicConn->m_readablePipe.lock();
+
+            if (*rpipe) {
+                (*rpipe)->notify();
+            }
 
             return 0;
         },
@@ -371,7 +376,7 @@ QuicResult<QuicStream> QuicConnection::openBidiStream() {
     return Ok(QuicStream(this, streamId));
 }
 
-TransportResult<bool> QuicConnection::pollReadable(const Duration& dur) {
+TransportResult<bool> QuicConnection::pollReadable(const std::optional<Duration>& dur) {
     if (m_closed) {
         return Err(TransportError::Closed);
     }
@@ -380,7 +385,9 @@ TransportResult<bool> QuicConnection::pollReadable(const Duration& dur) {
         return Ok(true); // stream is readable, no need to wait
     }
 
-    return Ok(m_readableNotify.wait(dur, [&] {
+    auto timeout = dur ? *dur : Duration{};
+
+    return Ok(m_readableNotify.wait(timeout, [&] {
         return m_mainStream->readable();
     }));
 }
@@ -391,7 +398,7 @@ TransportResult<bool> QuicConnection::pollReadableSocket(const asp::time::Durati
     return Ok(res == PollResult::Readable);
 }
 
-TransportResult<bool> QuicConnection::pollWritable(const Duration& dur) {
+TransportResult<bool> QuicConnection::pollWritable(const std::optional<Duration>& dur) {
     if (m_closed) {
         return Err(TransportError::Closed);
     }
@@ -400,7 +407,9 @@ TransportResult<bool> QuicConnection::pollWritable(const Duration& dur) {
         return Ok(true); // stream is writable, no need to wait
     }
 
-    return Ok(m_writableNotify.wait(dur, [&] {
+    auto timeout = dur ? *dur : Duration{};
+
+    return Ok(m_writableNotify.wait(timeout, [&] {
         return m_mainStream->writable();
     }));
 }
@@ -436,7 +445,7 @@ TransportResult<> QuicConnection::sendAll(const uint8_t* data, size_t len) {
         if (!res) {
             auto err = res.unwrapErr();
             if (std::get<TransportError::CustomKind>(err.m_kind).code == TransportError::NoBufferSpace) {
-                GEODE_UNWRAP(this->pollWritable(Duration{}));
+                GEODE_UNWRAP(this->pollWritable(std::nullopt));
                 continue;
             } else {
                 return Err(err);
@@ -461,13 +470,22 @@ TransportResult<size_t> QuicConnection::receive(uint8_t* buffer, size_t len) {
     }
 
     while (true) {
-        if (!GEODE_UNWRAP(this->pollReadable(Duration{}))) {
+        if (!GEODE_UNWRAP(this->pollReadable(std::nullopt))) {
             continue;
         }
 
         size_t readBytes = GEODE_UNWRAP(m_mainStream->read(buffer, len));
 
         if (readBytes > 0) {
+            // clear pipe if there's no more data to read
+            if (!m_mainStream->readable()) {
+                auto rpipe = m_readablePipe.lock();
+
+                if (*rpipe) {
+                    rpipe->value().clear();
+                }
+            }
+
             return Ok(readBytes);
         }
     }
@@ -513,6 +531,10 @@ TransportResult<> QuicConnection::close() {
 
 bool QuicConnection::finishedClosing() const {
     return m_closed && m_connThreadState == ThreadState::Stopped;
+}
+
+std::optional<TransportError> QuicConnection::fatalError() const {
+    return m_fatalError;
 }
 
 void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
@@ -576,7 +598,7 @@ void QuicConnection::threadFunc(asp::StopToken<>& stopToken) {
             if (shouldPoll) {
                 // sleep until either the timer expires or we can try sending data again
                 auto timeout = std::min(Duration::fromNanos(m_connThrExpiry - now), sendBackoff);
-                timeout = std::clamp(timeout, Duration::fromMillis(5), Duration::fromMillis(250));
+                timeout = std::clamp(timeout, Duration::fromMillis(1), Duration::fromMillis(250));
 
                 // log::debug("QUIC: polling for incoming data, timeout: {}", timeout.toString());
 

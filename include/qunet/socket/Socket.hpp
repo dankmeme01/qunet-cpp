@@ -36,7 +36,17 @@ public:
     bool isClosed() const;
 
     TransportResult<> sendMessage(const QunetMessage& message);
-    TransportResult<QunetMessage> receiveMessage(const asp::time::Duration& timeout);
+    TransportResult<QunetMessage> receiveMessage(const std::optional<asp::time::Duration>& timeout);
+
+    /// Processes incoming data from the transport. This method does not block, it will try to read as much data as available,
+    /// and return whether an entire message is available to be read.
+    TransportResult<bool> processIncomingData();
+
+    /// Returns whether there is a message available to be read from the transport.
+    /// In this case, `receiveMessage()` will return a message without blocking.
+    bool messageAvailable();
+
+    std::shared_ptr<BaseTransport> transport() const;
 
 private:
     std::shared_ptr<BaseTransport> m_transport;

@@ -39,14 +39,20 @@ TransportResult<> TcpTransport::sendMessage(QunetMessage message) {
     return streamcommon::sendMessage(std::move(message), m_socket);
 }
 
-TransportResult<bool> TcpTransport::poll(const Duration& dur) {
-    auto res = GEODE_UNWRAP(qsox::pollOne(m_socket, PollType::Read, dur.millis()));
+TransportResult<bool> TcpTransport::poll(const std::optional<Duration>& dur) {
+    int timeout = dur ? dur->millis() : -1;
+
+    auto res = GEODE_UNWRAP(qsox::pollOne(m_socket, PollType::Read, timeout));
 
     return Ok(res == PollResult::Readable);
 }
 
-TransportResult<QunetMessage> TcpTransport::receiveMessage() {
-    return streamcommon::receiveMessage(m_socket, m_recvBuffer, m_messageSizeLimit);
+TransportResult<bool> TcpTransport::processIncomingData() {
+    GEODE_UNWRAP(streamcommon::processIncomingData(
+        m_socket, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue
+    ));
+
+    return Ok(!m_recvMsgQueue.empty());
 }
 
 }

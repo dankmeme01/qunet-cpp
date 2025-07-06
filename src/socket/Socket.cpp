@@ -48,14 +48,34 @@ TransportResult<> Socket::sendMessage(const QunetMessage& message) {
     return m_transport->sendMessage(message);
 }
 
-TransportResult<QunetMessage> Socket::receiveMessage( const Duration& timeout) {
-    bool res = GEODE_UNWRAP(m_transport->poll(timeout));
+TransportResult<QunetMessage> Socket::receiveMessage(const std::optional<Duration>& timeout) {
+    bool available = this->messageAvailable();
 
-    if (res) {
-        return m_transport->receiveMessage();
-    } else {
-        return Err(TransportError::TimedOut);
+    auto started = Instant::now();
+
+    while (!available) {
+        std::optional<Duration> remaining = timeout ? std::optional(*timeout - started.elapsed()) : std::nullopt;
+        auto pollRes = GEODE_UNWRAP(m_transport->poll(remaining));
+
+        if (!pollRes) {
+            return Err(TransportError::TimedOut);
+        }
+
+        available = GEODE_UNWRAP(this->processIncomingData());
     }
+
+    return m_transport->receiveMessage();
+}
+
+TransportResult<bool> Socket::processIncomingData() {
+    // check if there's any data available to read
+    bool hasData = GEODE_UNWRAP(m_transport->poll(Duration{}));
+
+    return hasData ? m_transport->processIncomingData() : Ok(this->messageAvailable());
+}
+
+bool Socket::messageAvailable() {
+    return m_transport->messageAvailable();
 }
 
 TransportResult<> Socket::sendHandshake() {
@@ -121,6 +141,10 @@ TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const Tr
             return Err(TransportError::NotImplemented);
         }
     }
+}
+
+std::shared_ptr<BaseTransport> Socket::transport() const {
+    return m_transport;
 }
 
 }

@@ -42,9 +42,9 @@ public:
 
     // Blocks until data is available to be received, or the timeout expires.
     // Returns true if data is available, false if the timeout expired, or an error if something went wrong.
-    TransportResult<bool> pollReadable(const asp::time::Duration& dur);
+    TransportResult<bool> pollReadable(const std::optional<asp::time::Duration>& dur);
 
-    TransportResult<bool> pollWritable(const asp::time::Duration& dur);
+    TransportResult<bool> pollWritable(const std::optional<asp::time::Duration>& dur);
 
     // Sends data over the QUIC stream. Returns the number of bytes sent, or an error.
     TransportResult<size_t> send(const uint8_t* data, size_t len);
@@ -65,12 +65,17 @@ public:
     // Returns whether the connection is fully closed now.
     bool finishedClosing() const;
 
+    // If a fatal error has occurred that caused this connection to terminate completely, this function returns the error.
+    // Otherwise, it returns nullopt.
+    std::optional<TransportError> fatalError() const;
+
     ngtcp2_conn* rawHandle() const;
     ngtcp2_crypto_conn_ref* connRef() const;
 
 private:
     friend class ClientTlsSession;
     friend class QuicStream;
+    friend class MultiPoller;
 
     asp::Mutex<ngtcp2_conn*, true> m_conn = nullptr;
     ngtcp2_crypto_conn_ref m_connRef;
@@ -135,6 +140,9 @@ private:
     asp::Notify m_writableNotify;
     // for [notify|waitUntil]Readable
     asp::Notify m_readableNotify;
+    // for MultiPoller
+    asp::Mutex<std::optional<qn::PollPipe>> m_readablePipe;
+
     qn::PollPipe m_dataWrittenPipe;
     qn::MultiPoller m_poller;
 
