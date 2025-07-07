@@ -103,7 +103,7 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
             break;
         }
 
-        // if this is the first chunk, push and continue
+        // if this is the first chunk, set some initial values
         if (chunks.empty()) {
             outMessage.connectionId = msg.connectionId;
             outMessage.qdbData = HandshakeFinishMessage::QdbData {
@@ -115,23 +115,21 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
             if (outMessage.qdbData->compressedSize > 1024 * 1024) {
                 return Err(TransportError::HandshakeFailure{"Qdb data is too large"});
             }
+        } else {
+            // otherwise, check if connection ID matches and check if this is a duplicate chunk
+            if (msg.connectionId != outMessage.connectionId) {
+                return Err(TransportError::HandshakeFailure{"Mismatch between connection IDs in handshake chunks"});
+            }
 
-            continue;
+            auto offset = msg.qdbData->chunkOffset;
+            if (std::find_if(chunks.begin(), chunks.end(), [&](const auto& c) { return c.qdbData->chunkOffset == offset; }) != chunks.end()) {
+                // this chunk is a duplicate, skip it
+                continue;
+            }
+
+            // add the chunk to the list
+            chunks.push_back(std::move(msg));
         }
-
-        // otherwise, check if connection ID matches and check if this is a duplicate chunk
-        if (msg.connectionId != outMessage.connectionId) {
-            return Err(TransportError::HandshakeFailure{"Mismatch between connection IDs in handshake chunks"});
-        }
-
-        auto offset = msg.qdbData->chunkOffset;
-        if (std::find_if(chunks.begin(), chunks.end(), [&](const auto& c) { return c.qdbData->chunkOffset == offset; }) != chunks.end()) {
-            // this chunk is a duplicate, skip it
-            continue;
-        }
-
-        // add the chunk to the list
-        chunks.push_back(std::move(msg));
 
         // check if we have all chunks
         size_t sizeSum = 0;
