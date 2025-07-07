@@ -8,7 +8,6 @@
 #include <asp/sync/Mutex.hpp>
 #include <asp/sync/Notify.hpp>
 #include <asp/time/Duration.hpp>
-#include <semaphore>
 
 namespace qn {
 
