@@ -24,14 +24,31 @@ TransportResult<Socket> Socket::connect(const TransportOptions& options) {
 
     Socket socket(std::move(transport));
 
-    GEODE_UNWRAP(socket.sendHandshake());
-
     auto handshakeTimeout = options.timeout - startedAt.elapsed();
     if (handshakeTimeout.millis() <= 0) {
         return Err(TransportError::ConnectionTimedOut);
     }
 
-    GEODE_UNWRAP(socket.waitForHandshakeResponse(handshakeTimeout));
+    auto msg = GEODE_UNWRAP(socket.m_transport->performHandshake(HandshakeStartMessage {
+        .majorVersion = MAJOR_VERSION,
+        .fragLimit = UDP_PACKET_LIMIT,
+        // TODO: qdb hash
+        .qdbHash = std::array<uint8_t, 16>{}
+    }, handshakeTimeout));
+
+    if (msg.is<HandshakeFinishMessage>()) {
+        auto& hf = msg.as<HandshakeFinishMessage>();
+        log::debug("Handshake finished, connection ID: {}, qdb size: {}", hf.connectionId, hf.qdbData ? hf.qdbData->uncompressedSize : 0);
+
+        socket.m_transport->setConnectionId(hf.connectionId);
+    } else if (msg.is<HandshakeFailureMessage>()) {
+        auto& hf = msg.as<HandshakeFailureMessage>();
+        log::warn("Handshake failed: {}", hf.message());
+
+        return Err(TransportError::HandshakeFailure(std::string(hf.message())));
+    } else {
+        return Err(TransportError::UnexpectedMessage);
+    }
 
     return Ok(std::move(socket));
 }
@@ -76,40 +93,6 @@ TransportResult<bool> Socket::processIncomingData() {
 
 bool Socket::messageAvailable() {
     return m_transport->messageAvailable();
-}
-
-TransportResult<> Socket::sendHandshake() {
-    return this->sendMessage(HandshakeStartMessage {
-        .majorVersion = MAJOR_VERSION,
-        .fragLimit = UDP_PACKET_LIMIT,
-        // TODO: qdb hash
-        .qdbHash = std::array<uint8_t, 16>{}
-    });
-}
-
-TransportResult<> Socket::waitForHandshakeResponse(Duration timeout) {
-    bool res = GEODE_UNWRAP(m_transport->poll(timeout));
-    if (!res) {
-        return Err(TransportError::ConnectionTimedOut);
-    }
-
-    auto msg = GEODE_UNWRAP(m_transport->receiveMessage());
-
-    if (msg.is<HandshakeFinishMessage>()) {
-        auto& hf = msg.as<HandshakeFinishMessage>();
-        log::debug("Handshake finished, connection ID: {}, qdb size: {}", hf.connectionId, hf.qdbData ? hf.qdbData->uncompressedSize : 0);
-
-        m_transport->setConnectionId(hf.connectionId);
-
-        return Ok();
-    } else if (msg.is<HandshakeFailureMessage>()) {
-        auto& hf = msg.as<HandshakeFailureMessage>();
-        log::warn("Handshake failed: {}", hf.message());
-
-        return Err(TransportError::HandshakeFailure(hf.message()));
-    } else {
-        return Err(TransportError::UnexpectedMessage);
-    }
 }
 
 TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const TransportOptions& options) {

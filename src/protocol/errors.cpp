@@ -24,6 +24,7 @@ std::string_view messageForHandshakeError(int code) {
         case 1: return "Client qunet version is too old";
         case 2: return "Client qunet version is too new";
         case 3: return "Reconnect failed, unknown connection ID";
+        case 4: return "Duplicate connection detected from the same address";
         default: return "";
     }
 }

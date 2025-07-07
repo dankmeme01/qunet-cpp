@@ -15,6 +15,14 @@ public:
     virtual ~BaseTransport() = default;
     virtual TransportResult<> sendMessage(QunetMessage message) = 0;
 
+    /// Sends the qunet hadnshake to the server and waits for a response.
+    /// The default implementation should only be used in reliable and ordered transports,
+    /// it will return the first message as soon as it is received.
+    virtual TransportResult<QunetMessage> performHandshake(
+        HandshakeStartMessage handshakeStart,
+        const std::optional<asp::time::Duration>& timeout
+    );
+
     /// Polls until any kind of data is available to be read.
     virtual TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) = 0;
 

@@ -54,9 +54,6 @@ private:
     Socket(std::shared_ptr<BaseTransport> transport) : m_transport(std::move(transport)) {}
 
     static TransportResult<std::shared_ptr<BaseTransport>> createTransport(const TransportOptions& options);
-
-    TransportResult<> sendHandshake();
-    TransportResult<> waitForHandshakeResponse(asp::time::Duration timeout);
 };
 
 }

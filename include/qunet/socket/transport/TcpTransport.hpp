@@ -9,11 +9,10 @@ namespace qn {
 class TcpTransport : public BaseTransport {
 public:
     ~TcpTransport() override;
-
-    static qsox::NetResult<TcpTransport> connect(const qsox::SocketAddress& address, const asp::time::Duration& timeout);
-
     TcpTransport(TcpTransport&&) = default;
     TcpTransport& operator=(TcpTransport&&) = default;
+
+    static qsox::NetResult<TcpTransport> connect(const qsox::SocketAddress& address, const asp::time::Duration& timeout);
 
     TransportResult<> close() override;
     bool isClosed() const override;

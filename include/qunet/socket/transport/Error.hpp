@@ -40,7 +40,6 @@ struct TransportError {
     struct HandshakeFailure {
         std::string reason;
 
-        HandshakeFailure(std::string_view reason) : reason(reason) {}
         HandshakeFailure(std::string reason) : reason(std::move(reason)) {}
 
         std::string_view message() const {

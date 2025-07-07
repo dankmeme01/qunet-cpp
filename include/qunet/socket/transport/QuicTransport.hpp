@@ -14,6 +14,8 @@ using QuicResult = geode::Result<T, QuicError>;
 class QuicTransport : public BaseTransport {
 public:
     ~QuicTransport() override;
+    QuicTransport(QuicTransport&&);
+    QuicTransport& operator=(QuicTransport&&);
 
     static TransportResult<QuicTransport> connect(
         const qsox::SocketAddress& address,
@@ -21,9 +23,6 @@ public:
         const ClientTlsContext* tlsContext = nullptr,
         const struct ConnectionDebugOptions* debugOptions = nullptr
     );
-
-    QuicTransport(QuicTransport&&);
-    QuicTransport& operator=(QuicTransport&&);
 
     TransportResult<> close() override;
     bool isClosed() const override;

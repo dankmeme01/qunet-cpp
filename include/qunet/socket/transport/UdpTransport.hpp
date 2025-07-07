@@ -8,11 +8,15 @@ namespace qn {
 class UdpTransport : public BaseTransport {
 public:
     ~UdpTransport() override;
+    UdpTransport(UdpTransport&&) = default;
+    UdpTransport& operator=(UdpTransport&&) = default;
 
     static qsox::NetResult<UdpTransport> connect(const qsox::SocketAddress& address);
 
-    UdpTransport(UdpTransport&&) = default;
-    UdpTransport& operator=(UdpTransport&&) = default;
+    TransportResult<QunetMessage> performHandshake(
+        HandshakeStartMessage handshakeStart,
+        const std::optional<asp::time::Duration>& timeout
+    ) override;
 
     TransportResult<> close() override;
     bool isClosed() const override;
