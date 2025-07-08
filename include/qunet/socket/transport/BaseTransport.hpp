@@ -2,6 +2,8 @@
 
 #include "Error.hpp"
 #include <qunet/socket/message/QunetMessage.hpp>
+#include <qunet/compression/ZstdDecompressor.hpp>
+#include <qunet/compression/ZstdCompressor.hpp>
 
 #include <qsox/Error.hpp>
 #include <asp/time/Duration.hpp>
@@ -12,6 +14,10 @@ namespace qn {
 
 class BaseTransport {
 public:
+    BaseTransport() = default;
+    BaseTransport(BaseTransport&&) = default;
+    BaseTransport& operator=(BaseTransport&&) = default;
+
     virtual ~BaseTransport() = default;
     virtual TransportResult<> sendMessage(QunetMessage message) = 0;
 
@@ -50,6 +56,10 @@ protected:
     std::queue<QunetMessage> m_recvMsgQueue;
     uint64_t m_connectionId = 0;
     size_t m_messageSizeLimit = -1;
+
+    // compressors
+    ZstdCompressor m_zstdCompressor;
+    ZstdDecompressor m_zstdDecompressor;
 };
 
 }

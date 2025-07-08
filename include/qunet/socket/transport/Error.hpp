@@ -1,6 +1,7 @@
 #pragma once
 
 #include <qunet/socket/message/QunetMessage.hpp>
+#include <qunet/compression/Error.hpp>
 #include <qunet/util/Error.hpp>
 #include <qunet/buffers/Error.hpp>
 #include <qsox/Error.hpp>
@@ -23,6 +24,8 @@ struct TransportError {
         ZeroLengthMessage,
         NoBufferSpace,
         CongestionLimited,
+        DefragmentationError,
+        TooUnreliable,
         TimedOut,
         Closed,
         Other,
@@ -57,6 +60,8 @@ struct TransportError {
     TransportError(ByteWriterError err) : m_kind(std::move(err)) {}
     TransportError(HandshakeFailure err) : m_kind(std::move(err)) {}
     TransportError(MessageDecodeError err) : m_kind(std::move(err)) {}
+    TransportError(CompressorError err) : m_kind(std::move(err)) {}
+    TransportError(DecompressorError err) : m_kind(std::move(err)) {}
     TransportError(CustomCode code) : m_kind(CustomKind{code}) {}
 
     bool operator==(const TransportError& other) const = default;
@@ -70,6 +75,8 @@ struct TransportError {
         ByteWriterError,
         HandshakeFailure,
         MessageDecodeError,
+        CompressorError,
+        DecompressorError,
         CustomKind
     > m_kind;
 

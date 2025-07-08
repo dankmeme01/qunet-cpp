@@ -1,6 +1,8 @@
 #pragma once
 
 #include "BaseTransport.hpp"
+#include "udp/ReliableStore.hpp"
+#include "udp/FragmentStore.hpp"
 #include <qsox/UdpSocket.hpp>
 
 namespace qn {
@@ -27,10 +29,17 @@ public:
 private:
     friend class MultiPoller;
 
+    ReliableStore m_relStore;
+    FragmentStore m_fragStore;
     qsox::UdpSocket m_socket;
     bool m_closed = false;
 
     UdpTransport(qsox::UdpSocket socket);
+
+    // called when a data message is almost completely ready to be dispatched.
+    // it must be unfrgamented and the reliability header must be processed.
+    // this function will take care of decompression if needed.
+    TransportResult<> pushPreFinalDataMessage(QunetMessageMeta&& meta);
 };
 
 }

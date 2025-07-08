@@ -15,6 +15,7 @@ std::string_view TransportError::CustomKind::message() const {
         case ZeroLengthMessage: return "Zero length message received";
         case NoBufferSpace: return "No buffer space available";
         case CongestionLimited: return "Congestion limited, cannot send data right now";
+        case DefragmentationError: return "Defragmentation error, message could not be reassembled";
         case TimedOut: return "Operation timed out";
         case Closed: return "Operation cannot be performed because the connection is already closed";
         case Other: return "Unknown transport error";
@@ -43,6 +44,12 @@ std::string TransportError::message() const {
         },
         [](const MessageDecodeError& err) {
             return fmt::format("Error decoding message: {}", err.message());
+        },
+        [](const CompressorError& err) {
+            return fmt::format("Compression error: {}", err.message());
+        },
+        [](const DecompressorError& err) {
+            return fmt::format("Decompression error: {}", err.message());
         },
         [](const CustomKind& kind) {
             return fmt::format("{}", kind.message());

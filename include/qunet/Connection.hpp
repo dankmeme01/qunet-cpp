@@ -247,6 +247,7 @@ private:
     void thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr);
     void thrSortPingResults();
     void thrSortConnTypes();
+    void thrHandleIncomingMessage(QunetMessage&& message);
 };
 
 }

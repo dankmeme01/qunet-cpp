@@ -321,21 +321,21 @@ Connection::Connection() {
 
                     auto avail = res.unwrap();
 
-                    // if no message is available, continue
-                    if (!avail) {
-                        return;
-                    }
+                    while (avail) {
+                        // receive a message
+                        auto msgRes = m_socket->receiveMessage(std::nullopt);
+                        if (!msgRes) {
+                            auto err = msgRes.unwrapErr();
+                            this->onConnectionError(err);
+                            return;
+                        }
 
-                    // receive a message
-                    auto msgRes = m_socket->receiveMessage(std::nullopt);
-                    if (!msgRes) {
-                        auto err = msgRes.unwrapErr();
-                        this->onConnectionError(err);
-                        return;
-                    }
+                        auto msg = std::move(msgRes).unwrap();
+                        this->thrHandleIncomingMessage(std::move(msg));
 
-                    auto msg = std::move(msgRes).unwrap();
-                    log::debug("Received message: {}", msg.typeStr());
+                        // check if another message is available
+                        avail = m_socket->messageAvailable();
+                    }
                 }
             } break;
 
@@ -468,6 +468,10 @@ void Connection::thrConnected() {
     m_poller.addPipe(m_msgPipe, qsox::PollType::Read);
     m_poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
     m_poller.addQSocket(*m_socket, qsox::PollType::Read);
+}
+
+void Connection::thrHandleIncomingMessage(QunetMessage&& message) {
+    log::debug("Received message: {}", message.typeStr());
 }
 
 void Connection::thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr) {
