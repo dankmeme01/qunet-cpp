@@ -1,5 +1,6 @@
 #pragma once
 
+#include <qunet/socket/transport/BaseTransport.hpp>
 #include <qunet/buffers/CircularByteBuffer.hpp>
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/socket/message/QunetMessage.hpp>
@@ -49,6 +50,7 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
 // The logic here is similar to the one in rust implementation
 inline TransportResult<> processIncomingData(
     auto&& socket,
+    BaseTransport& transport,
     CircularByteBuffer& buffer,
     size_t messageSizeLimit,
     std::queue<QunetMessage>& msgQueue
@@ -56,6 +58,12 @@ inline TransportResult<> processIncomingData(
     // read from the socket if applicable
     auto wnd = buffer.writeWindow();
     if (wnd.size() < 2048) {
+        // reserve more space if needed, but error if too much space is already reserved
+        if (buffer.capacity() >= 1024 * 1024) {
+            log::warn("processIncomingData: too much space reserved in buffer, capacity: {}, write window size: {}", buffer.capacity(), wnd.size());
+            return Err(TransportError::NoBufferSpace);
+        }
+
         buffer.reserve(2048);
         wnd = buffer.writeWindow();
     }
@@ -91,12 +99,23 @@ inline TransportResult<> processIncomingData(
         // we have a full message in the buffer
         buffer.skip(sizeof(uint32_t));
         auto wrpread = buffer.peek(length);
-        buffer.skip(length);
 
         ByteReader reader = ByteReader::withTwoSpans(wrpread.first, wrpread.second);
-        auto msg = QunetMessage::decode(reader);
+        auto dec = [&]() -> TransportResult<> {
+            auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
 
-        msgQueue.push(GEODE_UNWRAP(msg));
+            if (meta.type != MSG_DATA) {
+                auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
+                transport._pushFinalControlMessage(std::move(msg));
+                return Ok();
+            }
+
+            return transport._pushPreFinalDataMessage(std::move(meta));
+        };
+
+        auto res = dec();
+        buffer.skip(length);
+        GEODE_UNWRAP(res);
     }
 
     return Ok();

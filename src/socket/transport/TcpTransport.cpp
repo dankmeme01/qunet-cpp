@@ -49,7 +49,7 @@ TransportResult<bool> TcpTransport::poll(const std::optional<Duration>& dur) {
 
 TransportResult<bool> TcpTransport::processIncomingData() {
     GEODE_UNWRAP(streamcommon::processIncomingData(
-        m_socket, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue
+        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue
     ));
 
     return Ok(!m_recvMsgQueue.empty());

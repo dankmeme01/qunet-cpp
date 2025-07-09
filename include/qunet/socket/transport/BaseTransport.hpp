@@ -52,6 +52,12 @@ public:
     virtual void setConnectionId(uint64_t connectionId);
     virtual void setMessageSizeLimit(size_t limit);
 
+    // Semi-public version of pushPreFinalDataMessage.
+    // Do not use this outside of the transport implementation.
+    TransportResult<> _pushPreFinalDataMessage(QunetMessageMeta&& meta);
+    // Do not use this outside of the transport implementation.
+    void _pushFinalControlMessage(QunetMessage&& meta);
+
 protected:
     std::queue<QunetMessage> m_recvMsgQueue;
     uint64_t m_connectionId = 0;
@@ -60,6 +66,11 @@ protected:
     // compressors
     ZstdCompressor m_zstdCompressor;
     ZstdDecompressor m_zstdDecompressor;
+
+    // Called when a data message is almost completely ready to be dispatched.
+    // Fragmentation and reliability headers are ignored, they must be processed beforehand.
+    // This function will take care of decompression if needed.
+    TransportResult<> pushPreFinalDataMessage(QunetMessageMeta&& meta);
 };
 
 }

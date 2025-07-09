@@ -35,11 +35,6 @@ private:
     bool m_closed = false;
 
     UdpTransport(qsox::UdpSocket socket);
-
-    // called when a data message is almost completely ready to be dispatched.
-    // it must be unfrgamented and the reliability header must be processed.
-    // this function will take care of decompression if needed.
-    TransportResult<> pushPreFinalDataMessage(QunetMessageMeta&& meta);
 };
 
 }

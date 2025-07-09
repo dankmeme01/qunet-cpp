@@ -59,4 +59,57 @@ bool BaseTransport::messageAvailable() {
     return !m_recvMsgQueue.empty();
 }
 
+TransportResult<> BaseTransport::_pushPreFinalDataMessage(QunetMessageMeta&& meta) {
+    return this->pushPreFinalDataMessage(std::move(meta));
+}
+
+void BaseTransport::_pushFinalControlMessage(QunetMessage&& meta) {
+    m_recvMsgQueue.push(std::move(meta));
+}
+
+TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta) {
+    // handle compression...
+
+    std::vector<uint8_t> data;
+
+    if (!meta.compressionHeader) {
+        data = std::move(meta.data);
+    } else {
+        size_t uncSize = meta.compressionHeader->uncompressedSize;
+        if (uncSize > m_messageSizeLimit) {
+            return Err(TransportError::MessageTooLong);
+        }
+
+        data.resize(uncSize);
+
+        auto ty = meta.compressionHeader->type;
+
+        switch (ty) {
+            case CompressionType::Zstd: {
+                GEODE_UNWRAP(m_zstdDecompressor.decompress(
+                    meta.data.data(), meta.data.size(),
+                    data.data(), uncSize
+                ));
+
+                data.resize(uncSize);
+            } break;
+
+            case CompressionType::Lz4: {
+                return Err(TransportError::NotImplemented);
+            } break;
+
+            default: {
+                // how did we get here?
+                QN_ASSERT(false && "Unknown compression type");
+            };
+        }
+    }
+
+    m_recvMsgQueue.push(DataMessage {
+        .data = std::move(data),
+    });
+
+    return Ok();
+}
+
 }

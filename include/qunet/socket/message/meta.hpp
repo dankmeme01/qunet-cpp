@@ -29,6 +29,7 @@ struct FragmentationHeader {
 };
 
 struct QunetMessageMeta {
+    uint8_t type; // message type, for data messages this does not include options and will be MSG_DATA
     std::optional<CompressionHeader> compressionHeader;
     std::optional<ReliabilityHeader> reliabilityHeader;
     std::optional<FragmentationHeader> fragmentationHeader;

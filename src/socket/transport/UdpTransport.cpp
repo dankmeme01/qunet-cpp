@@ -209,81 +209,21 @@ TransportResult<bool> UdpTransport::processIncomingData() {
         return Err(TransportError::ZeroLengthMessage);
     }
 
-    uint8_t hdbyte = buffer[0];
+    ByteReader reader(buffer, bytesRead);
+    auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
 
     // not a data message, cannot be compressed/fragmented/reliable
-    if ((hdbyte & MSG_DATA_MASK) == 0) {
-        ByteReader reader(buffer, bytesRead);
-        auto msg = GEODE_UNWRAP(QunetMessage::decode(reader));
+    if (meta.type != MSG_DATA) {
+        auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
 
         m_recvMsgQueue.push(std::move(msg));
 
         return Ok(true);
     }
 
-    // data message, parse headers
-    bool fragmented = (hdbyte & MSG_DATA_BIT_FRAGMENTATION) != 0;
-    bool reliable = (hdbyte & MSG_DATA_BIT_RELIABILITY) != 0;
-    CompressionType compressionType = (CompressionType) ((hdbyte >> MSG_DATA_BIT_COMPRESSION_1) & 0b11);
-
-    std::optional<CompressionHeader> compHeader;
-    std::optional<ReliabilityHeader> relHeader;
-    std::optional<FragmentationHeader> fragHeader;
-
-    ByteReader reader(buffer + 1, bytesRead - 1);
-
-    switch (compressionType) {
-        case CompressionType::Zstd: {
-            compHeader = CompressionHeader {
-                .type = CompressionType::Zstd,
-                .uncompressedSize = GEODE_UNWRAP(reader.readU32()),
-            };
-        } break;
-
-        case CompressionType::Lz4: {
-            compHeader = CompressionHeader {
-                .type = CompressionType::Lz4,
-                .uncompressedSize = GEODE_UNWRAP(reader.readU32()),
-            };
-        } break;
-
-        default: break;
-    }
-
-    if (reliable) {
-        ReliabilityHeader relHdr;
-        relHdr.messageId = GEODE_UNWRAP(reader.readU16());
-        relHdr.ackCount = GEODE_UNWRAP(reader.readU16());
-
-        for (size_t i = 0; i < std::min<size_t>(relHdr.ackCount, 8); i++) {
-            relHdr.acks[i] = GEODE_UNWRAP(reader.readU16());
-        }
-
-        relHeader = relHdr;
-    }
-
-    if (fragmented) {
-        FragmentationHeader fragHdr;
-        fragHdr.messageId = GEODE_UNWRAP(reader.readU16());
-        fragHdr.fragmentIndex = GEODE_UNWRAP(reader.readU16());
-
-        // top bit of fragmentIndex indicates if this is the last fragment
-        fragHdr.lastFragment = (fragHdr.fragmentIndex & (uint16_t)0x8000) != 0;
-        fragHdr.fragmentIndex &= (uint16_t)0x7FFF;
-
-        fragHeader = fragHdr;
-    }
-
-    QunetMessageMeta meta {
-        .compressionHeader = compHeader,
-        .reliabilityHeader = relHeader,
-        .fragmentationHeader = fragHeader,
-        .data = reader.readToEnd(),
-    };
-
     // handle fragmented / reliable messages
 
-    if (fragmented) {
+    if (meta.fragmentationHeader) {
         auto recvf = GEODE_UNWRAP(m_fragStore.processFragment(std::move(meta)));
 
         // if a message wasn't completed, just return false
@@ -297,8 +237,7 @@ TransportResult<bool> UdpTransport::processIncomingData() {
 
     QN_ASSERT(!meta.fragmentationHeader.has_value());
 
-    reliable = meta.reliabilityHeader.has_value();
-
+    bool reliable = meta.reliabilityHeader.has_value();
     if (reliable) {
         if (!m_relStore.handleIncoming(meta)) {
             // duplicate message or otherwise invalid
@@ -320,53 +259,6 @@ TransportResult<bool> UdpTransport::processIncomingData() {
     }
 
     return Ok(true);
-}
-
-TransportResult<> UdpTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta) {
-    // handle compression...
-
-    std::vector<uint8_t> data;
-
-    if (!meta.compressionHeader) {
-        data = std::move(meta.data);
-    } else {
-        size_t uncSize = meta.compressionHeader->uncompressedSize;
-        if (uncSize > m_messageSizeLimit) {
-            return Err(TransportError::MessageTooLong);
-        }
-
-        data.resize(uncSize);
-
-        auto ty = meta.compressionHeader->type;
-
-        switch (ty) {
-            case CompressionType::Zstd: {
-                GEODE_UNWRAP(m_zstdDecompressor.decompress(
-                    meta.data.data(), meta.data.size(),
-                    data.data(), uncSize
-                ));
-
-                data.resize(uncSize);
-            } break;
-
-            case CompressionType::Lz4: {
-                return Err(TransportError::NotImplemented);
-            } break;
-
-            default: {
-                // how did we get here?
-                QN_ASSERT(false && "Unknown compression type");
-            };
-        }
-    }
-
-    // oh my god is it finally over
-
-    m_recvMsgQueue.push(DataMessage {
-        .data = std::move(data),
-    });
-
-    return Ok();
 }
 
 }

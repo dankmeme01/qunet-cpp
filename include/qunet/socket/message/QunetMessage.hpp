@@ -3,6 +3,7 @@
 #include <qunet/util/assert.hpp>
 #include <qunet/util/visit.hpp>
 #include "messages.hpp"
+#include "meta.hpp"
 #include <variant>
 
 namespace qn {
@@ -84,126 +85,13 @@ public:
         }, m_kind);
     }
 
-    MessageEncodeResult encodeHeader(
-        HeapByteWriter& writer,
-        uint64_t connectionId
-    ) const {
-        // Write the header byte
-        std::visit(makeVisitor {
-            [&](const PingMessage& msg) {
-                return writer.writeU8(MSG_PING);
-            },
-            [&](const PongMessage& msg) {
-                return writer.writeU8(MSG_PONG);
-            },
-            [&](const KeepaliveMessage& msg) {
-                return writer.writeU8(MSG_KEEPALIVE);
-            },
-            [&](const KeepaliveResponseMessage& msg) {
-                return writer.writeU8(MSG_KEEPALIVE_RESPONSE);
-            },
-            [&](const HandshakeStartMessage& msg) {
-                return writer.writeU8(MSG_HANDSHAKE_START);
-            },
-            [&](const HandshakeFinishMessage& msg) {
-                return writer.writeU8(MSG_HANDSHAKE_FINISH);
-            },
-            [&](const HandshakeFailureMessage& msg) {
-                return writer.writeU8(MSG_HANDSHAKE_FAILURE);
-            },
-            [&](const ClientCloseMessage& msg) {
-                return writer.writeU8(MSG_CLIENT_CLOSE);
-            },
-            [&](const ServerCloseMessage& msg) {
-                return writer.writeU8(MSG_SERVER_CLOSE);
-            },
-            [&](const ClientReconnectMessage& msg) {
-                return writer.writeU8(MSG_CLIENT_RECONNECT);
-            },
-            [&](const ConnectionErrorMessage& msg) {
-                return writer.writeU8(MSG_CONNECTION_ERROR);
-            },
-            [&](const QdbChunkRequestMessage& msg) {
-                return writer.writeU8(MSG_QDB_CHUNK_REQUEST);
-            },
-            [&](const QdbChunkResponseMessage& msg) {
-                return writer.writeU8(MSG_QDB_CHUNK_RESPONSE);
-            },
-            [&](const QdbgToggleMessage& msg) {
-                return writer.writeU8(MSG_QDBG_TOGGLE);
-            },
-            [&](const QdbgReportMessage& msg) {
-                return writer.writeU8(MSG_QDBG_REPORT);
-            },
-            [&](const DataMessage& msg) {
-                return writer.writeU8(MSG_DATA);
-            }
-        }, m_kind);
+    MessageEncodeResult encodeHeader(HeapByteWriter& writer, uint64_t connectionId) const;
+    std::string_view typeStr() const;
 
-        // TODO compression header
+    static geode::Result<QunetMessage, MessageDecodeError> decodeWithMeta(QunetMessageMeta&& meta);
 
-        if (connectionId != 0) {
-            // write the connection ID (udp)
-            writer.writeU64(connectionId);
-        }
-
-        return Ok();
-    }
-
-    std::string_view typeStr() const {
-        return std::visit(makeVisitor {
-            [&](const PingMessage& msg) {
-                return "PingMessage";
-            },
-            [&](const PongMessage& msg) {
-                return "PongMessage";
-            },
-            [&](const KeepaliveMessage& msg) {
-                return "KeepaliveMessage";
-            },
-            [&](const KeepaliveResponseMessage& msg) {
-                return "KeepaliveResponseMessage";
-            },
-            [&](const HandshakeStartMessage& msg) {
-                return "HandshakeStartMessage";
-            },
-            [&](const HandshakeFinishMessage& msg) {
-                return "HandshakeFinishMessage";
-            },
-            [&](const HandshakeFailureMessage& msg) {
-                return "HandshakeFailureMessage";
-            },
-            [&](const ClientCloseMessage& msg) {
-                return "ClientCloseMessage";
-            },
-            [&](const ServerCloseMessage& msg) {
-                return "ServerCloseMessage";
-            },
-            [&](const ClientReconnectMessage& msg) {
-                return "ClientReconnectMessage";
-            },
-            [&](const ConnectionErrorMessage& msg) {
-                return "ConnectionErrorMessage";
-            },
-            [&](const QdbChunkRequestMessage& msg) {
-                return "QdbChunkRequestMessage";
-            },
-            [&](const QdbChunkResponseMessage& msg) {
-                return "QdbChunkResponseMessage";
-            },
-            [&](const QdbgToggleMessage& msg) {
-                return "QdbgToggleMessage";
-            },
-            [&](const QdbgReportMessage& msg) {
-                return "QdbgReportMessage";
-            },
-            [&](const DataMessage& msg) {
-                return "DataMessage";
-            }
-        }, m_kind);
-    }
-
-    static geode::Result<QunetMessage, MessageDecodeError> decode(ByteReader& reader);
+    /// Decodes message meta from the message header
+    static geode::Result<QunetMessageMeta, MessageDecodeError> decodeMeta(ByteReader& reader);
 
 private:
     VariantTy m_kind;
