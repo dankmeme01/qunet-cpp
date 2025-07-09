@@ -121,4 +121,8 @@ TransportResult<std::optional<QunetMessageMeta>> FragmentStore::reassemble(Messa
     return Ok(std::move(out));
 }
 
+uint16_t FragmentStore::nextMessageId() {
+    return m_nextMessageId++;
+}
+
 }

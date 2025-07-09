@@ -32,9 +32,10 @@ private:
     ReliableStore m_relStore;
     FragmentStore m_fragStore;
     qsox::UdpSocket m_socket;
+    size_t m_mtu;
     bool m_closed = false;
 
-    UdpTransport(qsox::UdpSocket socket);
+    UdpTransport(qsox::UdpSocket socket, size_t mtu);
 };
 
 }

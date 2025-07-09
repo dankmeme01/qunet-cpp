@@ -62,7 +62,62 @@ bool Socket::isClosed() const {
 }
 
 TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable) {
+    // determine if the message needs to be compressed
+    if (message.is<DataMessage>()) {
+        auto& msg = message.as<DataMessage>();
+
+        uint32_t uncSize = msg.data.size();
+        auto ctype = this->shouldCompress(uncSize);
+
+        switch (ctype) {
+            case CompressionType::Zstd: {
+                GEODE_UNWRAP(this->doCompressZstd(msg));
+            } break;
+
+            case CompressionType::Lz4: {
+                return Err(TransportError::NotImplemented);
+            } break;
+
+            default: break;
+        }
+    }
+
     return m_transport->sendMessage(std::move(message), reliable);
+}
+
+CompressionType Socket::shouldCompress(size_t size) const {
+    // TODO lz4?
+    if (size < 128) {
+        return CompressionType::None;
+    } else {
+        return CompressionType::Zstd;
+    }
+}
+
+CompressorResult<> Socket::doCompressZstd(DataMessage& message) const {
+    uint32_t uncSize = message.data.size();
+
+    size_t outSize = m_transport->m_zstdCompressor.compressBound(uncSize);
+    std::vector<uint8_t> compressedData(outSize);
+
+    GEODE_UNWRAP(m_transport->m_zstdCompressor.compress(
+        message.data.data(), uncSize,
+        compressedData.data(), outSize
+    ));
+
+    compressedData.resize(outSize);
+    message.data = std::move(compressedData);
+
+    message.compHeader = CompressionHeader {
+        .type = CompressionType::Zstd,
+        .uncompressedSize = uncSize
+    };
+
+    return Ok();
+}
+
+CompressorResult<> Socket::doCompressLz4(DataMessage& message) const {
+    return Err(CompressorError::NotInitialized);
 }
 
 TransportResult<QunetMessage> Socket::receiveMessage(const std::optional<Duration>& timeout) {

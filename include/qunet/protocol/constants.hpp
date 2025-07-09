@@ -30,8 +30,8 @@ constexpr inline uint8_t MSG_DATA_MASK = MSG_DATA;
 
 constexpr inline size_t MSG_DATA_BIT_COMPRESSION_1 = 0; // least significant bit
 constexpr inline size_t MSG_DATA_BIT_COMPRESSION_2 = 1; // second least significant bit
-constexpr inline size_t MSG_DATA_BIT_RELIABILITY = 4;
-constexpr inline size_t MSG_DATA_BIT_FRAGMENTATION = 5;
+constexpr inline size_t MSG_DATA_RELIABILITY_MASK = 1 << 4;
+constexpr inline size_t MSG_DATA_FRAGMENTATION_MASK = 1 << 5;
 
 constexpr inline uint16_t MSG_DATA_LAST_FRAGMENT_MASK = 0x8000; // most significant bit of fragment index
 

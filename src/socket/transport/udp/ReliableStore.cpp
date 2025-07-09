@@ -50,10 +50,6 @@ TransportResult<bool> ReliableStore::handleIncoming(QunetMessageMeta& message) {
     return Ok(true);
 }
 
-void ReliableStore::processAcks(const ReliabilityHeader& header) {
-
-}
-
 TransportResult<> ReliableStore::storeRemoteOutOfOrder(QunetMessageMeta& meta) {
     if (m_remoteOutOfOrder.size() >= 128) {
         return Err(TransportError::TooUnreliable);
@@ -111,6 +107,73 @@ std::optional<QunetMessageMeta> ReliableStore::popDelayedMessage() {
     QunetMessageMeta meta = std::move(m_remoteDelayedQueue.front());
     m_remoteDelayedQueue.pop();
     return meta;
+}
+
+// Outgoing messages
+
+void ReliableStore::processAcks(const ReliabilityHeader& header) {
+    for (size_t i = 0; i < header.ackCount; i++) {
+        this->ackLocal(header.acks[i]);
+    }
+}
+
+void ReliableStore::ackLocal(uint16_t messageId) {
+    log::debug("ReliableStore: remote acknowledged local message with ID {}", messageId);
+
+    // find the message in the local unacked queue
+    for (auto it = m_localUnacked.begin(); it != m_localUnacked.end(); it++) {
+        if (it->messageId == messageId) {
+            m_localUnacked.erase(it);
+            return;
+        }
+    }
+
+    log::warn("ReliableStore: ignored ack, did not find a local message with this ID");
+}
+
+uint16_t ReliableStore::nextMessageId() {
+    auto id = m_nextLocalId++;
+
+    if (m_nextLocalId == 0) {
+        m_nextLocalId = 1;
+    }
+
+    return id;
+}
+
+void ReliableStore::setOutgoingAcks(ReliabilityHeader& header) {
+    header.ackCount = 0;
+
+    for (size_t i = 0; i < 8; i++) {
+        if (m_remoteUnacked.empty()) {
+            return;
+        }
+
+        auto& msg = m_remoteUnacked.front();
+        header.acks[i] = msg.messageId;
+        header.ackCount++;
+        m_remoteUnacked.pop();
+    }
+}
+
+void ReliableStore::pushLocalUnacked(QunetMessage msg) {
+    QN_DEBUG_ASSERT(msg.is<DataMessage>());
+    QN_DEBUG_ASSERT(msg.as<DataMessage>().relHeader.has_value());
+
+    if (m_localUnacked.size() >= 64) {
+        log::warn("ReliableStore: unacked message queue is full, dropping older message");
+        m_localUnacked.pop_front();
+    }
+
+    uint16_t msgId = msg.as<DataMessage>().relHeader->messageId;
+
+    log::debug("ReliableStore: pushing local unacked message with ID {}", msgId);
+
+    m_localUnacked.push_back({
+        .messageId = msgId,
+        .msg = std::move(msg),
+        .sentAt = Instant::now(),
+    });
 }
 
 }

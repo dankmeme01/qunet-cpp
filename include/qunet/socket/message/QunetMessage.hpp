@@ -85,7 +85,11 @@ public:
         }, m_kind);
     }
 
-    MessageEncodeResult encodeHeader(HeapByteWriter& writer, uint64_t connectionId) const;
+    MessageEncodeResult encodeControlHeader(HeapByteWriter& writer, uint64_t connectionId) const;
+    MessageEncodeResult encodeControlMsg(HeapByteWriter& writer, uint64_t connectionId) const;
+
+    MessageEncodeResult encodeDataHeader(HeapByteWriter& writer, uint64_t connectionId, bool omitHeaders) const;
+
     std::string_view typeStr() const;
 
     static geode::Result<QunetMessage, MessageDecodeError> decodeWithMeta(QunetMessageMeta&& meta);

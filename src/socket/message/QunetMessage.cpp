@@ -11,7 +11,7 @@ std::string_view MessageDecodeError::message() const {
         case InvalidData: return "Invalid data in message";
     }
 }
-MessageEncodeResult QunetMessage::encodeHeader(
+MessageEncodeResult QunetMessage::encodeControlHeader(
     HeapByteWriter& writer,
     uint64_t connectionId
 ) const {
@@ -63,11 +63,9 @@ MessageEncodeResult QunetMessage::encodeHeader(
             return writer.writeU8(MSG_QDBG_REPORT);
         },
         [&](const DataMessage& msg) {
-            return writer.writeU8(MSG_DATA);
+            QN_ASSERT(false && "DataMessage should not be encoded with encodeHeader");
         }
     }, m_kind);
-
-    // TODO compression header
 
     if (connectionId != 0) {
         // write the connection ID (udp)
@@ -76,6 +74,55 @@ MessageEncodeResult QunetMessage::encodeHeader(
 
     return Ok();
 }
+
+MessageEncodeResult QunetMessage::encodeControlMsg(HeapByteWriter& writer, uint64_t connectionId) const {
+    GEODE_UNWRAP(this->encodeControlHeader(writer, connectionId));
+    return this->encode(writer);
+}
+
+MessageEncodeResult QunetMessage::encodeDataHeader(HeapByteWriter& writer, uint64_t connectionId, bool omitHeaders) const {
+    QN_ASSERT(this->is<DataMessage>());
+
+    auto& msg = this->as<DataMessage>();
+
+    uint8_t hdr = MSG_DATA;
+
+    if (!omitHeaders) {
+        // set compression bits
+        if (msg.compHeader.has_value()) {
+            hdr |= (uint8_t)msg.compHeader->type << MSG_DATA_BIT_COMPRESSION_1;
+        }
+
+        // set reliability bit
+        if (msg.relHeader.has_value()) {
+            hdr |= MSG_DATA_RELIABILITY_MASK;
+        }
+    }
+
+    // write the header byte
+    writer.writeU8(hdr);
+
+    if (!omitHeaders) {
+        // write compression header
+        if (msg.compHeader.has_value()) {
+            writer.writeU32(msg.compHeader->uncompressedSize);
+        }
+
+        // write reliability header
+        if (msg.relHeader.has_value()) {
+            auto& relHdr = msg.relHeader.value();
+            writer.writeU16(relHdr.messageId);
+            writer.writeU16(relHdr.ackCount);
+
+            for (size_t i = 0; i < relHdr.ackCount && i < 8; i++) {
+                writer.writeU16(relHdr.acks[i]);
+            }
+        }
+    }
+
+    return Ok();
+}
+
 std::string_view QunetMessage::typeStr() const {
     return std::visit(makeVisitor {
         [&](const PingMessage& msg) {
@@ -182,8 +229,8 @@ geode::Result<QunetMessageMeta, MessageDecodeError> QunetMessage::decodeMeta(Byt
     // data message, parse headers
     QunetMessageMeta meta;
     meta.type = MSG_DATA;
-    bool fragmented = (msgType & MSG_DATA_BIT_FRAGMENTATION) != 0;
-    bool reliable = (msgType & MSG_DATA_BIT_RELIABILITY) != 0;
+    bool fragmented = (msgType & MSG_DATA_FRAGMENTATION_MASK) != 0;
+    bool reliable = (msgType & MSG_DATA_RELIABILITY_MASK) != 0;
     CompressionType compressionType = (CompressionType) ((msgType >> MSG_DATA_BIT_COMPRESSION_1) & 0b11);
 
     switch (compressionType) {

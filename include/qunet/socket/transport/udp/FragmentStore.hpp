@@ -17,6 +17,9 @@ public:
         QunetMessageMeta&& message
     );
 
+    // Returns the next message ID for a new fragmented message to be sent.
+    uint16_t nextMessageId();
+
 private:
     struct Fragment {
         uint16_t index;
@@ -32,6 +35,7 @@ private:
     };
 
     std::unordered_map<uint16_t, Message> m_messages;
+    uint16_t m_nextMessageId = 1;
 
     TransportResult<std::optional<QunetMessageMeta>> processStored();
     TransportResult<std::optional<QunetMessageMeta>> reassemble(Message&&);

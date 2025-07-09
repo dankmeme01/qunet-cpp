@@ -59,6 +59,8 @@ public:
     void _pushFinalControlMessage(QunetMessage&& meta);
 
 protected:
+    friend class Socket;
+
     std::queue<QunetMessage> m_recvMsgQueue;
     uint64_t m_connectionId = 0;
     size_t m_messageSizeLimit = -1;

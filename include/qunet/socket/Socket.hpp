@@ -56,6 +56,10 @@ private:
     Socket(std::shared_ptr<BaseTransport> transport) : m_transport(std::move(transport)) {}
 
     static TransportResult<std::shared_ptr<BaseTransport>> createTransport(const TransportOptions& options);
+
+    CompressionType shouldCompress(size_t size) const;
+    CompressorResult<> doCompressZstd(DataMessage& message) const;
+    CompressorResult<> doCompressLz4(DataMessage& message) const;
 };
 
 }

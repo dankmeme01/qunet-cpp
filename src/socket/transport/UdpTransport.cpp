@@ -15,7 +15,7 @@ using namespace asp::time;
 
 namespace qn {
 
-UdpTransport::UdpTransport(qsox::UdpSocket socket) : m_socket(std::move(socket)) {}
+UdpTransport::UdpTransport(qsox::UdpSocket socket, size_t mtu) : m_socket(std::move(socket)), m_mtu(mtu) {}
 
 UdpTransport::~UdpTransport() {}
 
@@ -23,7 +23,7 @@ NetResult<UdpTransport> UdpTransport::connect(const SocketAddress& address) {
     auto socket = GEODE_UNWRAP(UdpSocket::bindAny(address.isV6()));
     GEODE_UNWRAP(socket.connect(address));
 
-    return Ok(UdpTransport(std::move(socket)));
+    return Ok(UdpTransport(std::move(socket), UDP_PACKET_LIMIT));
 }
 
 TransportResult<> UdpTransport::close()  {
@@ -183,13 +183,95 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
     HeapByteWriter writer;
 
-    // TODO: handle reliability and fragmentation
+    // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
+    if (!message.is<DataMessage>()) {
+        GEODE_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
+        auto data = writer.written();
+        auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
 
-    GEODE_UNWRAP(message.encodeHeader(writer, m_connectionId));
-    GEODE_UNWRAP(message.encode(writer));
+        return Ok();
+    }
 
-    auto data = writer.written();
-    auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+    // data messages are more interesting
+
+    auto& msg = message.as<DataMessage>();
+
+    size_t relHdrSize = 0;
+    size_t compHdrSize = msg.compHeader.has_value() ? 4 : 0;
+
+    if (reliable) {
+        ReliabilityHeader hdr;
+        hdr.messageId = m_relStore.nextMessageId();
+        m_relStore.setOutgoingAcks(hdr);
+
+        relHdrSize = 4 + hdr.ackCount * 2; // 2 for message ID + 2 for ack count, 2 for each ACK
+
+        msg.relHeader = hdr;
+    } else {
+        msg.relHeader.reset();
+    }
+
+    size_t unfragTotalSize = relHdrSize + compHdrSize + msg.data.size();
+
+    if (unfragTotalSize <= m_mtu) {
+        // no fragmentation :)
+        message.encodeDataHeader(writer, m_connectionId, false).unwrap();
+
+        writer.writeBytes(msg.data);
+
+        auto data = writer.written();
+        auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+
+        if (reliable) {
+            m_relStore.pushLocalUnacked(std::move(message));
+        }
+
+        return Ok();
+    }
+
+    // fragmentation is needed :(
+
+    // determine the maximum size of the payload for each fragment
+    // first fragment must include reliability and compression headers if they are present, rest don't have to
+
+    size_t fragHdrSize = 4;
+    size_t firstPayloadSize = m_mtu - relHdrSize - compHdrSize - fragHdrSize;
+    size_t restPayloadSize = m_mtu - fragHdrSize;
+
+    uint16_t fragMessageId = m_fragStore.nextMessageId();
+
+    size_t offset = 0;
+    size_t fragmentIndex = 0;
+
+    std::span<uint8_t> data{msg.data.begin(), msg.data.end()};
+
+    while (offset < msg.data.size()) {
+        bool isFirst = (fragmentIndex == 0);
+        size_t payloadSize = isFirst ? firstPayloadSize : restPayloadSize;
+        auto chunk = data.subspan(offset, std::min(payloadSize, data.size() - offset));
+
+        HeapByteWriter fwriter;
+
+        // write the header, omit headers for all but the first fragment
+        message.encodeDataHeader(fwriter, m_connectionId, !isFirst).unwrap();
+
+        // but always add the fragmentation header
+        uint8_t hdrbyte = fwriter.written()[0] & MSG_DATA_FRAGMENTATION_MASK;
+        fwriter.performAt(0, [&](auto& writer) { writer.writeU8(hdrbyte); }).unwrap();
+        fwriter.writeU16(fragMessageId);
+        fwriter.writeU16((uint16_t) (fragmentIndex | (isFirst ? 0 : MSG_DATA_LAST_FRAGMENT_MASK)));
+        fwriter.writeBytes(chunk);
+
+        offset += chunk.size();
+        fragmentIndex++;
+
+        auto data = fwriter.written();
+        auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+    }
+
+    if (reliable) {
+        m_relStore.pushLocalUnacked(std::move(message));
+    }
 
     return Ok();
 }

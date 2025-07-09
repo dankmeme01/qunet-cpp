@@ -28,6 +28,9 @@ public:
         void* dst, size_t& dstSize
     );
 
+    /// Returns the maximum size of the compressed data for a given source size.
+    size_t compressBound(size_t srcSize) const;
+
 private:
     ZSTD_CCtx_s* m_ctx = nullptr;
     ZSTD_CDict_s* m_dict = nullptr;

@@ -82,4 +82,8 @@ CompressorResult<> ZstdCompressor::compress(
     return Ok();
 }
 
+size_t ZstdCompressor::compressBound(size_t srcSize) const {
+    return ZSTD_compressBound(srcSize);
+}
+
 }

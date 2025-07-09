@@ -23,7 +23,7 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
         preMessagePos = writer.position();
     }
 
-    GEODE_UNWRAP(message.encodeHeader(writer, 0));
+    GEODE_UNWRAP(message.encodeControlHeader(writer, 0));
 
     auto res = message.encode(writer);
     if (!res) {
