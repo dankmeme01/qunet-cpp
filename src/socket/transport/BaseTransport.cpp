@@ -19,7 +19,7 @@ TransportResult<QunetMessage> BaseTransport::performHandshake(
 ) {
     auto startedAt = Instant::now();
 
-    GEODE_UNWRAP(this->sendMessage(std::move(handshakeStart)));
+    GEODE_UNWRAP(this->sendMessage(std::move(handshakeStart), false));
 
     while (true) {
         auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;

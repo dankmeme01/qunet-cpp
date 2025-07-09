@@ -72,7 +72,7 @@ DecompressorResult<> ZstdDecompressor::decompress(
     if (ZSTD_isError(dsize)) {
         auto ec = ZSTD_getErrorCode(dsize);
         auto msg = ZSTD_getErrorName(ec);
-        log::warn("ZstdDecompressor: Decompression failed: {} ({})", msg, ec);
+        log::warn("ZstdDecompressor: Decompression failed: {} ({})", msg, (int) ec);
         return Err(DecompressorError::DecompressionFailed);
     }
 

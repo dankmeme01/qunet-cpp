@@ -1,4 +1,5 @@
 #pragma once
+#include "meta.hpp"
 #include <qunet/buffers/ByteWriter.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/buffers/ByteReader.hpp>
@@ -211,6 +212,8 @@ struct QdbgReportMessage {};
 
 struct DataMessage {
     std::vector<uint8_t> data;
+    std::optional<CompressionHeader> compHeader;
+    std::optional<ReliabilityHeader> relHeader;
 
     MessageEncodeResult encode(auto& writer) const {
         writer.writeBytes(data.data(), data.size());

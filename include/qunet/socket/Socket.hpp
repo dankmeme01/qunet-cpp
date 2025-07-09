@@ -35,7 +35,9 @@ public:
     // Returns true if `close()` was called and the transport finished closing.
     bool isClosed() const;
 
-    TransportResult<> sendMessage(const QunetMessage& message);
+    /// Send a message over the transport. Note: if it's a Data message, reliability and compression headers are ignored.
+    /// The `reliable` argument is used to make the message reliable, and compression is applied automatically if needed.
+    TransportResult<> sendMessage(QunetMessage&& message, bool reliable = true);
     TransportResult<QunetMessage> receiveMessage(const std::optional<asp::time::Duration>& timeout);
 
     /// Processes incoming data from the transport. This method does not block, it will try to read as much data as available,

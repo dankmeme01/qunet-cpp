@@ -35,7 +35,7 @@ bool TcpTransport::isClosed() const {
     return m_closed;
 }
 
-TransportResult<> TcpTransport::sendMessage(QunetMessage message) {
+TransportResult<> TcpTransport::sendMessage(QunetMessage message, bool reliable) {
     return streamcommon::sendMessage(std::move(message), m_socket);
 }
 

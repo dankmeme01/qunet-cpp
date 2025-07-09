@@ -41,7 +41,7 @@ TransportResult<QuicTransport> QuicTransport::connect(
     return Ok(QuicTransport(std::move(conn)));
 }
 
-TransportResult<> QuicTransport::sendMessage(QunetMessage message) {
+TransportResult<> QuicTransport::sendMessage(QunetMessage message, bool reliable) {
     return streamcommon::sendMessage(std::move(message), *m_conn);
 }
 

@@ -42,7 +42,7 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 ) {
     auto startedAt = Instant::now();
 
-    GEODE_UNWRAP(this->sendMessage(handshakeStart));
+    GEODE_UNWRAP(this->sendMessage(handshakeStart, false));
     auto lastSentHandshake = Instant::now();
     size_t sentAttempts = 1;
 
@@ -65,7 +65,7 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 
         // if rem timeout expired, resend the handshake message
         if (remTimeout.isZero()) {
-            GEODE_UNWRAP(this->sendMessage(handshakeStart));
+            GEODE_UNWRAP(this->sendMessage(handshakeStart, false));
             lastSentHandshake = Instant::now();
             sentAttempts++;
             continue;
@@ -180,8 +180,10 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
     return Ok(std::move(outMessage));
 }
 
-TransportResult<> UdpTransport::sendMessage(QunetMessage message) {
+TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
     HeapByteWriter writer;
+
+    // TODO: handle reliability and fragmentation
 
     GEODE_UNWRAP(message.encodeHeader(writer, m_connectionId));
     GEODE_UNWRAP(message.encode(writer));

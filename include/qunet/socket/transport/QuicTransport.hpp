@@ -26,7 +26,7 @@ public:
 
     TransportResult<> close() override;
     bool isClosed() const override;
-    TransportResult<> sendMessage(QunetMessage data) override;
+    TransportResult<> sendMessage(QunetMessage data, bool reliable) override;
     TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) override;
     TransportResult<bool> processIncomingData() override;
 

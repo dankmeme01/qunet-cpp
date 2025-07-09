@@ -19,7 +19,7 @@ public:
     BaseTransport& operator=(BaseTransport&&) = default;
 
     virtual ~BaseTransport() = default;
-    virtual TransportResult<> sendMessage(QunetMessage message) = 0;
+    virtual TransportResult<> sendMessage(QunetMessage message, bool reliable) = 0;
 
     /// Sends the qunet hadnshake to the server and waits for a response.
     /// The default implementation should only be used in reliable and ordered transports,

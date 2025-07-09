@@ -61,8 +61,8 @@ bool Socket::isClosed() const {
     return m_transport->isClosed();
 }
 
-TransportResult<> Socket::sendMessage(const QunetMessage& message) {
-    return m_transport->sendMessage(message);
+TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable) {
+    return m_transport->sendMessage(std::move(message), reliable);
 }
 
 TransportResult<QunetMessage> Socket::receiveMessage(const std::optional<Duration>& timeout) {

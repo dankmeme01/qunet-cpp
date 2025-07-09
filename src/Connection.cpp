@@ -304,7 +304,7 @@ Connection::Connection() {
                         auto msg = std::move(chan->front());
                         chan->pop();
 
-                        auto res = m_socket->sendMessage(msg);
+                        auto res = m_socket->sendMessage(std::move(msg));
                         if (!res) {
                             auto err = res.unwrapErr();
                             this->onConnectionError(err);

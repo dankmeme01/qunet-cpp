@@ -168,7 +168,7 @@ geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decodeWithMeta(Qun
     return Err(MessageDecodeError::InvalidMessageType);
 }
 
-static geode::Result<QunetMessageMeta, MessageDecodeError> decodeMeta(ByteReader& reader) {
+geode::Result<QunetMessageMeta, MessageDecodeError> QunetMessage::decodeMeta(ByteReader& reader) {
     auto msgType = MAP_UNWRAP(reader.readU8());
 
     if ((msgType & MSG_DATA_MASK) == 0) {
@@ -229,6 +229,8 @@ static geode::Result<QunetMessageMeta, MessageDecodeError> decodeMeta(ByteReader
     }
 
     meta.data = reader.readToEnd();
+
+    return Ok(std::move(meta));
 }
 
 }
