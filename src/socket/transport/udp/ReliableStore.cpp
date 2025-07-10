@@ -67,6 +67,8 @@ TransportResult<> ReliableStore::storeRemoteOutOfOrder(QunetMessageMeta& meta) {
 void ReliableStore::pushRemoteUnacked() {
     uint16_t messageId = m_nextRemoteId++;
 
+    log::debug("ReliableStore: Got a remote message with ID {}", messageId);
+
     if (m_nextRemoteId == 0) {
         m_nextRemoteId = 1;
     }
@@ -152,6 +154,8 @@ void ReliableStore::setOutgoingAcks(ReliabilityHeader& header) {
         auto& msg = m_remoteUnacked.front();
         header.acks[i] = msg.messageId;
         header.ackCount++;
+        log::debug("ReliableStore: sending ACK for message {}", msg.messageId);
+
         m_remoteUnacked.pop();
     }
 }
