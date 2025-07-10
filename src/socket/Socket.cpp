@@ -3,6 +3,7 @@
 #include <qunet/socket/transport/TcpTransport.hpp>
 #include <qunet/socket/transport/QuicTransport.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
+#include <qunet/database/QunetDatabase.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Log.hpp>
 
@@ -38,9 +39,7 @@ TransportResult<Socket> Socket::connect(const TransportOptions& options) {
 
     if (msg.is<HandshakeFinishMessage>()) {
         auto& hf = msg.as<HandshakeFinishMessage>();
-        log::debug("Handshake finished, connection ID: {}, qdb size: {}", hf.connectionId, hf.qdbData ? hf.qdbData->uncompressedSize : 0);
-
-        socket.m_transport->setConnectionId(hf.connectionId);
+        GEODE_UNWRAP(socket.onHandshakeSuccess(hf));
     } else if (msg.is<HandshakeFailureMessage>()) {
         auto& hf = msg.as<HandshakeFailureMessage>();
         log::warn("Handshake failed: {}", hf.message());
@@ -53,6 +52,34 @@ TransportResult<Socket> Socket::connect(const TransportOptions& options) {
     return Ok(std::move(socket));
 }
 
+TransportResult<> Socket::onHandshakeSuccess(const HandshakeFinishMessage& msg) {
+    log::debug("Handshake finished, connection ID: {}, qdb size: {}", msg.connectionId, msg.qdbData ? msg.qdbData->uncompressedSize : 0);
+    m_transport->setConnectionId(msg.connectionId);
+
+    if (msg.qdbData) {
+        // qdb data is also zstd compressed, decompress it first
+        ZstdDecompressor dec;
+        dec.init().unwrap();
+
+        size_t realSize = msg.qdbData->uncompressedSize;
+        std::vector<uint8_t> qdbData(realSize);
+
+        GEODE_UNWRAP(dec.decompress(msg.qdbData->chunkData.data(), msg.qdbData->chunkData.size(), qdbData.data(), realSize));
+        qdbData.resize(realSize);
+
+        auto qdb = GEODE_UNWRAP(QunetDatabase::decode(qdbData).mapErr([&](const DatabaseDecodeError& err) {
+            log::warn("Failed to decode Qunet database: {}", err.message());
+            return TransportError::InvalidQunetDatabase;
+        }));
+
+        GEODE_UNWRAP(m_transport->initCompressors(&qdb));
+    } else {
+        GEODE_UNWRAP(m_transport->initCompressors());
+    }
+
+    return Ok();
+}
+
 TransportResult<> Socket::close() {
     return m_transport->close();
 }
@@ -62,6 +89,8 @@ bool Socket::isClosed() const {
 }
 
 TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable) {
+    log::debug("Socket: sending message: {}", message.typeStr());
+
     // determine if the message needs to be compressed
     if (message.is<DataMessage>()) {
         auto& msg = message.as<DataMessage>();
@@ -112,6 +141,8 @@ CompressorResult<> Socket::doCompressZstd(DataMessage& message) const {
         .type = CompressionType::Zstd,
         .uncompressedSize = uncSize
     };
+
+    log::debug("Zstd compressed outgoing message: {} -> {} bytes", uncSize, outSize);
 
     return Ok();
 }

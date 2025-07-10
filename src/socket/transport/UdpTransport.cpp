@@ -199,14 +199,19 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
     size_t relHdrSize = 0;
     size_t compHdrSize = msg.compHeader.has_value() ? 4 : 0;
 
+    // always try to ack some messages, even if this isn't a reliable message
+    ReliabilityHeader relHdr{};
+    relHdr.messageId = 0;
+    m_relStore.setOutgoingAcks(relHdr);
+
     if (reliable) {
-        ReliabilityHeader hdr;
-        hdr.messageId = m_relStore.nextMessageId();
-        m_relStore.setOutgoingAcks(hdr);
+        relHdr.messageId = m_relStore.nextMessageId();
+    }
 
-        relHdrSize = 4 + hdr.ackCount * 2; // 2 for message ID + 2 for ack count, 2 for each ACK
-
-        msg.relHeader = hdr;
+    // only assign the reliability header if this is a reliable message or if there's any acks
+    if (relHdr.messageId != 0 || relHdr.ackCount > 0) {
+        relHdrSize = 4 + relHdr.ackCount * 2; // 2 for message ID + 2 for ack count, 2 for each ACK
+        msg.relHeader = std::move(relHdr);
     } else {
         msg.relHeader.reset();
     }

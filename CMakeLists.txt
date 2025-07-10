@@ -34,7 +34,9 @@ CPMAddPackage(
             "CARES_BUILD_TOOLS OFF"
 )
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
+
 # pain and suffering
+
 CPMAddPackage("gh:facebook/zstd#v1.5.7")
 set(ZSTD_BUILD_SHARED OFF)
 set(ZSTD_BUILD_STATIC ON)
@@ -44,13 +46,16 @@ set(ZSTD_BUILD_CONTRIB OFF)
 set(ZSTD_MULTITHREAD_SUPPORT OFF)
 set(ZSTD_LEGACY_SUPPORT OFF)
 add_subdirectory(${zstd_SOURCE_DIR}/build/cmake zstd)
+
 CPMAddPackage("gh:lz4/lz4#v1.10.0")
 set(LZ4_BUILD_CLI OFF)
 add_subdirectory(${lz4_SOURCE_DIR}/build/cmake lz4)
 
-target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
+CPMAddPackage("gh:BLAKE3-team/BLAKE3#1.8.2")
+add_subdirectory(${BLAKE3_SOURCE_DIR}/c blake3)
 
-target_link_libraries(qunet PRIVATE c-ares libzstd_static lz4_static)
+target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
+target_link_libraries(qunet PRIVATE c-ares libzstd_static lz4_static blake3)
 target_link_libraries(qunet PUBLIC qsox asp fmt)
 
 if (QUNET_QUIC_SUPPORT)

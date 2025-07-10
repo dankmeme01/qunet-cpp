@@ -13,6 +13,19 @@ void BaseTransport::setMessageSizeLimit(size_t limit) {
     m_messageSizeLimit = limit;
 }
 
+TransportResult<> BaseTransport::initCompressors(const QunetDatabase* qdb) {
+    if (qdb && qdb->zstdDict) {
+        auto& dict = *qdb->zstdDict;
+        GEODE_UNWRAP(m_zstdCompressor.initWithDictionary(dict.data(), dict.size(), qdb->zstdLevel));
+        GEODE_UNWRAP(m_zstdDecompressor.initWithDictionary(dict.data(), dict.size()));
+    } else {
+        GEODE_UNWRAP(m_zstdCompressor.init(MSG_ZSTD_COMPRESSION_LEVEL));
+        GEODE_UNWRAP(m_zstdDecompressor.init());
+    }
+
+    return Ok();
+}
+
 TransportResult<QunetMessage> BaseTransport::performHandshake(
     HandshakeStartMessage handshakeStart,
     const std::optional<asp::time::Duration>& timeout

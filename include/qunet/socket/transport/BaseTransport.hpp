@@ -4,6 +4,7 @@
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/compression/ZstdDecompressor.hpp>
 #include <qunet/compression/ZstdCompressor.hpp>
+#include <qunet/database/QunetDatabase.hpp>
 
 #include <qsox/Error.hpp>
 #include <asp/time/Duration.hpp>
@@ -51,6 +52,10 @@ public:
 
     virtual void setConnectionId(uint64_t connectionId);
     virtual void setMessageSizeLimit(size_t limit);
+
+    /// Initializes compressors and decompressors with the given QunetDatabase.
+    /// It can be null.
+    virtual TransportResult<> initCompressors(const QunetDatabase* qdb = nullptr);
 
     // Semi-public version of pushPreFinalDataMessage.
     // Do not use this outside of the transport implementation.

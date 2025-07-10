@@ -57,6 +57,8 @@ private:
 
     static TransportResult<std::shared_ptr<BaseTransport>> createTransport(const TransportOptions& options);
 
+    TransportResult<> onHandshakeSuccess(const HandshakeFinishMessage& msg);
+
     CompressionType shouldCompress(size_t size) const;
     CompressorResult<> doCompressZstd(DataMessage& message) const;
     CompressorResult<> doCompressLz4(DataMessage& message) const;

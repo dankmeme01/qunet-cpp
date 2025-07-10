@@ -108,6 +108,11 @@ MessageEncodeResult QunetMessage::encodeDataHeader(HeapByteWriter& writer, uint6
             writer.writeU32(msg.compHeader->uncompressedSize);
         }
 
+        // write connection ID
+        if (connectionId != 0) {
+            writer.writeU64(connectionId);
+        }
+
         // write reliability header
         if (msg.relHeader.has_value()) {
             auto& relHdr = msg.relHeader.value();
@@ -117,6 +122,11 @@ MessageEncodeResult QunetMessage::encodeDataHeader(HeapByteWriter& writer, uint6
             for (size_t i = 0; i < relHdr.ackCount && i < 8; i++) {
                 writer.writeU16(relHdr.acks[i]);
             }
+        }
+    } else {
+        // write connection ID
+        if (connectionId != 0) {
+            writer.writeU64(connectionId);
         }
     }
 

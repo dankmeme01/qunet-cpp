@@ -26,6 +26,7 @@ struct TransportError {
         CongestionLimited,
         DefragmentationError,
         TooUnreliable,
+        InvalidQunetDatabase,
         TimedOut,
         Closed,
         Other,

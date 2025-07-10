@@ -17,10 +17,13 @@ std::string_view TransportError::CustomKind::message() const {
         case CongestionLimited: return "Congestion limited, cannot send data right now";
         case DefragmentationError: return "Defragmentation error, message could not be reassembled";
         case TooUnreliable: return "Transport is too unreliable, too many lost messages";
+        case InvalidQunetDatabase: return "Invalid Qunet database, cannot decode";
         case TimedOut: return "Operation timed out";
         case Closed: return "Operation cannot be performed because the connection is already closed";
         case Other: return "Unknown transport error";
     }
+
+    qn::unreachable();
 }
 
 std::string TransportError::message() const {
