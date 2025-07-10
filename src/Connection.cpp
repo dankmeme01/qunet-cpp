@@ -265,7 +265,7 @@ Connection::Connection() {
             } break;
 
             case ConnectionState::Connected: {
-                bool disconnect = false, messages = false, qsocket = false;
+                bool disconnect = false, messages = false, qsocket = false, timerExpired = false;
 
                 if (m_msgChannel.lock()->size() > 0) {
                     messages = true;
@@ -275,14 +275,25 @@ Connection::Connection() {
                     qsocket = true;
                 }
 
-                bool shouldPoll = !disconnect && !messages && !qsocket;
+                auto untilExpiry = m_socket->untilTimerExpiry();
+                if (untilExpiry.isZero()) {
+                    timerExpired = true;
+                }
+
+                bool shouldPoll = !disconnect && !messages && !qsocket && !timerExpired;
 
                 if (shouldPoll) {
-                    auto result = m_poller.poll(Duration::fromSecs(1));
+                    auto pollTime = std::min(untilExpiry, Duration::fromSecs(1));
+
+                    auto result = m_poller.poll(pollTime);
 
                     if (!result) {
-                        // timed out
-                        return;
+                        if (m_socket->untilTimerExpiry().isZero()) {
+                            timerExpired = true;
+                        } else {
+                            // timed out
+                            return;
+                        }
                     }
 
                     disconnect = result->isPipe(m_disconnectPipe);
@@ -297,21 +308,18 @@ Connection::Connection() {
                 // check which events are ready
                 if (disconnect) {
                     m_connState = ConnectionState::Closing;
-                } else if (messages) {
-                    auto chan = m_msgChannel.lock();
+                    return;
+                }
 
-                    while (!chan->empty()) {
-                        auto msg = std::move(chan->front());
-                        chan->pop();
-
-                        auto res = m_socket->sendMessage(std::move(msg));
-                        if (!res) {
-                            auto err = res.unwrapErr();
-                            this->onConnectionError(err);
-                            continue;
-                        }
+                if (timerExpired) {
+                    auto res = m_socket->handleTimerExpiry();
+                    if (!res) {
+                        this->onConnectionError(res.unwrapErr());
+                        return;
                     }
-                } else if (qsocket) {
+                }
+
+                if (qsocket) {
                     // always process data!
                     auto res = m_socket->processIncomingData();
                     if (!res) {
@@ -335,6 +343,22 @@ Connection::Connection() {
 
                         // check if another message is available
                         avail = m_socket->messageAvailable();
+                    }
+                }
+
+                if (messages) {
+                    auto chan = m_msgChannel.lock();
+
+                    while (!chan->empty()) {
+                        auto msg = std::move(chan->front());
+                        chan->pop();
+
+                        auto res = m_socket->sendMessage(std::move(msg));
+                        if (!res) {
+                            auto err = res.unwrapErr();
+                            this->onConnectionError(err);
+                            continue;
+                        }
                     }
                 }
             } break;

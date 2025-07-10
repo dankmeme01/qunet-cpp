@@ -181,6 +181,14 @@ bool Socket::messageAvailable() {
     return m_transport->messageAvailable();
 }
 
+Duration Socket::untilTimerExpiry() const {
+    return m_transport->untilTimerExpiry();
+}
+
+TransportResult<> Socket::handleTimerExpiry() {
+    return m_transport->handleTimerExpiry();
+}
+
 TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const TransportOptions& options) {
     switch (options.type) {
         case ConnectionType::Udp: {

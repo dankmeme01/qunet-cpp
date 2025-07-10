@@ -41,6 +41,11 @@ public:
     /// Returns whether there is a message available to be read from the transport.
     virtual bool messageAvailable();
 
+    /// Returns how much time is left until the transport timer expires.
+    virtual asp::time::Duration untilTimerExpiry() const;
+    /// Handles the timer expiry. This may send various messages to the remote.
+    virtual TransportResult<> handleTimerExpiry();
+
     /// Receives a message from the transport. If no message is available, this will block until a message is received or an error occurs.
     virtual TransportResult<QunetMessage> receiveMessage();
 
@@ -56,6 +61,9 @@ public:
     /// Initializes compressors and decompressors with the given QunetDatabase.
     /// It can be null.
     virtual TransportResult<> initCompressors(const QunetDatabase* qdb = nullptr);
+
+    /// Returns the average latency (round-trip time) of the transport.
+    virtual asp::time::Duration getLatency() const;
 
     // Semi-public version of pushPreFinalDataMessage.
     // Do not use this outside of the transport implementation.
@@ -74,10 +82,17 @@ protected:
     ZstdCompressor m_zstdCompressor;
     ZstdDecompressor m_zstdDecompressor;
 
+    uint64_t m_lastRttMicros = 0;
+
     // Called when a data message is almost completely ready to be dispatched.
     // Fragmentation and reliability headers are ignored, they must be processed beforehand.
     // This function will take care of decompression if needed.
     TransportResult<> pushPreFinalDataMessage(QunetMessageMeta&& meta);
+
+    /// Call this function with the round-trip time of the latest exchange with the server.
+    /// This is used to calculate the average latency, which in turn can be used for other purposes,
+    /// for example calculating retransmission timeouts.
+    void updateLatency(asp::time::Duration rtt);
 };
 
 }

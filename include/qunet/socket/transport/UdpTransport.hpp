@@ -26,6 +26,9 @@ public:
     TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) override;
     TransportResult<bool> processIncomingData() override;
 
+    asp::time::Duration untilTimerExpiry() const override;
+    TransportResult<> handleTimerExpiry() override;
+
 private:
     friend class MultiPoller;
 
@@ -36,6 +39,10 @@ private:
     bool m_closed = false;
 
     UdpTransport(qsox::UdpSocket socket, size_t mtu);
+
+    // Performs fragmentation (if needed) and sends the message.
+    // Reliability and compression headers should already be set in the message, if they are needed.
+    TransportResult<> doSendUnfragmentedData(QunetMessage& message, bool retransmission = false);
 };
 
 }

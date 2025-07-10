@@ -181,10 +181,9 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 }
 
 TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
-    HeapByteWriter writer;
-
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
+        HeapByteWriter writer;
         GEODE_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
         auto data = writer.written();
         auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
@@ -195,9 +194,6 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
     // data messages are more interesting
 
     auto& msg = message.as<DataMessage>();
-
-    size_t relHdrSize = 0;
-    size_t compHdrSize = msg.compHeader.has_value() ? 4 : 0;
 
     // always try to ack some messages, even if this isn't a reliable message
     ReliabilityHeader relHdr{};
@@ -210,11 +206,22 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
 
     // only assign the reliability header if this is a reliable message or if there's any acks
     if (relHdr.messageId != 0 || relHdr.ackCount > 0) {
-        relHdrSize = 4 + relHdr.ackCount * 2; // 2 for message ID + 2 for ack count, 2 for each ACK
         msg.relHeader = std::move(relHdr);
     } else {
         msg.relHeader.reset();
     }
+
+    return this->doSendUnfragmentedData(message, false);
+}
+
+TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bool retransmission) {
+    auto& msg = message.as<DataMessage>();
+    HeapByteWriter writer;
+
+    bool isReliable = msg.relHeader.has_value() && msg.relHeader->messageId != 0 && !retransmission;
+
+    size_t relHdrSize = msg.relHeader.has_value() ? 4 + msg.relHeader->ackCount * 2 : 0; // 2 for message ID + 2 for ack count, 2 for each ACK
+    size_t compHdrSize = msg.compHeader.has_value() ? 4 : 0;
 
     size_t unfragTotalSize = relHdrSize + compHdrSize + msg.data.size();
 
@@ -227,7 +234,7 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         auto data = writer.written();
         auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
 
-        if (reliable) {
+        if (isReliable) {
             m_relStore.pushLocalUnacked(std::move(message));
         }
 
@@ -274,7 +281,7 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
     }
 
-    if (reliable) {
+    if (isReliable) {
         m_relStore.pushLocalUnacked(std::move(message));
     }
 
@@ -348,6 +355,41 @@ TransportResult<bool> UdpTransport::processIncomingData() {
     }
 
     return Ok(true);
+}
+
+Duration UdpTransport::untilTimerExpiry() const {
+    auto relExpiry = m_relStore.untilTimerExpiry();
+
+    // TODO later add keepalives
+
+    return relExpiry;
+}
+
+TransportResult<> UdpTransport::handleTimerExpiry() {
+    while (auto msg = m_relStore.maybeRetransmit()) {
+        // if we have a message to retransmit, send it
+        GEODE_UNWRAP(this->doSendUnfragmentedData(*msg, true));
+    }
+
+    // if we have not sent any data messages recently that we could tag acks onto,
+    // we might need to send an explicit ack message with no data.
+    if (m_relStore.hasUrgentOutgoingAcks()) {
+        ReliabilityHeader relHdr{};
+        relHdr.messageId = 0;
+        m_relStore.setOutgoingAcks(relHdr);
+
+        QN_DEBUG_ASSERT(relHdr.ackCount > 0);
+
+        QunetMessage msg{DataMessage {
+            .data = {},
+            .compHeader = std::nullopt,
+            .relHeader = std::move(relHdr),
+        }};
+
+        GEODE_UNWRAP(this->doSendUnfragmentedData(msg, false));
+    }
+
+    return Ok();
 }
 
 }

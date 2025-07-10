@@ -1,5 +1,6 @@
 #include <qunet/socket/transport/udp/ReliableStore.hpp>
 #include <qunet/util/assert.hpp>
+#include <qunet/util/algo.hpp>
 #include <qunet/Log.hpp>
 
 using namespace asp::time;
@@ -34,8 +35,10 @@ TransportResult<bool> ReliableStore::handleIncoming(QunetMessageMeta& message) {
     bool isOutOfOrder = !isDuplicate && rlh.messageId != m_nextRemoteId;
 
     if (isDuplicate) {
-        // likely a duplicate message, we can safely ignore it
-        log::debug("ReliableStore: Ignoring duplicate message with ID {}", rlh.messageId);
+        // likely a duplicate message, our ACK might have been lost and we need to resend it
+        log::debug("ReliableStore: Duplicate message: expected {} but got {}, will re-ACK it", m_nextRemoteId, rlh.messageId);
+        this->pushRemoteDuplicate(rlh.messageId);
+        this->recalculateTimerExpiry();
         return Ok(false);
     } else if (isOutOfOrder) {
         // out of order message, we need to store it for later processing
@@ -46,6 +49,7 @@ TransportResult<bool> ReliableStore::handleIncoming(QunetMessageMeta& message) {
 
     // otherwise, everything is fine and in order
     this->pushRemoteUnacked();
+    this->recalculateTimerExpiry();
 
     return Ok(true);
 }
@@ -65,12 +69,29 @@ TransportResult<> ReliableStore::storeRemoteOutOfOrder(QunetMessageMeta& meta) {
 
 // pushes a new unacked remote message with the next message ID
 void ReliableStore::pushRemoteUnacked() {
-    uint16_t messageId = m_nextRemoteId++;
-
-    log::debug("ReliableStore: Got a remote message with ID {}", messageId);
+    uint16_t id = m_nextRemoteId++;
 
     if (m_nextRemoteId == 0) {
         m_nextRemoteId = 1;
+    }
+
+    log::debug("ReliableStore: Got a remote message with ID {}", id);
+
+    return this->pushRemoteUnackedWithId(id, false);
+}
+
+void ReliableStore::pushRemoteDuplicate(uint16_t messageId) {
+    return this->pushRemoteUnackedWithId(messageId, true);
+}
+
+void ReliableStore::pushRemoteUnackedWithId(uint16_t messageId, bool dupe) {
+    // if this is a duplicate message, check if it's already in the unacked queue
+    if (dupe) {
+        for (auto& msg : m_remoteUnacked) {
+            if (msg.messageId == messageId) {
+                return;
+            }
+        }
     }
 
     UnackedRemoteMessage msg {
@@ -78,7 +99,7 @@ void ReliableStore::pushRemoteUnacked() {
         .receivedAt = Instant::now(),
     };
 
-    m_remoteUnacked.push(std::move(msg));
+    m_remoteUnacked.push_back(std::move(msg));
 
     // maybe restore some out of order messages if it's the right time
     this->maybeRestoreRemote();
@@ -125,7 +146,13 @@ void ReliableStore::ackLocal(uint16_t messageId) {
     // find the message in the local unacked queue
     for (auto it = m_localUnacked.begin(); it != m_localUnacked.end(); it++) {
         if (it->messageId == messageId) {
+            // update average rtt
+            this->updateRtt(it->sentAt.elapsed());
+
             m_localUnacked.erase(it);
+
+            // recalculate timer expiry
+            this->recalculateTimerExpiry();
             return;
         }
     }
@@ -148,6 +175,11 @@ void ReliableStore::setOutgoingAcks(ReliabilityHeader& header) {
 
     for (size_t i = 0; i < 8; i++) {
         if (m_remoteUnacked.empty()) {
+            // only recalculate if any were popped
+            if (i > 0) {
+                this->recalculateTimerExpiry();
+            }
+
             return;
         }
 
@@ -156,11 +188,11 @@ void ReliableStore::setOutgoingAcks(ReliabilityHeader& header) {
         header.ackCount++;
         log::debug("ReliableStore: sending ACK for message {}", msg.messageId);
 
-        m_remoteUnacked.pop();
+        m_remoteUnacked.pop_front();
     }
 }
 
-void ReliableStore::pushLocalUnacked(QunetMessage msg) {
+void ReliableStore::pushLocalUnacked(QunetMessage&& msg) {
     QN_DEBUG_ASSERT(msg.is<DataMessage>());
     QN_DEBUG_ASSERT(msg.as<DataMessage>().relHeader.has_value());
 
@@ -178,6 +210,84 @@ void ReliableStore::pushLocalUnacked(QunetMessage msg) {
         .msg = std::move(msg),
         .sentAt = Instant::now(),
     });
+
+    this->recalculateTimerExpiry();
+}
+
+Duration ReliableStore::untilTimerExpiry() const {
+    return m_timerExpiry;
+}
+
+void ReliableStore::updateRtt(asp::time::Duration rtt) {
+    m_avgRttMicros = exponentialMovingAverage<uint64_t>(m_avgRttMicros, rtt.micros(), 0.35);
+}
+
+QunetMessage* ReliableStore::maybeRetransmit() {
+    auto retransDelay = this->calcRetransmissionDeadline();
+
+    for (auto& msg : m_localUnacked) {
+        if (msg.sentAt.elapsed() >= retransDelay) {
+            log::debug("ReliableStore: retransmitting local message with ID {}", msg.messageId);
+            msg.sentAt = Instant::now();
+            this->recalculateTimerExpiry();
+            return &msg.msg;
+        }
+    }
+
+    return nullptr;
+}
+
+bool ReliableStore::hasUrgentOutgoingAcks() {
+    auto ackDelay = this->calcAckDeadline();
+
+    for (auto& msg : m_remoteUnacked) {
+        if (msg.receivedAt.elapsed() >= ackDelay) {
+            log::debug("ReliableStore: urgent outgoing ACK for message ID {}", msg.messageId);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void ReliableStore::recalculateTimerExpiry() {
+    // timer here is used for 2 purposes:
+    // 1. retransitting unacked local messages
+    // 2. sending ACKs for unacked remote messages
+
+    // go through all messages and set the timer expiry to the smallest deadline
+
+    m_timerExpiry = Duration::infinite();
+
+    auto retransDelay = this->calcRetransmissionDeadline();
+    auto ackDelay = this->calcAckDeadline();
+
+    for (auto& msg : m_localUnacked) {
+        auto dur = retransDelay - msg.sentAt.elapsed();
+        m_timerExpiry = std::min(m_timerExpiry, dur);
+    }
+
+    for (auto& msg : m_remoteUnacked) {
+        auto dur = ackDelay - msg.receivedAt.elapsed();
+        m_timerExpiry = std::min(m_timerExpiry, dur);
+    }
+}
+
+Duration ReliableStore::calcRetransmissionDeadline() const {
+    auto rtt = Duration::fromMicros(m_avgRttMicros);
+
+    if (rtt.isZero()) {
+        rtt = Duration::fromMillis(250);
+    }
+
+    auto ackdl = this->calcAckDeadline();
+
+    // this is kinda arbitrary tbh
+    return Duration::fromMicros(static_cast<double>((rtt + ackdl).micros()) * 2.25);
+}
+
+Duration ReliableStore::calcAckDeadline() const {
+    return Duration::fromMillis(125);
 }
 
 }

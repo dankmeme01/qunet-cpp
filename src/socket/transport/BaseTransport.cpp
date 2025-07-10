@@ -1,4 +1,5 @@
 #include <qunet/socket/transport/BaseTransport.hpp>
+#include <qunet/util/algo.hpp>
 #include <asp/time/Instant.hpp>
 
 using namespace asp::time;
@@ -72,6 +73,14 @@ bool BaseTransport::messageAvailable() {
     return !m_recvMsgQueue.empty();
 }
 
+Duration BaseTransport::untilTimerExpiry() const {
+    return Duration::infinite();
+}
+
+TransportResult<> BaseTransport::handleTimerExpiry() {
+    return Ok();
+}
+
 TransportResult<> BaseTransport::_pushPreFinalDataMessage(QunetMessageMeta&& meta) {
     return this->pushPreFinalDataMessage(std::move(meta));
 }
@@ -123,6 +132,14 @@ TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta
     });
 
     return Ok();
+}
+
+Duration BaseTransport::getLatency() const {
+    return Duration::fromMicros(m_lastRttMicros);
+}
+
+void BaseTransport::updateLatency(Duration rtt) {
+    m_lastRttMicros = exponentialMovingAverage<uint64_t>(m_lastRttMicros, rtt.micros(), 0.25);
 }
 
 }

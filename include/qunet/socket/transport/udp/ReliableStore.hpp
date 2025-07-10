@@ -29,7 +29,15 @@ public:
     void setOutgoingAcks(ReliabilityHeader& header);
 
     /// Stores a local message for potential retransmission. It must be a reliable data message.
-    void pushLocalUnacked(QunetMessage msg);
+    void pushLocalUnacked(QunetMessage&& msg);
+
+    asp::time::Duration untilTimerExpiry() const;
+
+    /// Checks if any messages need to be retransmitted. Returns null if none.
+    QunetMessage* maybeRetransmit();
+
+    /// Returns whether there are any unacked remote messages that must be acknowledged as soon as possible.
+    bool hasUrgentOutgoingAcks();
 
 private:
     struct UnackedRemoteMessage {
@@ -48,20 +56,31 @@ private:
         asp::time::Instant receivedAt;
     };
 
-    std::queue<UnackedRemoteMessage> m_remoteUnacked;
+    std::deque<UnackedRemoteMessage> m_remoteUnacked;
     std::vector<StoredOutOfOrderMessage> m_remoteOutOfOrder;
     std::queue<QunetMessageMeta> m_remoteDelayedQueue;
     uint16_t m_nextRemoteId = 1;
 
     uint16_t m_nextLocalId = 1;
     std::deque<UnackedLocalMessage> m_localUnacked;
+    asp::time::Duration m_timerExpiry = asp::time::Duration::infinite();
+
+    uint64_t m_avgRttMicros = 0;
 
     void processAcks(const ReliabilityHeader& header);
     void ackLocal(uint16_t messageId);
     TransportResult<void> storeRemoteOutOfOrder(QunetMessageMeta& meta);
     void pushRemoteUnacked();
+    void pushRemoteDuplicate(uint16_t messageId);
+    void pushRemoteUnackedWithId(uint16_t messageId, bool dupe = false);
 
     void maybeRestoreRemote();
+
+    void updateRtt(asp::time::Duration rtt);
+    void recalculateTimerExpiry();
+    asp::time::Duration calcRetransmissionDeadline() const;
+    asp::time::Duration calcAckDeadline() const;
+
 };
 
 }
