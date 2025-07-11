@@ -189,7 +189,7 @@ std::string_view QunetMessage::typeStr() const {
 geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decodeWithMeta(QunetMessageMeta&& meta) {
     auto msgType = meta.type;
 
-    if (msgType == MSG_DATA) {
+    if (msgType & MSG_DATA_MASK) {
         QN_DEBUG_ASSERT(false && "QunetMessage::decodeWithMeta does not handle data messages");
         return Err(MessageDecodeError::InvalidMessageType);
     }

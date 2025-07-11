@@ -27,6 +27,7 @@ private:
     };
 
     struct Message {
+        uint16_t messageId;
         asp::time::Instant receivedAt;
         size_t totalFragmentCount = -1; // -1 means unknown
         std::vector<Fragment> fragments;

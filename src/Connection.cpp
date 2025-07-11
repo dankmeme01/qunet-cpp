@@ -294,11 +294,11 @@ Connection::Connection() {
                             // timed out
                             return;
                         }
+                    } else {
+                        disconnect = result->isPipe(m_disconnectPipe);
+                        messages = result->isPipe(m_msgPipe);
+                        qsocket = result->isQSocket(*m_socket);
                     }
-
-                    disconnect = result->isPipe(m_disconnectPipe);
-                    messages = result->isPipe(m_msgPipe);
-                    qsocket = result->isQSocket(*m_socket);
 
                     if (messages) m_msgPipe.consume();
                     if (disconnect) m_disconnectPipe.consume();
@@ -365,6 +365,9 @@ Connection::Connection() {
 
             case ConnectionState::Closing: {
                 auto _lock = m_internalMutex.lock();
+
+                // TODO
+                // m_socket->sendMessage(ClientCloseMessage{});
 
                 auto res = m_socket->close();
 
@@ -874,7 +877,9 @@ ConnectionResult<> Connection::connectIp(const qsox::SocketAddress& address, Con
 }
 
 void Connection::sendKeepalive() {
-    return this->doSend(KeepaliveMessage{});
+    return this->doSend(KeepaliveMessage{
+        .timestamp = SystemTime::now().timeSinceEpoch().micros(),
+    });
 }
 
 void Connection::sendData(std::vector<uint8_t> data) {

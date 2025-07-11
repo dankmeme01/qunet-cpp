@@ -192,7 +192,7 @@ TransportResult<> Socket::handleTimerExpiry() {
 TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const TransportOptions& options) {
     switch (options.type) {
         case ConnectionType::Udp: {
-            auto transport = GEODE_UNWRAP(UdpTransport::connect(options.address));
+            auto transport = GEODE_UNWRAP(UdpTransport::connect(options.address, options.debugOptions));
             auto ptr = std::make_shared<UdpTransport>(std::move(transport));
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;

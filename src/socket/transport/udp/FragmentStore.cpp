@@ -17,7 +17,19 @@ TransportResult<std::optional<QunetMessageMeta>> FragmentStore::processFragment(
     QN_ASSERT(message.fragmentationHeader.has_value());
     auto& frh = *message.fragmentationHeader;
 
+    log::debug("Incoming fragment: ID = {}, index = {}, last = {}",
+        frh.messageId,
+        frh.fragmentIndex,
+        frh.lastFragment
+    );
+
     auto& fmsg = m_messages[frh.messageId];
+
+    // if it's the first fragment, set some values
+    if (fmsg.fragments.empty()) {
+        fmsg.receivedAt = Instant::now();
+        fmsg.messageId = frh.messageId;
+    }
 
     // check if it's a duplicate
     auto it = std::find_if(fmsg.fragments.begin(), fmsg.fragments.end(), [&](const Fragment& f) {
@@ -34,12 +46,10 @@ TransportResult<std::optional<QunetMessageMeta>> FragmentStore::processFragment(
         fmsg.totalFragmentCount = frh.fragmentIndex + 1;
     }
 
-    Fragment fragment {
+    fmsg.fragments.push_back(Fragment {
         .index = frh.fragmentIndex,
         .data = std::move(message.data),
-    };
-
-    fmsg.fragments.push_back(std::move(fragment));
+    });
 
     // if some headers are present, store them
     if (message.compressionHeader.has_value()) {
@@ -60,7 +70,7 @@ TransportResult<std::optional<QunetMessageMeta>> FragmentStore::processFragment(
 }
 
 TransportResult<std::optional<QunetMessageMeta>> FragmentStore::processStored() {
-    constexpr static Duration EXPIRY = Duration::fromSecs(5);
+    constexpr static Duration EXPIRY = Duration::fromSecs(10);
 
     for (auto it = m_messages.begin(); it != m_messages.end();) {
         auto& msg = it->second;
@@ -117,6 +127,12 @@ TransportResult<std::optional<QunetMessageMeta>> FragmentStore::reassemble(Messa
     }
 
     QN_ASSERT(curdata == out.data.data() + out.data.size());
+
+    log::debug("Successfully reassembled message {} (fragments: {}, total size: {})",
+        msg.messageId,
+        msg.fragments.size(),
+        out.data.size()
+    );
 
     return Ok(std::move(out));
 }

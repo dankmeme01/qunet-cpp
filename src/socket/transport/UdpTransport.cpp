@@ -2,6 +2,8 @@
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/socket/message/meta.hpp>
+#include <qunet/Connection.hpp>
+#include <qunet/util/rng.hpp>
 #include <qunet/Log.hpp>
 
 #include <asp/time/Instant.hpp>
@@ -15,15 +17,22 @@ using namespace asp::time;
 
 namespace qn {
 
-UdpTransport::UdpTransport(qsox::UdpSocket socket, size_t mtu) : m_socket(std::move(socket)), m_mtu(mtu) {}
+UdpTransport::UdpTransport(qsox::UdpSocket socket, size_t mtu, float lossSim) : m_socket(std::move(socket)), m_mtu(mtu), m_lossSim(lossSim) {}
 
 UdpTransport::~UdpTransport() {}
 
-NetResult<UdpTransport> UdpTransport::connect(const SocketAddress& address) {
+NetResult<UdpTransport> UdpTransport::connect(
+    const SocketAddress& address,
+    const struct ConnectionDebugOptions* debugOptions
+) {
     auto socket = GEODE_UNWRAP(UdpSocket::bindAny(address.isV6()));
     GEODE_UNWRAP(socket.connect(address));
 
-    return Ok(UdpTransport(std::move(socket), UDP_PACKET_LIMIT));
+    return Ok(UdpTransport(
+        std::move(socket),
+        UDP_PACKET_LIMIT,
+        debugOptions ? debugOptions->packetLossSimulation : 0.0f
+    ));
 }
 
 TransportResult<> UdpTransport::close()  {
@@ -183,6 +192,10 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
+        if (this->shouldLosePacket()) {
+            return Ok();
+        }
+
         HeapByteWriter writer;
         GEODE_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
         auto data = writer.written();
@@ -226,13 +239,17 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
     size_t unfragTotalSize = relHdrSize + compHdrSize + msg.data.size();
 
     if (unfragTotalSize <= m_mtu) {
+
         // no fragmentation :)
         message.encodeDataHeader(writer, m_connectionId, false).unwrap();
 
         writer.writeBytes(msg.data);
 
         auto data = writer.written();
-        auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+
+        if (!this->shouldLosePacket()) {
+            auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+        }
 
         if (isReliable) {
             m_relStore.pushLocalUnacked(std::move(message));
@@ -260,6 +277,8 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
     while (offset < msg.data.size()) {
         bool isFirst = (fragmentIndex == 0);
         size_t payloadSize = isFirst ? firstPayloadSize : restPayloadSize;
+        bool isLast = (offset + payloadSize >= msg.data.size());
+
         auto chunk = data.subspan(offset, std::min(payloadSize, data.size() - offset));
 
         HeapByteWriter fwriter;
@@ -268,17 +287,20 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
         message.encodeDataHeader(fwriter, m_connectionId, !isFirst).unwrap();
 
         // but always add the fragmentation header
-        uint8_t hdrbyte = fwriter.written()[0] & MSG_DATA_FRAGMENTATION_MASK;
+        uint8_t hdrbyte = fwriter.written()[0] | MSG_DATA_FRAGMENTATION_MASK;
         fwriter.performAt(0, [&](auto& writer) { writer.writeU8(hdrbyte); }).unwrap();
         fwriter.writeU16(fragMessageId);
-        fwriter.writeU16((uint16_t) (fragmentIndex | (isFirst ? 0 : MSG_DATA_LAST_FRAGMENT_MASK)));
+        fwriter.writeU16((uint16_t) (fragmentIndex | (isLast ? MSG_DATA_LAST_FRAGMENT_MASK : 0)));
         fwriter.writeBytes(chunk);
 
         offset += chunk.size();
         fragmentIndex++;
 
         auto data = fwriter.written();
-        auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+
+        if (!this->shouldLosePacket()) {
+            auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+        }
     }
 
     if (isReliable) {
@@ -390,6 +412,10 @@ TransportResult<> UdpTransport::handleTimerExpiry() {
     }
 
     return Ok();
+}
+
+bool UdpTransport::shouldLosePacket() {
+    return qn::randomChance(std::clamp(m_lossSim, 0.f, 1.f));
 }
 
 }

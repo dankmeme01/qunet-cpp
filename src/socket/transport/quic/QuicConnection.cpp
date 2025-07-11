@@ -2,6 +2,7 @@
 #include <qunet/Connection.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/util/Error.hpp>
+#include <qunet/util/rng.hpp>
 #include <qunet/Log.hpp>
 
 #include <ngtcp2/ngtcp2_crypto.h>
@@ -848,13 +849,8 @@ QuicConnectionStats QuicConnection::connStats() const {
 
 bool QuicConnection::shouldLosePacket() const {
     float sim = std::clamp(m_lossSimulation, 0.0f, 1.0f);
-    if (sim <= 0.0f) return false;
 
-    static thread_local std::mt19937 generator(std::random_device{}());
-    std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
-    float randomValue = distribution(generator);
-
-    if (randomValue < sim) {
+    if (qn::randomChance(sim)) {
         log::debug("QUIC: purposefully dropping packet due to loss simulation");
         return true;
     }

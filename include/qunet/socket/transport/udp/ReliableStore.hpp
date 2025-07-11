@@ -49,6 +49,7 @@ private:
         uint16_t messageId;
         QunetMessage msg;
         asp::time::Instant sentAt;
+        size_t retransmitAttempts = 0;
     };
 
     struct StoredOutOfOrderMessage {
@@ -63,7 +64,6 @@ private:
 
     uint16_t m_nextLocalId = 1;
     std::deque<UnackedLocalMessage> m_localUnacked;
-    asp::time::Duration m_timerExpiry = asp::time::Duration::infinite();
 
     uint64_t m_avgRttMicros = 0;
 
@@ -77,8 +77,7 @@ private:
     void maybeRestoreRemote();
 
     void updateRtt(asp::time::Duration rtt);
-    void recalculateTimerExpiry();
-    asp::time::Duration calcRetransmissionDeadline() const;
+    asp::time::Duration calcRetransmissionDeadline(size_t nthAttempt) const;
     asp::time::Duration calcAckDeadline() const;
 
 };

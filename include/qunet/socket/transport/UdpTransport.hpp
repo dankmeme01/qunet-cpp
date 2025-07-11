@@ -13,7 +13,10 @@ public:
     UdpTransport(UdpTransport&&) = default;
     UdpTransport& operator=(UdpTransport&&) = default;
 
-    static qsox::NetResult<UdpTransport> connect(const qsox::SocketAddress& address);
+    static qsox::NetResult<UdpTransport> connect(
+        const qsox::SocketAddress& address,
+        const struct ConnectionDebugOptions* debugOptions = nullptr
+    );
 
     TransportResult<QunetMessage> performHandshake(
         HandshakeStartMessage handshakeStart,
@@ -37,12 +40,15 @@ private:
     qsox::UdpSocket m_socket;
     size_t m_mtu;
     bool m_closed = false;
+    float m_lossSim = 0.f;
 
-    UdpTransport(qsox::UdpSocket socket, size_t mtu);
+    UdpTransport(qsox::UdpSocket socket, size_t mtu, float packetLossSimulation = 0.0f);
 
     // Performs fragmentation (if needed) and sends the message.
     // Reliability and compression headers should already be set in the message, if they are needed.
     TransportResult<> doSendUnfragmentedData(QunetMessage& message, bool retransmission = false);
+
+    bool shouldLosePacket();
 };
 
 }

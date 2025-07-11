@@ -15,6 +15,10 @@ using namespace asp::time;
 std::atomic_bool g_running = true;
 
 void signalHandler(int signal) {
+    if (g_running == false) {
+        std::exit(0);
+    }
+
     g_running = false;
 }
 
@@ -42,7 +46,7 @@ int main(int argc, const char** argv) {
     qn::Connection conn;
     conn.setTlsCertVerification(false);
     conn.setDebugOptions(ConnectionDebugOptions {
-        .packetLossSimulation = 0.0f,
+        .packetLossSimulation = 0.01f,
     });
 
     auto res = conn.connect(argv[1]);
@@ -67,10 +71,15 @@ int main(int argc, const char** argv) {
 
     while (g_running) {
         conn.sendKeepalive();
-        // std::vector megabyte(1024 * 1023, (uint8_t) 0x42); // 1 MB of data
-        std::vector megabyte(1024, (uint8_t) 0x42); // 1 MB of data
+        std::vector megabyte(1024 * 1023, (uint8_t) 0x42); // 1 MB of data
+        // std::vector megabyte(256, (uint8_t)0);
+        // fill with stuff
+        for (size_t i = 0, u = 0; i < megabyte.size(); i++, u++) {
+            megabyte[i] = u;
+        }
+
         conn.sendData(megabyte);
-        asp::time::sleep(asp::time::Duration::fromMillis(1000));
+        asp::time::sleep(asp::time::Duration::fromMillis(100000));
     }
 
     res = conn.disconnect();
