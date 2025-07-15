@@ -239,7 +239,6 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
     size_t unfragTotalSize = relHdrSize + compHdrSize + msg.data.size();
 
     if (unfragTotalSize <= m_mtu) {
-
         // no fragmentation :)
         message.encodeDataHeader(writer, m_connectionId, false).unwrap();
 

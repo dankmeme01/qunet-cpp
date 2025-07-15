@@ -23,28 +23,41 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
         preMessagePos = writer.position();
     }
 
-    GEODE_UNWRAP(message.encodeControlHeader(writer, 0));
+    auto prependLength = [&] {
+        if (!isHandshake) {
+            uint32_t messageSize = writer.position() - preMessagePos;
 
-    auto res = message.encode(writer);
-    if (!res) {
-        log::debug("Failed to encode message: {}", res.unwrapErr().message());
-        return Err(res.unwrapErr());
+            writer.performAt(preMessagePos - sizeof(uint32_t), [&](auto& writer) {
+                writer.writeU32(messageSize);
+            }).unwrap();
+        }
+    };
+
+    // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
+    if (!message.is<DataMessage>()) {
+        GEODE_UNWRAP(message.encodeControlMsg(writer, 0));
+
+        // write message length
+        prependLength();
+
+        auto data = writer.written();
+        return socket.sendAll(data.data(), data.size());
     }
 
-    // Write message length
-    uint32_t messageSize = writer.position() - preMessagePos;
+    auto& msg = message.as<DataMessage>();
 
-    if (!isHandshake) {
-        writer.performAt(preMessagePos - sizeof(uint32_t), [&](auto& writer) {
-            writer.writeU32(messageSize);
-        }).unwrap();
-    }
+    // unlike udp, we don't have fragmentation or reliability worries here, only compression
+    QN_DEBUG_ASSERT(!msg.relHeader && "message must not have reliability header for stream transports");
+
+    message.encodeDataHeader(writer, 0, false).unwrap();
+    writer.writeBytes(msg.data);
+
+    // write message length
+    prependLength();
 
     auto data = writer.written();
 
-    GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
-
-    return Ok();
+    return socket.sendAll(data.data(), data.size());
 }
 
 // The logic here is similar to the one in rust implementation

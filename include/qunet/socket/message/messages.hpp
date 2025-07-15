@@ -92,7 +92,7 @@ struct HandshakeFinishMessage {
         HandshakeFinishMessage out;
 
         out.connectionId = GEODE_UNWRAP(reader.readU64());
-        if (reader.readBool()) {
+        if (GEODE_UNWRAP(reader.readBool())) {
             out.qdbData = QdbData{};
             auto& qdb = out.qdbData.value();
 
