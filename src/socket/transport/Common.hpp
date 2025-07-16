@@ -41,7 +41,9 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
         prependLength();
 
         auto data = writer.written();
-        return socket.sendAll(data.data(), data.size());
+        GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
+
+        return Ok();
     }
 
     auto& msg = message.as<DataMessage>();
@@ -56,8 +58,9 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
     prependLength();
 
     auto data = writer.written();
+    GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
 
-    return socket.sendAll(data.data(), data.size());
+    return Ok();
 }
 
 // The logic here is similar to the one in rust implementation
