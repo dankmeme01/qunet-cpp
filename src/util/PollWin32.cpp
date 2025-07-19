@@ -95,6 +95,9 @@ void MultiPoller::addHandle(HandleMeta meta, qsox::SockFd fd, qsox::PollType int
         m_handles.push_back(ev);
     } else if (meta.type == HandleMeta::Type::Pipe) {
         m_handles.push_back((void*) fd);
+    } else if (meta.type == HandleMeta::Type::QSocket) {
+        // treat it like a pipe
+        m_handles.push_back((void*) fd);
     } else {
         QN_ASSERT(false && "Unknown handle type");
     }

@@ -113,6 +113,16 @@ if (QUNET_QUIC_SUPPORT)
         target_include_directories(ngtcp2_crypto_wolfssl_static PRIVATE ${WOLFSSL_INCLUDE_DIRS})
     endif()
 
+    if (MSVC)
+        target_compile_options(wolfssl PRIVATE /w)
+        target_compile_options(ngtcp2_static PRIVATE /w)
+        target_compile_options(ngtcp2_crypto_wolfssl_static PRIVATE /w)
+    else()
+        target_compile_options(wolfssl PRIVATE -w)
+        target_compile_options(ngtcp2_static PRIVATE -w)
+        target_compile_options(ngtcp2_crypto_wolfssl_static PRIVATE -w)
+    endif()
+
     target_link_libraries(qunet PRIVATE wolfssl ngtcp2_static ngtcp2_crypto_wolfssl_static)
 endif()
 
