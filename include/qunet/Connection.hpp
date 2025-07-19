@@ -26,6 +26,7 @@ public:
         AllAddressesFailed,
         ProtocolDisabled,
         NoConnectionTypeFound,
+        ServerClosed,
     } Code;
 
     constexpr inline ConnectionError(Code code) : m_err(code) {}
@@ -113,6 +114,12 @@ public:
     // Disconnect from the server. Errors if not connected, or if already disconnecting.
     ConnectionResult<> disconnect();
 
+    // Set the callback that is called when the connection state changes.
+    void setConnectionStateCallback(std::function<void(ConnectionState)> callback);
+
+    // Set the callback that is called when a data message is received.
+    void setDataCallback(std::function<void(std::vector<uint8_t>)> callback);
+
     // Set the SRV query name prefix, by default it is `_qunet`.
     void setSrvPrefix(std::string_view pfx);
 
@@ -169,6 +176,8 @@ private:
     bool m_ipv6Enabled = true;
     bool m_tlsCertVerification = true;
     asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
+    std::function<void(ConnectionState)> m_connStateCallback;
+    std::function<void(std::vector<uint8_t>)> m_dataCallback;
 
     // vvv long lived fields vvv
     std::optional<ClientTlsContext> m_tlsContext;
@@ -248,6 +257,8 @@ private:
     void thrSortPingResults();
     void thrSortConnTypes();
     void thrHandleIncomingMessage(QunetMessage&& message);
+
+    void setConnState(ConnectionState state);
 };
 
 }

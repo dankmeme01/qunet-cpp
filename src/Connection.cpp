@@ -86,6 +86,7 @@ std::string ConnectionError::message() const {
         case Code::AllAddressesFailed: return "Failed to connect to all possible addresses";
         case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
+        case Code::ServerClosed: return "The server closed the connection";
     }
 
     qn::unreachable();
@@ -224,7 +225,7 @@ Connection::Connection() {
                     }
                 }
 
-                m_connState = ConnectionState::Connecting;
+                this->setConnState(ConnectionState::Connecting);
             } break;
 
             case ConnectionState::Connecting: {
@@ -307,7 +308,7 @@ Connection::Connection() {
 
                 // check which events are ready
                 if (disconnect) {
-                    m_connState = ConnectionState::Closing;
+                    this->setConnState(ConnectionState::Closing);
                     return;
                 }
 
@@ -388,7 +389,7 @@ Connection::Connection() {
                 // done!
                 log::debug("Connection closed cleanly");
                 m_socket.reset();
-                m_connState = ConnectionState::Disconnected;
+                this->setConnState(ConnectionState::Disconnected);
 
             } break;
         }
@@ -486,7 +487,7 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
 }
 
 void Connection::thrConnected() {
-    m_connState = ConnectionState::Connected;
+    this->setConnState(ConnectionState::Connected);
 
     QN_ASSERT(m_socket.has_value());
 
@@ -499,6 +500,25 @@ void Connection::thrConnected() {
 
 void Connection::thrHandleIncomingMessage(QunetMessage&& message) {
     log::debug("Received message: {}", message.typeStr());
+
+    if (message.is<DataMessage>() && m_dataCallback) {
+        auto& msg = message.as<DataMessage>();
+        m_dataCallback(std::move(msg.data));
+        return;
+    }
+
+    // TODO: handle other messages
+    if (message.is<ConnectionErrorMessage>()) {
+        auto& errMsg = message.as<ConnectionErrorMessage>();
+        log::warn("Received connection error message: {}", errMsg.message());
+        return;
+    } else if (message.is<ServerCloseMessage>()) {
+        auto& closeMsg = message.as<ServerCloseMessage>();
+        log::warn("Received server close message: {}", closeMsg.message());
+        this->onFatalConnectionError(ConnectionError::ServerClosed);
+    } else {
+        log::warn("Don't know how to handle this message");
+    }
 }
 
 void Connection::thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr) {
@@ -654,6 +674,18 @@ ConnectionResult<> Connection::disconnect() {
     return Ok();
 }
 
+void Connection::setConnectionStateCallback(std::function<void(ConnectionState)> callback) {
+    auto _lock = m_internalMutex.lock();
+
+    m_connStateCallback = std::move(callback);
+}
+
+void Connection::setDataCallback(std::function<void(std::vector<uint8_t>)> callback) {
+    auto _lock = m_internalMutex.lock();
+
+    m_dataCallback = std::move(callback);
+}
+
 void Connection::setSrvPrefix(std::string_view pfx) {
     auto _lock = m_internalMutex.lock();
 
@@ -724,7 +756,7 @@ void Connection::clearLastError() {
 ConnectionResult<> Connection::connectDomain(std::string_view hostname, std::optional<uint16_t> port, ConnectionType type) {
     auto srvName = fmt::format("{}.{}.{}", m_srvPrefix, getSrvProto(type), hostname);
 
-    m_connState = ConnectionState::DnsResolving;
+    this->setConnState(ConnectionState::DnsResolving);
     m_connStartedNotify.notifyOne();
 
     auto& resolver = Resolver::get();
@@ -899,7 +931,7 @@ void Connection::doSend(QunetMessage&& message) {
 
 void Connection::onFatalConnectionError(const ConnectionError& err) {
     m_lastError = err;
-    m_connState = ConnectionState::Disconnected;
+    this->setConnState(ConnectionState::Disconnected);
     log::error("Fatal connection error: {}", err.message());
 }
 
@@ -927,7 +959,7 @@ void Connection::finishCancellation() {
 void Connection::resetConnectionState() {
     auto _lock = m_internalMutex.lock();
 
-    m_connState = ConnectionState::Disconnected;
+    this->setConnState(ConnectionState::Disconnected);
     m_lastError = ConnectionError::Success;
     m_cancelling = false;
     m_resolvingIp = false;
@@ -997,12 +1029,24 @@ void Connection::doneResolving() {
 
     // if we know concrete connection type, set the state to connecting, otherwise set it to pinging
     if (m_chosenConnType != ConnectionType::Unknown) {
-        m_connState = ConnectionState::Connecting;
+        this->setConnState(ConnectionState::Connecting);
     } else {
-        m_connState = ConnectionState::Pinging;
+        this->setConnState(ConnectionState::Pinging);
     }
 
     m_connStartedNotify.notifyOne();
+}
+
+void Connection::setConnState(ConnectionState state) {
+    if (m_connState == state) {
+        return; // no change
+    }
+
+    m_connState = state;
+
+    if (m_connStateCallback) {
+        m_connStateCallback(m_connState);
+    }
 }
 
 }
