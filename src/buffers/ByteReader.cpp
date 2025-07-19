@@ -121,7 +121,25 @@ Result<int64_t> ByteReader::readVarInt() {
     return Err(ByteReaderError::VarintOverflow);
 }
 Result<uint64_t> ByteReader::readVarUint() {
-    // TODO
+    uint64_t value = 0;
+    size_t shift = 0;
+
+    while (true) {
+        uint8_t byte = GEODE_UNWRAP(this->readU8());
+
+        if (shift == 63 && byte > 1) {
+            return Err(ByteReaderError::VarintOverflow);
+        }
+
+        value |= (static_cast<uint64_t>(byte & 0x7f) << shift);
+
+        if (!(byte & 0x80)) {
+            return Ok(value);
+        }
+
+        shift += 7;
+    }
+
     return Err(ByteReaderError::VarintOverflow);
 }
 
