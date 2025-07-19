@@ -5,51 +5,19 @@
 #include <qsox/BaseSocket.hpp>
 #include <qsox/Poll.hpp>
 #include <vector>
+#include <memory>
 
-#ifndef _WIN32
-# include <sys/poll.h>
-#endif
+#include "PollPipe.hpp"
 
 namespace qn {
-
-/// A simple synchronization primitive that allows one thread to wait for an event,
-/// and another thread to signal that event.
-class PollPipe {
-public:
-    PollPipe();
-    ~PollPipe();
-
-    PollPipe(const PollPipe&) = delete;
-    PollPipe& operator=(const PollPipe&) = delete;
-    PollPipe(PollPipe&&) noexcept;
-    PollPipe& operator=(PollPipe&&) noexcept;
-
-    void notify();
-
-    // Blocks until notify has been called.
-    void consume();
-
-    // Clears the readiness of the pipe without blocking.
-    void clear();
-
-private:
-    friend class MultiPoller;
-
-#ifdef _WIN32
-    void* m_event;
-#else
-    int m_readFd;
-    int m_writeFd;
-#endif
-
-    qsox::SockFd readFd() const;
-    qsox::SockFd writeFd() const;
-};
 
 class Socket;
 
 class MultiPoller {
 public:
+    MultiPoller();
+    ~MultiPoller();
+
     void addSocket(qsox::BaseSocket& socket, qsox::PollType interest);
     void removeSocket(qsox::BaseSocket& socket);
 
@@ -59,11 +27,11 @@ public:
     void addQSocket(qn::Socket& socket, qsox::PollType interest);
     void removeQSocket(qn::Socket& socket);
 
-    void clear();
-
     struct PollResult {
         size_t which;
         MultiPoller& poller;
+
+        qsox::SockFd fd() const;
 
         bool isSocket(const qsox::BaseSocket& socket) const;
         bool isPipe(const PollPipe& pipe) const;
@@ -81,39 +49,8 @@ public:
     void clearReadiness(qn::Socket& socket);
 
 private:
-    asp::Mutex<void, true> m_mtx;
-
-    struct HandleMeta {
-        enum class Type {
-            Socket,
-            Pipe,
-            QSocket,
-        } type;
-
-        union {
-            qsox::SockFd origFd = -1; // used on windows for sockets
-            qn::Socket* qsocket; // used for qn::Socket
-        };
-    };
-
-    std::vector<HandleMeta> m_metas;
-
-#ifdef _WIN32
-    std::vector<void*> m_handles;
-#else
-    std::vector<struct pollfd> m_handles;
-#endif
-
-    size_t findHandle(const qsox::BaseSocket& fd) const;
-    size_t findHandle(const PollPipe& fd) const;
-    size_t findHandle(const qn::Socket& fd) const;
-
-    qsox::SockFd readFdForQSocket(const qn::Socket& socket) const;
-
-    void addHandle(HandleMeta meta, qsox::SockFd fd, qsox::PollType interest);
-    void removeByIdx(size_t idx);
-    void runCleanupFor(size_t idx);
-    void cleanupQSocket(size_t idx);
+    class Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 }

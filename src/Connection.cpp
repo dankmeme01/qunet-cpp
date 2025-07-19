@@ -492,7 +492,6 @@ void Connection::thrConnected() {
     QN_ASSERT(m_socket.has_value());
 
     // Setup poller
-    m_poller.clear();
     m_poller.addPipe(m_msgPipe, qsox::PollType::Read);
     m_poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
     m_poller.addQSocket(*m_socket, qsox::PollType::Read);
@@ -978,13 +977,17 @@ void Connection::resetConnectionState() {
     m_thrPingerSupportedProtocols.clear();
     m_thrConnIpIndex = 0;
     m_thrConnTypeIndex = 0;
-    m_socket = std::nullopt;
     m_connStartedAt = SystemTime::now();
     m_usedConnTypes.clear();
-    m_poller.clear();
     *m_msgChannel.lock() = {};
+
+    m_poller.removePipe(m_msgPipe);
+    m_poller.removePipe(m_disconnectPipe);
+    if (m_socket) m_poller.removeQSocket(*m_socket);
+
     m_msgPipe.clear();
     m_disconnectPipe.clear();
+    m_socket = std::nullopt;
 }
 
 void Connection::sortUsedIps() {

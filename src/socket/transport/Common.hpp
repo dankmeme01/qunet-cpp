@@ -84,7 +84,9 @@ inline TransportResult<> processIncomingData(
         wnd = buffer.writeWindow();
     }
 
+    log::debug("wee socket receive");
     size_t len = GEODE_UNWRAP(socket.receive(wnd.data(), wnd.size()));
+    log::debug("wee socket receive done: {}", len);
 
     if (len == 0) {
         return Err(TransportError::Closed);
