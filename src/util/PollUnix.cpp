@@ -86,6 +86,14 @@ void PollPipe::clear() {
     fcntl(m_readFd, F_SETFL, oldFlags);
 }
 
+qsox::SockFd PollPipe::readFd() const {
+    return (qsox::SockFd) m_readFd;
+}
+
+qsox::SockFd PollPipe::writeFd() const {
+    return (qsox::SockFd) m_writeFd;
+}
+
 void MultiPoller::addPipe(const PollPipe& pipe, qsox::PollType interest) {
     auto _lock = m_mtx.lock();
 

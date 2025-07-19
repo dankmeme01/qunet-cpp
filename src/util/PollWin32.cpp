@@ -23,12 +23,14 @@ PollPipe::PollPipe(PollPipe&& other) noexcept {
     other.m_event = nullptr;
 }
 
-PollPipe& PollPipe::operator=(PollPipe&&) noexcept {
+PollPipe& PollPipe::operator=(PollPipe&& other) noexcept {
     if (this != &other) {
         if (m_event) CloseHandle(m_event);
         m_event = other.m_event;
         other.m_event = nullptr;
     }
+
+    return *this;
 }
 
 PollPipe::~PollPipe() {
@@ -47,6 +49,14 @@ void PollPipe::clear() {
     this->consume();
 }
 
+qsox::SockFd PollPipe::readFd() const {
+    return (qsox::SockFd) m_event;
+}
+
+qsox::SockFd PollPipe::writeFd() const {
+    return (qsox::SockFd) m_event;
+}
+
 void MultiPoller::addPipe(const PollPipe& pipe, qsox::PollType interest) {
     auto _lock = m_mtx.lock();
 
@@ -60,11 +70,11 @@ void MultiPoller::addPipe(const PollPipe& pipe, qsox::PollType interest) {
 }
 
 void MultiPoller::addHandle(HandleMeta meta, qsox::SockFd fd, qsox::PollType interest) {
-    // disallow duplicates
-    size_t idx = this->findHandle(fd);
-    if (idx != -1) {
-        QN_ASSERT(false && "Handle already exists in poller");
-    }
+    // // disallow duplicates
+    // size_t idx = this->findHandle(fd);
+    // if (idx != -1) {
+    //     QN_ASSERT(false && "Handle already exists in poller");
+    // }
 
     if (meta.type == HandleMeta::Type::Socket) {
         meta.origFd = fd; // we need this later
@@ -187,7 +197,7 @@ void MultiPoller::clearReadiness(qsox::BaseSocket& socket) {
 
     auto _lock = m_mtx.lock();
 
-    size_t idx = this->findHandle(socket.handle());
+    size_t idx = this->findHandle(socket);
 
     if (idx == -1) {
         QN_ASSERT(false && "Socket not found in poller");

@@ -37,7 +37,7 @@ qsox::SockFd MultiPoller::readFdForQSocket(const qn::Socket& socket) const {
         QN_ASSERT(!rpipe->has_value() && "Readable pipe already exists for QUIC connection");
 
         rpipe->emplace(PollPipe{});
-        fd = rpipe->value().m_readFd;
+        fd = rpipe->value().readFd();
     } else if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(trans)) {
         fd = tcp->m_socket.handle();
     } else if (auto udp = std::dynamic_pointer_cast<qn::UdpTransport>(trans)) {

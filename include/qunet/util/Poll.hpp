@@ -41,6 +41,9 @@ private:
     int m_readFd;
     int m_writeFd;
 #endif
+
+    qsox::SockFd readFd() const;
+    qsox::SockFd writeFd() const;
 };
 
 class Socket;

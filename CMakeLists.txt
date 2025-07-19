@@ -16,13 +16,19 @@ if (QUNET_DEBUG)
     message(STATUS "Qunet: debug mode enabled!")
 endif()
 
+# i absolutely hate microsoft
+if (WIN32)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE _HAS_ITERATOR_DEBUGGING=0)
+    target_compile_definitions(qunet PUBLIC NOMINMAX _WINSOCKAPI_)
+endif()
+
 # cpm
 if (NOT CURRENT_CPM_VERSION)
     include(cmake/CPM.cmake)
 endif()
 
 # add deps
-CPMAddPackage("gh:dankmeme01/qsox#main")
+CPMAddPackage("gh:dankmeme01/qsox#d65547f")
 CPMAddPackage("gh:dankmeme01/asp2#f15140f")
 CPMAddPackage(
     NAME c-ares
