@@ -1,4 +1,5 @@
 #include <qunet/buffers/HeapByteWriter.hpp>
+#include <qunet/util/assert.hpp>
 #include <cstring>
 
 template <typename T = void>
@@ -97,12 +98,30 @@ void HeapByteWriter::writeDouble(double value) {
 }
 
 Result<void> HeapByteWriter::writeVarInt(int64_t value) {
-    // TODO
+    QN_ASSERT(false && "varint encoding not implemented yet");
     return Ok();
 }
 
 Result<void> HeapByteWriter::writeVarUint(uint64_t value) {
-    // TODO
+    size_t written = 0;
+
+    while (true) {
+        uint8_t byte = value & 0x7f;
+        value >>= 7;
+
+        if (value != 0) {
+            // set continuation bit
+            byte |= 0x80;
+        }
+
+        this->writeU8(byte);
+        written++;
+
+        if (value == 0) {
+            break;
+        }
+    }
+
     return Ok();
 }
 
