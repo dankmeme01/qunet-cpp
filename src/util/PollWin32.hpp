@@ -72,10 +72,10 @@ public:
 
         if (auto quic = std::dynamic_pointer_cast<qn::QuicTransport>(socket.transport())) {
             auto rpipe = quic->connection().m_readablePipe.lock();
-            QN_ASSERT(rpipe->has_value() && "Readable pipe does not exist for QUIC connection");
-
-            this->removePipe(rpipe->value());
-            rpipe->reset(); // clear the pipe
+            if (rpipe->has_value()) {
+                this->removePipe(rpipe->value());
+                rpipe->reset(); // clear the pipe
+            }
         } else if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(socket.transport())) {
             this->removeEventForSocket(tcp->m_socket.handle());
         } else if (auto udp = std::dynamic_pointer_cast<qn::UdpTransport>(socket.transport())) {
@@ -158,7 +158,11 @@ private:
         auto _lock = m_mtx.lock();
         auto idx = this->findEventForSocket(associated);
 
-        QN_DEBUG_ASSERT(idx != -1 && "Tried to remove an event for a socket that was not registered in the poller");
+        if (idx == -1) {
+            return;
+        }
+
+        QN_DEBUG_ASSERT(idx < m_handles.size() && m_handles.size() == m_associations.size());
 
         WSACloseEvent(m_handles[idx]);
         m_handles.erase(m_handles.begin() + idx);
@@ -180,14 +184,13 @@ private:
     void removeHandle(void* handle) {
         auto _lock = m_mtx.lock();
 
-        for (auto it = m_handles.begin(); it != m_handles.end(); ++it) {
-            if (*it == handle) {
-                m_handles.erase(it);
+        for (size_t i = 0; i < m_handles.size(); i++) {
+            if (m_handles[i] == handle) {
+                m_handles.erase(m_handles.begin() + i);
+                m_associations.erase(m_associations.begin() + i);
                 return;
             }
         }
-
-        QN_DEBUG_ASSERT(false && "Tried to remove a handle that was not registered in the poller");
     }
 };
 

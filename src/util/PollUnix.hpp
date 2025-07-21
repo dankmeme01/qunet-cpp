@@ -55,10 +55,10 @@ public:
 
         if (auto quic = std::dynamic_pointer_cast<qn::QuicTransport>(socket.transport())) {
             auto rpipe = quic->connection().m_readablePipe.lock();
-            QN_ASSERT(rpipe->has_value() && "Readable pipe does not exist for QUIC connection");
-
-            this->removeEvent(rpipe->value().readFd());
-            rpipe->reset(); // clear the pipe
+            if (rpipe->has_value()) {
+                this->removeEvent(rpipe->value().readFd());
+                rpipe->reset(); // clear the pipe
+            }
         } else if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(socket.transport())) {
             this->removeEvent(tcp->m_socket.handle());
         } else if (auto udp = std::dynamic_pointer_cast<qn::UdpTransport>(socket.transport())) {
@@ -116,8 +116,6 @@ private:
                 return;
             }
         }
-
-        QN_DEBUG_ASSERT(false && "Tried to remove a fd that was not registered in the poller");
     }
 };
 
