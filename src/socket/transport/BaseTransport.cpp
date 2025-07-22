@@ -127,6 +127,11 @@ TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta
         }
     }
 
+    // zero-sized data messages are special, they can be used for reliable ACKs, but are not shown to the user
+    if (data.empty()) {
+        return Ok();
+    }
+
     m_recvMsgQueue.push(DataMessage {
         .data = std::move(data),
     });

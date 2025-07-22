@@ -375,7 +375,7 @@ TransportResult<bool> UdpTransport::processIncomingData() {
         }
     }
 
-    return Ok(true);
+    return Ok(m_recvMsgQueue.size() > 0);
 }
 
 Duration UdpTransport::untilTimerExpiry() const {

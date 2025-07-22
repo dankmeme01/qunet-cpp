@@ -351,10 +351,10 @@ Connection::Connection() {
                     auto chan = m_msgChannel.lock();
 
                     while (!chan->empty()) {
-                        auto msg = std::move(chan->front());
+                        auto [msg, reliable] = std::move(chan->front());
                         chan->pop();
 
-                        auto res = m_socket->sendMessage(std::move(msg));
+                        auto res = m_socket->sendMessage(std::move(msg), reliable);
                         if (!res) {
                             auto err = res.unwrapErr();
                             this->onConnectionError(err);
@@ -913,18 +913,18 @@ void Connection::sendKeepalive() {
     });
 }
 
-void Connection::sendData(std::vector<uint8_t> data) {
-    return this->doSend(DataMessage{std::move(data)});
+void Connection::sendData(std::vector<uint8_t> data, bool reliable) {
+    return this->doSend(DataMessage{std::move(data)}, reliable);
 }
 
-void Connection::doSend(QunetMessage&& message) {
+void Connection::doSend(QunetMessage&& message, bool reliable) {
     auto _lock = m_internalMutex.lock();
 
     if (!this->connected()) {
         return;
     }
 
-    m_msgChannel.lock()->push(std::move(message));
+    m_msgChannel.lock()->push(std::make_pair(std::move(message), reliable));
     m_msgPipe.notify();
 }
 
