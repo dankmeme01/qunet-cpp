@@ -61,6 +61,7 @@ enum class ConnectionState {
     Connecting,
     Connected,
     Closing,
+    Reconnecting,
 };
 
 // Various Debug options for the connection. Note that some of those do nothing in Release builds.
@@ -221,6 +222,8 @@ private:
     std::vector<SupportedProtocol> m_thrPingerSupportedProtocols;
     size_t m_thrConnIpIndex = 0;
     size_t m_thrConnTypeIndex = 0;
+    std::optional<std::pair<qsox::SocketAddress, ConnectionType>> m_thrSuccessfulPair;
+    size_t m_thrReconnectAttempt = 0;
 
     // vvv actual connection fields vvv
     std::optional<Socket> m_socket;

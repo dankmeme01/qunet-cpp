@@ -265,6 +265,40 @@ Connection::Connection() {
                 this->thrTryConnectNext();
             } break;
 
+            case ConnectionState::Reconnecting: {
+                if (m_thrReconnectAttempt >= 3) {
+                    log::debug("Too many reconnect attempts, disconnecting");
+                    this->setConnState(ConnectionState::Disconnected);
+                    return;
+                }
+
+                log::debug("Reconnecting (attempt {})", m_thrReconnectAttempt + 1);
+
+                auto _lock = m_internalMutex.lock();
+                this->thrTryConnectWith(m_thrSuccessfulPair->first, m_thrSuccessfulPair->second);
+
+                if (m_connState == ConnectionState::Connected) {
+                    m_thrReconnectAttempt = 0;
+                } else {
+                    // failed, sleep for a bit and try again
+                    auto timeout = Duration::fromSecs(5) * (1 << m_thrReconnectAttempt);
+
+                    log::debug("Reconnect attempt failed, sleeping for {} before trying again", timeout.toString());
+
+                    m_poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
+                    auto pRes = m_poller.poll(timeout);
+                    m_disconnectPipe.consume();
+                    m_poller.removePipe(m_disconnectPipe);
+
+                    if (pRes) {
+                        // a disconnect was requested, abort connection
+                        this->finishCancellation();
+                    } else {
+                        m_thrReconnectAttempt++;
+                    }
+                }
+            } break;
+
             case ConnectionState::Connected: {
                 bool disconnect = false, messages = false, qsocket = false, timerExpired = false;
 
@@ -482,6 +516,7 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
     log::debug("Connected to {} ({})", addr.toString(), connTypeToString(type));
 
     m_socket = std::move(sock.unwrap());
+    m_thrSuccessfulPair = std::make_pair(addr, type);
 
     this->thrConnected();
 }
@@ -929,9 +964,26 @@ void Connection::doSend(QunetMessage&& message, bool reliable) {
 }
 
 void Connection::onFatalConnectionError(const ConnectionError& err) {
-    m_lastError = err;
-    this->setConnState(ConnectionState::Disconnected);
     log::error("Fatal connection error: {}", err.message());
+
+    m_lastError = err;
+    switch (m_connState) {
+        case ConnectionState::Connected: {
+            *m_msgChannel.lock() = {};
+            m_msgPipe.consume();
+            m_disconnectPipe.consume();
+            m_poller.removeQSocket(*m_socket);
+            m_poller.removePipe(m_msgPipe);
+            m_poller.removePipe(m_disconnectPipe);
+
+            // attempt to reconnect
+            this->setConnState(ConnectionState::Reconnecting);
+        } break;
+
+        default: {
+            this->setConnState(ConnectionState::Disconnected);
+        } break;
+    }
 }
 
 void Connection::onConnectionError(const ConnectionError& err) {
@@ -977,6 +1029,8 @@ void Connection::resetConnectionState() {
     m_thrPingerSupportedProtocols.clear();
     m_thrConnIpIndex = 0;
     m_thrConnTypeIndex = 0;
+    m_thrSuccessfulPair.reset();
+    m_thrReconnectAttempt = 0;
     m_connStartedAt = SystemTime::now();
     m_usedConnTypes.clear();
     *m_msgChannel.lock() = {};
