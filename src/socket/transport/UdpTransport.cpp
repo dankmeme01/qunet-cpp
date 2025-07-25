@@ -201,6 +201,8 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         auto data = writer.written();
         auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
 
+        this->updateLastActivity();
+
         return Ok();
     }
 
@@ -254,6 +256,8 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
             m_relStore.pushLocalUnacked(std::move(message));
         }
 
+        this->updateLastActivity();
+
         return Ok();
     }
 
@@ -306,6 +310,8 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
         m_relStore.pushLocalUnacked(std::move(message));
     }
 
+    this->updateLastActivity();
+
     return Ok();
 }
 
@@ -332,6 +338,10 @@ TransportResult<bool> UdpTransport::processIncomingData() {
     // not a data message, cannot be compressed/fragmented/reliable
     if (meta.type != MSG_DATA) {
         auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
+
+        if (msg.is<KeepaliveResponseMessage>()) {
+            m_unackedKeepalive = false;
+        }
 
         m_recvMsgQueue.push(std::move(msg));
 
@@ -379,11 +389,19 @@ TransportResult<bool> UdpTransport::processIncomingData() {
 }
 
 Duration UdpTransport::untilTimerExpiry() const {
-    auto relExpiry = m_relStore.untilTimerExpiry();
+    return std::min(
+        m_relStore.untilTimerExpiry(),
+        this->untilKeepalive()
+    );
+}
 
-    // TODO later add keepalives
-
-    return relExpiry;
+Duration UdpTransport::untilKeepalive() const {
+    if (m_unackedKeepalive) {
+        // if a keepalive is in flight but has not been acknowledged (lost?), send another one after a bit
+        return Duration::fromSecs(3) - this->sinceLastActivity();
+    } else {
+        return Duration::fromSecs(30) - this->sinceLastActivity();
+    }
 }
 
 TransportResult<> UdpTransport::handleTimerExpiry() {
@@ -408,6 +426,12 @@ TransportResult<> UdpTransport::handleTimerExpiry() {
         }};
 
         GEODE_UNWRAP(this->doSendUnfragmentedData(msg, false));
+    }
+
+    // if we haven't sent any messages in a while, we should send a keepalive message
+    if (this->untilKeepalive().isZero()) {
+        GEODE_UNWRAP(this->sendMessage(KeepaliveMessage{}, false));
+        m_unackedKeepalive = true;
     }
 
     return Ok();

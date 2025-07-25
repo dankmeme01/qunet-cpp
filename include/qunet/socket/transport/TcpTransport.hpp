@@ -20,6 +20,9 @@ public:
     TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) override;
     TransportResult<bool> processIncomingData() override;
 
+    asp::time::Duration untilTimerExpiry() const override;
+    TransportResult<> handleTimerExpiry() override;
+
 private:
     friend class MultiPoller;
 

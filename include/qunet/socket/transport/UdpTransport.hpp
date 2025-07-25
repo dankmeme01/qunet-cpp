@@ -40,6 +40,7 @@ private:
     qsox::UdpSocket m_socket;
     size_t m_mtu;
     bool m_closed = false;
+    bool m_unackedKeepalive = false;
     float m_lossSim = 0.f;
 
     UdpTransport(qsox::UdpSocket socket, size_t mtu, float packetLossSimulation = 0.0f);
@@ -49,6 +50,7 @@ private:
     TransportResult<> doSendUnfragmentedData(QunetMessage& message, bool retransmission = false);
 
     bool shouldLosePacket();
+    asp::time::Duration untilKeepalive() const;
 };
 
 }

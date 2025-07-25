@@ -147,4 +147,16 @@ void BaseTransport::updateLatency(Duration rtt) {
     m_lastRttMicros = exponentialMovingAverage<uint64_t>(m_lastRttMicros, rtt.micros(), 0.25);
 }
 
+void BaseTransport::updateLastActivity() {
+    m_lastActivity = Instant::now();
+}
+
+Duration BaseTransport::sinceLastActivity() const {
+    if (!m_lastActivity) {
+        return Duration::infinite();
+    }
+
+    return m_lastActivity->elapsed();
+}
+
 }

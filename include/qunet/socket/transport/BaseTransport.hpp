@@ -8,6 +8,7 @@
 
 #include <qsox/Error.hpp>
 #include <asp/time/Duration.hpp>
+#include <asp/time/Instant.hpp>
 #include <stdint.h>
 #include <queue>
 
@@ -83,6 +84,7 @@ protected:
     ZstdDecompressor m_zstdDecompressor;
 
     uint64_t m_lastRttMicros = 0;
+    std::optional<asp::time::Instant> m_lastActivity;
 
     // Called when a data message is almost completely ready to be dispatched.
     // Fragmentation and reliability headers are ignored, they must be processed beforehand.
@@ -93,6 +95,9 @@ protected:
     /// This is used to calculate the average latency, which in turn can be used for other purposes,
     /// for example calculating retransmission timeouts.
     void updateLatency(asp::time::Duration rtt);
+
+    void updateLastActivity();
+    asp::time::Duration sinceLastActivity() const;
 };
 
 }

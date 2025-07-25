@@ -36,6 +36,7 @@ bool TcpTransport::isClosed() const {
 }
 
 TransportResult<> TcpTransport::sendMessage(QunetMessage message, bool reliable) {
+    this->updateLastActivity();
     return streamcommon::sendMessage(std::move(message), m_socket);
 }
 
@@ -53,6 +54,14 @@ TransportResult<bool> TcpTransport::processIncomingData() {
     ));
 
     return Ok(!m_recvMsgQueue.empty());
+}
+
+asp::time::Duration TcpTransport::untilTimerExpiry() const {
+    return Duration::fromSecs(30) - this->sinceLastActivity();
+}
+
+TransportResult<> TcpTransport::handleTimerExpiry() {
+    return this->sendMessage(KeepaliveMessage{}, false);
 }
 
 }
