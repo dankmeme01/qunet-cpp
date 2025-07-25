@@ -37,6 +37,10 @@ bool TcpTransport::isClosed() const {
 
 TransportResult<> TcpTransport::sendMessage(QunetMessage message, bool reliable) {
     this->updateLastActivity();
+    if (message.is<KeepaliveMessage>()) {
+        this->updateLastKeepalive();
+    }
+
     return streamcommon::sendMessage(std::move(message), m_socket);
 }
 
@@ -57,11 +61,27 @@ TransportResult<bool> TcpTransport::processIncomingData() {
 }
 
 asp::time::Duration TcpTransport::untilTimerExpiry() const {
-    return Duration::fromSecs(30) - this->sinceLastActivity();
+    return this->untilKeepalive();
 }
 
 TransportResult<> TcpTransport::handleTimerExpiry() {
     return this->sendMessage(KeepaliveMessage{}, false);
+}
+
+Duration TcpTransport::untilKeepalive() const {
+    // similar to UDP, we send more keepalives at the start to figure out the latency
+
+    switch (m_totalKeepalives) {
+        case 0:
+        case 1:
+            return Duration::fromSecs(3) - this->sinceLastKeepalive();
+        case 2:
+            return Duration::fromSecs(10) - this->sinceLastKeepalive();
+        case 3:
+            return Duration::fromSecs(25) - this->sinceLastKeepalive();
+        default:
+            return Duration::fromSecs(45) - this->sinceLastActivity();
+    }
 }
 
 }

@@ -31,6 +31,7 @@ private:
     bool m_closed = false;
 
     TcpTransport(qsox::TcpStream socket);
+    asp::time::Duration untilKeepalive() const;
 };
 
 }

@@ -1,6 +1,7 @@
 #include <qunet/socket/transport/BaseTransport.hpp>
 #include <qunet/util/algo.hpp>
 #include <asp/time/Instant.hpp>
+#include <chrono>
 
 using namespace asp::time;
 
@@ -66,7 +67,24 @@ TransportResult<QunetMessage> BaseTransport::receiveMessage() {
     // block until a message is available
     while (!GEODE_UNWRAP(this->processIncomingData()));
 
-    return this->receiveMessage();
+    auto msg = GEODE_UNWRAP(this->receiveMessage());
+    if (msg.is<KeepaliveResponseMessage>()) {
+        auto ts = msg.as<KeepaliveResponseMessage>().timestamp;
+        auto now = this->getKeepaliveTimestamp();
+
+        if (now > ts) {
+            auto passed = Duration::fromNanos(now - ts);
+            this->updateLatency(passed);
+        }
+    }
+
+    return Ok(std::move(msg));
+}
+
+uint64_t BaseTransport::getKeepaliveTimestamp() const {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()
+    ).count();
 }
 
 bool BaseTransport::messageAvailable() {
@@ -151,12 +169,25 @@ void BaseTransport::updateLastActivity() {
     m_lastActivity = Instant::now();
 }
 
+void BaseTransport::updateLastKeepalive() {
+    m_lastKeepalive = Instant::now();
+    m_totalKeepalives++;
+}
+
 Duration BaseTransport::sinceLastActivity() const {
     if (!m_lastActivity) {
         return Duration::infinite();
     }
 
     return m_lastActivity->elapsed();
+}
+
+Duration BaseTransport::sinceLastKeepalive() const {
+    if (!m_lastKeepalive) {
+        return Duration::infinite();
+    }
+
+    return m_lastKeepalive->elapsed();
 }
 
 }

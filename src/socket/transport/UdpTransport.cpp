@@ -400,7 +400,23 @@ Duration UdpTransport::untilKeepalive() const {
         // if a keepalive is in flight but has not been acknowledged (lost?), send another one after a bit
         return Duration::fromSecs(3) - this->sinceLastActivity();
     } else {
-        return Duration::fromSecs(30) - this->sinceLastActivity();
+        // if no keepalives sent in a while, send one
+        // timeout is different depending on how many keepalives we have sent so far,
+        // we send more at the start to figure out the latency
+
+        switch (m_totalKeepalives) {
+            case 0:
+            case 1:
+                return Duration::fromSecs(3) - this->sinceLastKeepalive();
+            case 2:
+                return Duration::fromSecs(8) - this->sinceLastKeepalive();
+            case 3:
+                return Duration::fromSecs(12) - this->sinceLastKeepalive();
+            case 4:
+                return Duration::fromSecs(20) - this->sinceLastKeepalive();
+            default:
+                return Duration::fromSecs(30) - this->sinceLastActivity();
+        }
     }
 }
 
@@ -431,6 +447,7 @@ TransportResult<> UdpTransport::handleTimerExpiry() {
     // if we haven't sent any messages in a while, we should send a keepalive message
     if (this->untilKeepalive().isZero()) {
         GEODE_UNWRAP(this->sendMessage(KeepaliveMessage{}, false));
+        this->updateLastKeepalive();
         m_unackedKeepalive = true;
     }
 

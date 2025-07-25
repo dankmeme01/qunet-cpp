@@ -550,8 +550,11 @@ void Connection::thrHandleIncomingMessage(QunetMessage&& message) {
         auto& closeMsg = message.as<ServerCloseMessage>();
         log::warn("Received server close message: {}", closeMsg.message());
         this->onFatalConnectionError(ConnectionError::ServerClosed);
+    } else if (message.is<KeepaliveResponseMessage>()) {
+        // do nothing!
+        // TODO: actually forward the data to the client
     } else {
-        log::warn("Don't know how to handle this message");
+        log::warn("Don't know how to handle this message: {}", message.typeStr());
     }
 }
 
