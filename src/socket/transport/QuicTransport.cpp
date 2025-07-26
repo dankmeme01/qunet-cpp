@@ -30,10 +30,10 @@ TransportResult<QuicTransport> QuicTransport::connect(
     const SocketAddress& address,
     const Duration& timeout,
     const ClientTlsContext* tlsContext,
-    const ConnectionDebugOptions* debugOptions
+    const ConnectionOptions* connOptions
 ) {
     auto conn = GEODE_UNWRAP(QuicConnection::connect(
-        address, timeout, tlsContext, debugOptions
+        address, timeout, tlsContext, connOptions
     ));
 
     QN_DEBUG_ASSERT(conn != nullptr);

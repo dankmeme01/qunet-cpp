@@ -37,7 +37,7 @@ public:
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
         const ClientTlsContext* tlsContext,
-        const struct ConnectionDebugOptions* debugOptions
+        const struct ConnectionOptions* connOptions
     );
 
     // Blocks until data is available to be received, or the timeout expires.

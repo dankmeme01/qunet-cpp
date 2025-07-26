@@ -148,9 +148,11 @@ TransportResult<std::unique_ptr<QuicConnection>> QuicConnection::connect(
     const SocketAddress& address,
     const Duration& timeout,
     const ClientTlsContext* tlsContext,
-    const ConnectionDebugOptions* debugOptions
+    const ConnectionOptions* connOptions
 ) {
     QN_ASSERT(tlsContext != nullptr && "TLS context must not be null");
+
+    auto debugOptions = connOptions ? &connOptions->debug : nullptr;
 
     // Create the connection to return
     std::unique_ptr<QuicConnection> ret{new QuicConnection(nullptr)};

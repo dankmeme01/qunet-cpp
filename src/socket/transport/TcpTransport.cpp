@@ -1,6 +1,7 @@
 #include <qunet/socket/transport/TcpTransport.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
+#include <qunet/Connection.hpp>
 #include <qunet/Log.hpp>
 #include "Common.hpp"
 
@@ -17,10 +18,13 @@ TcpTransport::TcpTransport(qsox::TcpStream socket) : m_socket(std::move(socket))
 
 TcpTransport::~TcpTransport() {}
 
-NetResult<TcpTransport> TcpTransport::connect(const SocketAddress& address, const Duration& timeout) {
+NetResult<TcpTransport> TcpTransport::connect(const SocketAddress& address, const Duration& timeout, const ConnectionOptions& connOptions) {
     auto socket = GEODE_UNWRAP(TcpStream::connect(address, timeout.millis()));
 
-    return Ok(TcpTransport(std::move(socket)));
+    TcpTransport ret(std::move(socket));
+    ret.m_activeKeepaliveInterval = connOptions.activeKeepaliveInterval;
+
+    return Ok(std::move(ret));
 }
 
 TransportResult<> TcpTransport::close() {
@@ -71,16 +75,32 @@ TransportResult<> TcpTransport::handleTimerExpiry() {
 Duration TcpTransport::untilKeepalive() const {
     // similar to UDP, we send more keepalives at the start to figure out the latency
 
+    auto orActive = [&](const Duration& dur) {
+        if (m_activeKeepaliveInterval) {
+            return std::min(dur, *m_activeKeepaliveInterval) - this->sinceLastKeepalive();
+        } else {
+            return dur - this->sinceLastKeepalive();
+        }
+    };
+
     switch (m_totalKeepalives) {
         case 0:
         case 1:
-            return Duration::fromSecs(3) - this->sinceLastKeepalive();
+            return orActive(Duration::fromSecs(3));
         case 2:
-            return Duration::fromSecs(10) - this->sinceLastKeepalive();
+            return orActive(Duration::fromSecs(10));
         case 3:
-            return Duration::fromSecs(25) - this->sinceLastKeepalive();
-        default:
-            return Duration::fromSecs(45) - this->sinceLastActivity();
+            return orActive(Duration::fromSecs(25));
+        default: {
+            if (m_activeKeepaliveInterval) {
+                return std::min(
+                    Duration::fromSecs(45) - this->sinceLastActivity(),
+                    *m_activeKeepaliveInterval - this->sinceLastKeepalive()
+                );
+            } else {
+                return Duration::fromSecs(45) - this->sinceLastActivity();
+            }
+        }
     }
 }
 

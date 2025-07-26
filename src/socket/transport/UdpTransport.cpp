@@ -17,13 +17,18 @@ using namespace asp::time;
 
 namespace qn {
 
-UdpTransport::UdpTransport(qsox::UdpSocket socket, size_t mtu, float lossSim) : m_socket(std::move(socket)), m_mtu(mtu), m_lossSim(lossSim) {}
+UdpTransport::UdpTransport(qsox::UdpSocket socket, size_t mtu, const ConnectionOptions& options)
+    : m_socket(std::move(socket)),
+      m_mtu(mtu),
+      m_lossSim(options.debug.packetLossSimulation),
+      m_activeKeepaliveInterval(options.activeKeepaliveInterval)
+    {}
 
 UdpTransport::~UdpTransport() {}
 
 NetResult<UdpTransport> UdpTransport::connect(
     const SocketAddress& address,
-    const struct ConnectionDebugOptions* debugOptions
+    const struct ConnectionOptions& connOptions
 ) {
     auto socket = GEODE_UNWRAP(UdpSocket::bindAny(address.isV6()));
     GEODE_UNWRAP(socket.connect(address));
@@ -31,7 +36,7 @@ NetResult<UdpTransport> UdpTransport::connect(
     return Ok(UdpTransport(
         std::move(socket),
         UDP_PACKET_LIMIT,
-        debugOptions ? debugOptions->packetLossSimulation : 0.0f
+        connOptions
     ));
 }
 
@@ -404,18 +409,34 @@ Duration UdpTransport::untilKeepalive() const {
         // timeout is different depending on how many keepalives we have sent so far,
         // we send more at the start to figure out the latency
 
+        auto orActive = [&](const Duration& dur) {
+            if (m_activeKeepaliveInterval) {
+                return std::min(dur, *m_activeKeepaliveInterval) - this->sinceLastKeepalive();
+            } else {
+                return dur - this->sinceLastKeepalive();
+            }
+        };
+
         switch (m_totalKeepalives) {
             case 0:
             case 1:
-                return Duration::fromSecs(3) - this->sinceLastKeepalive();
+                return orActive(Duration::fromSecs(3));
             case 2:
-                return Duration::fromSecs(8) - this->sinceLastKeepalive();
+                return orActive(Duration::fromSecs(8));
             case 3:
-                return Duration::fromSecs(12) - this->sinceLastKeepalive();
+                return orActive(Duration::fromSecs(12));
             case 4:
-                return Duration::fromSecs(20) - this->sinceLastKeepalive();
-            default:
-                return Duration::fromSecs(30) - this->sinceLastActivity();
+                return orActive(Duration::fromSecs(20));
+            default: {
+                if (m_activeKeepaliveInterval) {
+                    return std::min(
+                        Duration::fromSecs(30) - this->sinceLastActivity(),
+                        *m_activeKeepaliveInterval - this->sinceLastKeepalive()
+                    );
+                } else {
+                    return Duration::fromSecs(30) - this->sinceLastActivity();
+                }
+            }
         }
     }
 }

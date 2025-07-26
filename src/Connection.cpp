@@ -501,7 +501,7 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
         .address = addr,
         .type = type,
         .timeout = m_connTimeout,
-        .debugOptions = &m_debugOptions,
+        .connOptions = &m_connOptions,
         .tlsContext = tlsPtr
     };
 
@@ -759,11 +759,19 @@ void Connection::setTlsCertVerification(bool verify) {
 void Connection::setDebugOptions(const ConnectionDebugOptions& opts) {
     auto _lock = m_internalMutex.lock();
 
-    m_debugOptions = opts;
+    m_connOptions.debug = opts;
 }
 
 void Connection::setConnectTimeout(Duration dur) {
+    auto _lock = m_internalMutex.lock();
+
     m_connTimeout = dur;
+}
+
+void Connection::setActiveKeepaliveInterval(std::optional<asp::time::Duration> interval) {
+    auto _lock = m_internalMutex.lock();
+
+    m_connOptions.activeKeepaliveInterval = interval;
 }
 
 bool Connection::connecting() const {

@@ -15,7 +15,7 @@ public:
 
     static qsox::NetResult<UdpTransport> connect(
         const qsox::SocketAddress& address,
-        const struct ConnectionDebugOptions* debugOptions = nullptr
+        const struct ConnectionOptions& connOptions
     );
 
     TransportResult<QunetMessage> performHandshake(
@@ -42,8 +42,9 @@ private:
     bool m_closed = false;
     bool m_unackedKeepalive = false;
     float m_lossSim = 0.f;
+    std::optional<asp::time::Duration> m_activeKeepaliveInterval;
 
-    UdpTransport(qsox::UdpSocket socket, size_t mtu, float packetLossSimulation = 0.0f);
+    UdpTransport(qsox::UdpSocket socket, size_t mtu, const struct ConnectionOptions& connOptions);
 
     // Performs fragmentation (if needed) and sends the message.
     // Reliability and compression headers should already be set in the message, if they are needed.

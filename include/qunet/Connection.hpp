@@ -74,6 +74,11 @@ struct ConnectionDebugOptions {
     float packetLossSimulation = 0.0f;
 };
 
+struct ConnectionOptions {
+    ConnectionDebugOptions debug;
+    std::optional<asp::time::Duration> activeKeepaliveInterval;
+};
+
 // Connection is a class that is a manager for connecting to a specific endpoint.
 // It handles DNS resolution, happy eyeballs (choosing ipv4 or ipv6),
 // choosing the best transport (TCP, UDP, QUIC, ...), and reconnection.
@@ -148,6 +153,12 @@ public:
     // Default is 5 seconds.
     void setConnectTimeout(asp::time::Duration dur);
 
+    // Set whether to enable "active" keepalives, and the interval between them.
+    // By default, keepalives are only sent when the connection is idle for more than 30 seconds (45 for TCP).
+    // With this option, they will always be sent at the given interval, even if the connection is not idle.
+    // This can be useful for automatic measurement of the connection latency.
+    void setActiveKeepaliveInterval(std::optional<asp::time::Duration> interval);
+
     // Returns whether a connection is currently in progress.
     bool connecting() const;
 
@@ -171,7 +182,7 @@ private:
     // vvv settings vvv
     std::string m_srvPrefix = "_qunet";
     ConnectionType m_preferredConnType = ConnectionType::Tcp;
-    ConnectionDebugOptions m_debugOptions{};
+    ConnectionOptions m_connOptions{};
     bool m_preferIpv6 = true;
     bool m_ipv4Enabled = true;
     bool m_ipv6Enabled = true;

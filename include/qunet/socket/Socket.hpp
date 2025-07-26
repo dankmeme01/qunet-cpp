@@ -20,7 +20,7 @@ struct TransportOptions {
     qsox::SocketAddress address;
     ConnectionType type;
     asp::time::Duration timeout;
-    const struct ConnectionDebugOptions* debugOptions = nullptr;
+    const struct ConnectionOptions* connOptions = nullptr;
     const ClientTlsContext* tlsContext = nullptr;
 };
 

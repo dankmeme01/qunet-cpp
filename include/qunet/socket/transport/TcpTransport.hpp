@@ -12,7 +12,11 @@ public:
     TcpTransport(TcpTransport&&) = default;
     TcpTransport& operator=(TcpTransport&&) = default;
 
-    static qsox::NetResult<TcpTransport> connect(const qsox::SocketAddress& address, const asp::time::Duration& timeout);
+    static qsox::NetResult<TcpTransport> connect(
+        const qsox::SocketAddress& address,
+        const asp::time::Duration& timeout,
+        const struct ConnectionOptions& connOptions
+    );
 
     TransportResult<> close() override;
     bool isClosed() const override;
@@ -28,6 +32,7 @@ private:
 
     qsox::TcpStream m_socket;
     CircularByteBuffer m_recvBuffer;
+    std::optional<asp::time::Duration> m_activeKeepaliveInterval;
     bool m_closed = false;
 
     TcpTransport(qsox::TcpStream socket);
