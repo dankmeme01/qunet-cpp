@@ -786,6 +786,10 @@ bool Connection::disconnected() const {
     return m_connState == ConnectionState::Disconnected;
 }
 
+Duration Connection::getLatency() const {
+    return m_socket ? m_socket->getLatency() : Duration::zero();
+}
+
 ConnectionState Connection::state() const {
     return m_connState;
 }

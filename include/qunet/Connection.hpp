@@ -168,6 +168,9 @@ public:
     // Returns whether there is no connection established and no connection attempt is in progress.
     bool disconnected() const;
 
+    // Returns the average latency of the connection, zero if not connected or if there's not enough ping data.
+    asp::time::Duration getLatency() const;
+
     ConnectionState state() const;
 
     // Returns the last error that occurred during the connection process.

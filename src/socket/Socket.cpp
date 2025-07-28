@@ -181,6 +181,10 @@ bool Socket::messageAvailable() {
     return m_transport->messageAvailable();
 }
 
+Duration Socket::getLatency() const {
+    return m_transport->getLatency();
+}
+
 Duration Socket::untilTimerExpiry() const {
     return m_transport->untilTimerExpiry();
 }

@@ -48,6 +48,9 @@ public:
     /// In this case, `receiveMessage()` will return a message without blocking.
     bool messageAvailable();
 
+    /// Returns the average latency of the connection.
+    asp::time::Duration getLatency() const;
+
     /// Returns how much time is left until the transport timer expires.
     /// Currently, this is only used for UDP transports to determine when to retransmit messages (or send ACKs),
     /// and by UDP/TCP to determine when to send keepalive messages.
