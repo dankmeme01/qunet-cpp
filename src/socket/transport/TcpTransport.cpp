@@ -41,7 +41,9 @@ bool TcpTransport::isClosed() const {
 
 TransportResult<> TcpTransport::sendMessage(QunetMessage message, bool reliable) {
     this->updateLastActivity();
+
     if (message.is<KeepaliveMessage>()) {
+        message.as<KeepaliveMessage>().timestamp = this->getKeepaliveTimestamp();
         this->updateLastKeepalive();
     }
 

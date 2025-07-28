@@ -201,6 +201,12 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
             return Ok();
         }
 
+        if (message.is<KeepaliveMessage>()) {
+            message.as<KeepaliveMessage>().timestamp = this->getKeepaliveTimestamp();
+            this->updateLastKeepalive();
+            m_unackedKeepalive = true;
+        }
+
         HeapByteWriter writer;
         GEODE_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
         auto data = writer.written();
@@ -348,7 +354,7 @@ TransportResult<bool> UdpTransport::processIncomingData() {
             m_unackedKeepalive = false;
         }
 
-        m_recvMsgQueue.push(std::move(msg));
+        this->_pushFinalControlMessage(std::move(msg));
 
         return Ok(true);
     }
@@ -468,8 +474,6 @@ TransportResult<> UdpTransport::handleTimerExpiry() {
     // if we haven't sent any messages in a while, we should send a keepalive message
     if (this->untilKeepalive().isZero()) {
         GEODE_UNWRAP(this->sendMessage(KeepaliveMessage{}, false));
-        this->updateLastKeepalive();
-        m_unackedKeepalive = true;
     }
 
     return Ok();

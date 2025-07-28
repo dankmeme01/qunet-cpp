@@ -1,5 +1,6 @@
 #include <qunet/socket/transport/BaseTransport.hpp>
 #include <qunet/util/algo.hpp>
+#include <qunet/Log.hpp>
 #include <asp/time/Instant.hpp>
 #include <chrono>
 
@@ -68,15 +69,6 @@ TransportResult<QunetMessage> BaseTransport::receiveMessage() {
     while (!GEODE_UNWRAP(this->processIncomingData()));
 
     auto msg = GEODE_UNWRAP(this->receiveMessage());
-    if (msg.is<KeepaliveResponseMessage>()) {
-        auto ts = msg.as<KeepaliveResponseMessage>().timestamp;
-        auto now = this->getKeepaliveTimestamp();
-
-        if (now > ts) {
-            auto passed = Duration::fromNanos(now - ts);
-            this->updateLatency(passed);
-        }
-    }
 
     return Ok(std::move(msg));
 }
@@ -103,8 +95,19 @@ TransportResult<> BaseTransport::_pushPreFinalDataMessage(QunetMessageMeta&& met
     return this->pushPreFinalDataMessage(std::move(meta));
 }
 
-void BaseTransport::_pushFinalControlMessage(QunetMessage&& meta) {
-    m_recvMsgQueue.push(std::move(meta));
+void BaseTransport::_pushFinalControlMessage(QunetMessage&& msg) {
+    if (msg.is<KeepaliveResponseMessage>()) {
+        auto ts = msg.as<KeepaliveResponseMessage>().timestamp;
+        auto now = this->getKeepaliveTimestamp();
+
+        if (now > ts) {
+            auto passed = Duration::fromNanos(now - ts);
+            this->updateLatency(passed);
+        }
+
+    }
+
+    m_recvMsgQueue.push(std::move(msg));
 }
 
 TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta) {

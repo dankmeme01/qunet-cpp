@@ -958,9 +958,7 @@ ConnectionResult<> Connection::connectIp(const qsox::SocketAddress& address, Con
 }
 
 void Connection::sendKeepalive() {
-    return this->doSend(KeepaliveMessage{
-        .timestamp = SystemTime::now().timeSinceEpoch().micros(),
-    });
+    return this->doSend(KeepaliveMessage{});
 }
 
 void Connection::sendData(std::vector<uint8_t> data, bool reliable) {
