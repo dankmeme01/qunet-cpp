@@ -115,11 +115,10 @@ TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable) {
 }
 
 CompressionType Socket::shouldCompress(size_t size) const {
-    // TODO lz4?
-    if (size < 128) {
-        return CompressionType::None;
-    } else {
+    if (size > 1024) {
         return CompressionType::Zstd;
+    } else {
+        return CompressionType::None;
     }
 }
 
