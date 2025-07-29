@@ -35,7 +35,7 @@ constexpr inline size_t MSG_DATA_FRAGMENTATION_MASK = 1 << 5;
 
 constexpr inline uint16_t MSG_DATA_LAST_FRAGMENT_MASK = 0x8000; // most significant bit of fragment index
 
-constexpr inline int MSG_ZSTD_COMPRESSION_LEVEL = 3;
+constexpr inline int MSG_ZSTD_COMPRESSION_LEVEL = 2;
 
 constexpr inline uint8_t PROTO_TCP = 0x01;
 constexpr inline uint8_t PROTO_UDP = 0x02;
