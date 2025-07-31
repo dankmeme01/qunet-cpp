@@ -1,7 +1,10 @@
 #include <qunet/Pinger.hpp>
+#include <qunet/dns/Resolver.hpp>
 #include <qunet/Log.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
+#include "UrlParser.hpp"
+
 #include <asp/time/sleep.hpp>
 
 using namespace asp::time;
@@ -91,6 +94,75 @@ Pinger& Pinger::get() {
 
 void Pinger::ping(const qsox::SocketAddress& address, Callback callback) {
     m_channel.push(std::make_pair(address, std::move(callback)));
+}
+
+geode::Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
+    // parse and resolve the url
+    UrlParser parser{url};
+    auto parseRes = parser.result();
+
+    switch (parseRes) {
+        case UrlParseError::Success: break;
+        case UrlParseError::InvalidProtocol: return Err("Invalid protocol in URL");
+        case UrlParseError::InvalidPort: return Err("Invalid port in URL");
+    }
+
+    if (parser.isIpWithPort()) {
+        this->ping(parser.asIpWithPort(), std::move(callback));
+        return Ok();
+    } else if (parser.isIp()) {
+        this->ping(qsox::SocketAddress{parser.asIp(), DEFAULT_PORT}, std::move(callback));
+        return Ok();
+    } else if (parser.isDomainWithPort()) {
+        auto& [domain, port] = parser.asDomainWithPort();
+        return this->resolveAndPing(domain, port, std::move(callback));
+    } else if (parser.isDomain()) {
+        return this->resolveAndPing(parser.asDomain(), DEFAULT_PORT, std::move(callback));
+    } else {
+        QN_ASSERT(false && "Invalid urlparser outcome");
+    }
+}
+
+geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, Callback callback) {
+    auto dnsCache = m_dnsCache.lock();
+    auto it = dnsCache->find(std::string(domain));
+
+    if (it != dnsCache->end()) {
+        this->ping(qsox::SocketAddress{it->second, port}, std::move(callback));
+        return Ok();
+    }
+
+    dnsCache.unlock();
+
+    // not cached, resolve the domain
+    auto& resolver = Resolver::get();
+    auto res = resolver.queryA(std::string(domain), [
+        this,
+        domain = std::string(domain),
+        port,
+        callback = std::move(callback)
+    ](ResolverResult<DNSRecordA> record) {
+        if (!record) {
+            log::warn("Failed to resolve A record for '{}': {}", domain, record.unwrapErr().message());
+            return;
+        }
+
+        auto& addrs = record.unwrap().addresses;
+
+        QN_ASSERT(!addrs.empty() && "DNS A record should not be empty");
+
+        auto dnsCache = m_dnsCache.lock();
+        dnsCache->emplace(domain, addrs[0]);
+
+        // ping the first address
+        this->ping(qsox::SocketAddress{addrs[0], port}, std::move(callback));
+    });
+
+    if (!res) {
+        return Err(fmt::format("Failed to query A record for '{}': {}", domain, res.unwrapErr().message()));
+    }
+
+    return Ok();
 }
 
 void Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {

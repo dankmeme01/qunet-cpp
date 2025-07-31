@@ -4,6 +4,7 @@
 #include <qunet/Log.hpp>
 #include <qunet/util/assert.hpp>
 #include <qunet/util/Poll.hpp>
+#include "UrlParser.hpp"
 
 #include <asp/time/Duration.hpp>
 #include <asp/time/Instant.hpp>
@@ -641,70 +642,31 @@ ConnectionResult<> Connection::connect(std::string_view destination) {
     m_connCounter = m_connCounter + 1;
 
     // first parse the destination
-    auto protoEnd = destination.find("://");
-    ConnectionType type = ConnectionType::Unknown; // Unknown is qunet
+    UrlParser parser{destination};
+    auto parseRes = parser.result();
 
-    if (protoEnd != std::string::npos) {
-        std::string_view proto = destination.substr(0, protoEnd);
-        if (proto == "udp") {
-            type = ConnectionType::Udp;
-        } else if (proto == "tcp") {
-            type = ConnectionType::Tcp;
-        } else if (proto == "quic") {
-            type = ConnectionType::Quic;
-        } else if (proto == "qunet") {
-            type = ConnectionType::Unknown;
-        } else {
-            return Err(ConnectionError::InvalidProtocol);
-        }
-
-        destination = destination.substr(protoEnd + 3); // skip the protocol path
+    switch (parseRes) {
+        case UrlParseError::Success: break;
+        case UrlParseError::InvalidProtocol: return Err(ConnectionError::InvalidProtocol);
+        case UrlParseError::InvalidPort: return Err(ConnectionError::InvalidPort);
     }
+
+    auto type = parser.protocol().value();
 
     this->resetConnectionState();
 
-    // if there's a trailing slash, remove it
-    while (!destination.empty() && destination.back() == '/') {
-        destination.remove_suffix(1);
-    }
-
-    bool hasPort = false;
-    auto colonPos = destination.find_last_of(':');
-    if (colonPos != std::string::npos) {
-        // check if the colon is preceded by ']' (e.g. qunet://[::1]:1234)
-
-        if (destination[colonPos - 1] == ']') {
-            // ipv6 address with a port
-            hasPort = true;
-        } else {
-            // if it's an ipv6 address, then this is not a port and instead a part of the address
-            // if it's an ipv4 address or a domain, then this is a port
-            if (qsox::Ipv6Address::parse(std::string(destination))) {
-                hasPort = false;
-            } else {
-                hasPort = true;
-            }
-        }
-    }
-
     // check if it's an IP+port / IP / domain+port / domain
-    if (auto addressResult = qsox::SocketAddress::parse(destination)) {
-        return connectIp(addressResult.unwrap(), type);
-    } else if (auto ipResult = qsox::IpAddress::parse(std::string(destination))) {
-        return connectIp(qsox::SocketAddress{ipResult.unwrap(), DEFAULT_PORT}, type);
-    } else if (hasPort) {
-        auto portStr = destination.substr(colonPos + 1);
-        uint16_t port;
-
-        if (std::from_chars(&*portStr.begin(), &*portStr.end(), port).ec != std::errc()) {
-            return Err(ConnectionError::InvalidPort);
-        }
-
-        destination.remove_suffix(portStr.size() + 1); // remove the port part
-
-        return connectDomain(destination, port, type);
+    if (parser.isIpWithPort()) {
+        return connectIp(parser.asIpWithPort(), type);
+    } else if (parser.isIp()) {
+        return connectIp(qsox::SocketAddress{parser.asIp(), DEFAULT_PORT}, type);
+    } else if (parser.isDomainWithPort()) {
+        auto& [domain, port] = parser.asDomainWithPort();
+        return connectDomain(domain, port, type);
+    } else if (parser.isDomain()) {
+        return connectDomain(parser.asDomain(), std::nullopt, type);
     } else {
-        return connectDomain(destination, std::nullopt, type);
+        QN_ASSERT(false && "Invalid urlparser outcome");
     }
 }
 
