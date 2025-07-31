@@ -78,6 +78,11 @@ public:
             port = p;
         }
 
+        if (m_url.starts_with('[') && m_url.ends_with(']')) {
+            m_url.remove_prefix(1);
+            m_url.remove_suffix(1);
+        }
+
         if (auto address = qsox::IpAddress::parse(std::string(m_url))) {
             if (port) {
                 m_value = qsox::SocketAddress{*address, *port};
