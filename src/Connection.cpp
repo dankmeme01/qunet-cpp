@@ -668,13 +668,32 @@ ConnectionResult<> Connection::connect(std::string_view destination) {
         destination.remove_suffix(1);
     }
 
+    bool hasPort = false;
+    auto colonPos = destination.find_last_of(':');
+    if (colonPos != std::string::npos) {
+        // check if the colon is preceded by ']' (e.g. qunet://[::1]:1234)
+
+        if (destination[colonPos - 1] == ']') {
+            // ipv6 address with a port
+            hasPort = true;
+        } else {
+            // if it's an ipv6 address, then this is not a port and instead a part of the address
+            // if it's an ipv4 address or a domain, then this is a port
+            if (qsox::Ipv6Address::parse(std::string(destination))) {
+                hasPort = false;
+            } else {
+                hasPort = true;
+            }
+        }
+    }
+
     // check if it's an IP+port / IP / domain+port / domain
     if (auto addressResult = qsox::SocketAddress::parse(destination)) {
         return connectIp(addressResult.unwrap(), type);
     } else if (auto ipResult = qsox::IpAddress::parse(std::string(destination))) {
         return connectIp(qsox::SocketAddress{ipResult.unwrap(), DEFAULT_PORT}, type);
-    } else if (destination.find(':') != std::string::npos) {
-        auto portStr = destination.substr(destination.find_last_of(':') + 1);
+    } else if (hasPort) {
+        auto portStr = destination.substr(colonPos + 1);
         uint16_t port;
 
         if (std::from_chars(&*portStr.begin(), &*portStr.end(), port).ec != std::errc()) {
