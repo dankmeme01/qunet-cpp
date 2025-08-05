@@ -54,6 +54,7 @@ public:
     Result<void> writeStringU16(std::string_view str);
 
     std::vector<uint8_t> toVector() const;
+    std::vector<uint8_t> intoVector() &&;
     std::span<const uint8_t> written() const;
 
     Result<void> setPosition(size_t pos);

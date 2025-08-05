@@ -158,6 +158,13 @@ std::vector<uint8_t> HeapByteWriter::toVector() const {
     return m_buffer;
 }
 
+std::vector<uint8_t> HeapByteWriter::intoVector() && {
+    std::vector<uint8_t> result = std::move(m_buffer);
+    m_buffer.clear();
+    m_pos = 0;
+    return result;
+}
+
 std::span<const uint8_t> HeapByteWriter::written() const {
     return std::span{m_buffer.begin(), m_buffer.begin() + m_pos};
 }
