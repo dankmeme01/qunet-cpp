@@ -287,7 +287,11 @@ Connection::Connection() {
                     log::debug("Reconnect attempt failed, sleeping for {} before trying again", timeout.toString());
 
                     m_poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
+
+                    _lock.unlock();
                     auto pRes = m_poller.poll(timeout);
+                    _lock.relock();
+
                     m_disconnectPipe.consume();
                     m_poller.removePipe(m_disconnectPipe);
 
