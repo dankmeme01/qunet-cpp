@@ -18,4 +18,12 @@ Hash<32> blake3Hash(std::span<const uint8_t> data) {
     return hash;
 }
 
+Hash<32> blake3Hash(const std::string& data) {
+    return blake3Hash((const uint8_t*)data.data(), data.size());
+}
+
+Hash<32> blake3Hash(const std::vector<uint8_t>& data) {
+    return blake3Hash(std::span(data.begin(), data.end()));
+}
+
 }

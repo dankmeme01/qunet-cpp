@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string>
+#include <vector>
 #include <span>
 
 namespace qn {
@@ -32,5 +33,7 @@ struct Hash {
 
 Hash<32> blake3Hash(const uint8_t* data, size_t size);
 Hash<32> blake3Hash(std::span<const uint8_t> data);
+Hash<32> blake3Hash(const std::string& data);
+Hash<32> blake3Hash(const std::vector<uint8_t>& data);
 
 }
