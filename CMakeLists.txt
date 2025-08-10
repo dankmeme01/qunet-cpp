@@ -58,6 +58,9 @@ set(LZ4_BUILD_CLI OFF)
 add_subdirectory(${lz4_SOURCE_DIR}/build/cmake lz4)
 
 CPMAddPackage("gh:BLAKE3-team/BLAKE3#1.8.2")
+if (WIN32)
+    set(BLAKE3_SIMD_TYPE "none")
+endif()
 add_subdirectory(${BLAKE3_SOURCE_DIR}/c blake3)
 
 target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
