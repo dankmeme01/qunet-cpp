@@ -92,26 +92,33 @@ inline TransportResult<> processIncomingData(
 
     buffer.advanceWrite(len);
 
-    // see if we can decode a message from the buffer
-    if (buffer.size() < sizeof(uint32_t)) {
-        // not enough data to read the length
-        return Ok();
-    }
+    // decode messages until we have nothing left
+    while (true) {
+        if (buffer.size() < sizeof(uint32_t)) {
+            // not enough data to read the length
+            break;
+        }
 
-    uint8_t lenbuf[sizeof(uint32_t)];
-    buffer.peek(lenbuf, sizeof(uint32_t));
+        uint8_t lenbuf[sizeof(uint32_t)];
+        buffer.peek(lenbuf, sizeof(uint32_t));
 
-    size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
+        size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
 
-    if (length == 0) {
-        return Err(TransportError::ZeroLengthMessage);
-    } else if (messageSizeLimit && length > messageSizeLimit) {
-        log::warn("Received message larger than limit: {} > {}", length, messageSizeLimit);
-        return Err(TransportError::MessageTooLong);
-    }
+        if (length == 0) {
+            // TODO: idk if its worth erroring here?
+            // return Err(TransportError::ZeroLengthMessage);
+            buffer.skip(sizeof(uint32_t));
+            continue;
+        } else if (messageSizeLimit && length > messageSizeLimit) {
+            log::warn("Received message larger than limit: {} > {}", length, messageSizeLimit);
+            return Err(TransportError::MessageTooLong);
+        }
 
-    size_t totalLen = sizeof(uint32_t) + length;
-    if (buffer.size() >= totalLen) {
+        size_t totalLen = sizeof(uint32_t) + length;
+        if (buffer.size() < totalLen) {
+            break; // not enough data
+        }
+
         // we have a full message in the buffer
         buffer.skip(sizeof(uint32_t));
         auto wrpread = buffer.peek(length);
