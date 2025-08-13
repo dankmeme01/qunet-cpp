@@ -284,7 +284,7 @@ Duration ReliableStore::calcRetransmissionDeadline(size_t nthAttempt) const {
 }
 
 Duration ReliableStore::calcAckDeadline() const {
-    return Duration::fromMillis(125);
+    return Duration::fromMillis(100);
 }
 
 }
