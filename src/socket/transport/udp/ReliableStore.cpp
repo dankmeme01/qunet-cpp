@@ -278,7 +278,7 @@ Duration ReliableStore::calcRetransmissionDeadline(size_t nthAttempt) const {
 
     // this is kinda arbitrary tbh
     return Duration::fromMicros(
-        static_cast<double>(std::max(rtt, ackdl).micros()) * 2.5
+        static_cast<double>((rtt + ackdl).micros()) * 1.5
         + static_cast<double>(nthAttempt) * 75'000.0
     );
 }
