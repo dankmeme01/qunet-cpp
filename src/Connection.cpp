@@ -286,14 +286,15 @@ Connection::Connection() {
 
                     log::debug("Reconnect attempt failed, sleeping for {} before trying again", timeout.toString());
 
-                    m_poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
+                    MultiPoller poller;
+                    poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
 
                     _lock.unlock();
-                    auto pRes = m_poller.poll(timeout);
+                    auto pRes = poller.poll(timeout);
                     _lock.relock();
 
                     m_disconnectPipe.consume();
-                    m_poller.removePipe(m_disconnectPipe);
+                    poller.removePipe(m_disconnectPipe);
 
                     if (pRes) {
                         // a disconnect was requested, abort connection
@@ -427,9 +428,7 @@ Connection::Connection() {
 
                 // done!
                 log::debug("Connection closed cleanly");
-                m_socket.reset();
-                this->setConnState(ConnectionState::Disconnected);
-
+                this->resetConnectionState();
             } break;
         }
     });
@@ -535,6 +534,8 @@ void Connection::thrConnected() {
     m_poller.addPipe(m_msgPipe, qsox::PollType::Read);
     m_poller.addPipe(m_disconnectPipe, qsox::PollType::Read);
     m_poller.addQSocket(*m_socket, qsox::PollType::Read);
+
+    QN_ASSERT(m_poller.trackedCount() == 3 && "thrConnected: invalid count of tracked fds in poller");
 }
 
 void Connection::thrHandleIncomingMessage(QunetMessage&& message) {
@@ -974,6 +975,8 @@ void Connection::onFatalConnectionError(const ConnectionError& err) {
             m_poller.removePipe(m_msgPipe);
             m_poller.removePipe(m_disconnectPipe);
 
+            QN_ASSERT(m_poller.trackedCount() == 0 && "onFatalConnectionError: invalid count of tracked fds in poller");
+
             // attempt to reconnect
             this->setConnState(ConnectionState::Reconnecting);
         } break;
@@ -1036,6 +1039,8 @@ void Connection::resetConnectionState() {
     m_poller.removePipe(m_msgPipe);
     m_poller.removePipe(m_disconnectPipe);
     if (m_socket) m_poller.removeQSocket(*m_socket);
+
+    QN_ASSERT(m_poller.trackedCount() == 0 && "resetConnectionState: invalid count of tracked fds in poller");
 
     m_msgPipe.clear();
     m_disconnectPipe.clear();

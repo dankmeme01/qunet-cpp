@@ -1,6 +1,7 @@
 #pragma once
 
 #include <qunet/util/Poll.hpp>
+#include <qunet/Log.hpp>
 #include <qunet/socket/Socket.hpp>
 #include <qunet/socket/transport/QuicTransport.hpp>
 #include "../socket/transport/quic/QuicConnection.hpp"
@@ -141,6 +142,10 @@ public:
         }
     }
 
+    size_t trackedCount() const {
+        return m_handles.size();
+    }
+
 private:
     friend class MultiPoller::PollResult;
     asp::Mutex<void, true> m_mtx;
@@ -159,6 +164,7 @@ private:
         auto idx = this->findEventForSocket(associated);
 
         if (idx == -1) {
+            log::warn("Poller removeEventForSocket failed: could not find socket for association {}", (void*) associated);
             return;
         }
 
@@ -191,6 +197,8 @@ private:
                 return;
             }
         }
+
+        log::warn("Poller removeHandle failed: could not find handle {}", (void*) handle);
     }
 };
 

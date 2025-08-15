@@ -117,6 +117,10 @@ private:
             }
         }
     }
+
+    size_t trackedCount() const {
+        return m_fds.size();
+    }
 };
 
 inline qsox::SockFd MultiPoller::PollResult::fd() const {

@@ -45,4 +45,8 @@ void MultiPoller::clearReadiness(qn::Socket& socket) {
     m_impl->clearReadiness(socket);
 }
 
+size_t MultiPoller::trackedCount() const {
+    return m_impl->trackedCount();
+}
+
 }

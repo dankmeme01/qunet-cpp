@@ -48,6 +48,8 @@ public:
     void clearReadiness(qsox::BaseSocket& socket);
     void clearReadiness(qn::Socket& socket);
 
+    size_t trackedCount() const;
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
