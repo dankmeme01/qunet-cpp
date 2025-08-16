@@ -74,7 +74,7 @@ CompressorResult<> ZstdCompressor::compress(
     if (ZSTD_isError(dsize)) {
         auto ec = ZSTD_getErrorCode(dsize);
         auto msg = ZSTD_getErrorName(ec);
-        log::warn("ZstdCompressor: Decompression failed: {} ({})", msg, (int) ec);
+        log::warn("ZstdCompressor: compression failed: {} ({})", msg, (int) ec);
         return Err(CompressorError::CompressionFailed);
     }
 
@@ -82,8 +82,26 @@ CompressorResult<> ZstdCompressor::compress(
     return Ok();
 }
 
-size_t ZstdCompressor::compressBound(size_t srcSize) const {
+size_t ZstdCompressor::compressBound(size_t srcSize) {
     return ZSTD_compressBound(srcSize);
+}
+
+CompressorResult<> compressZstd(
+    const void* src, size_t srcSize,
+    void* dst, size_t& dstSize,
+    int level
+) {
+    size_t dsize = ZSTD_compress(dst, dstSize, src, srcSize, level);
+
+    if (ZSTD_isError(dsize)) {
+        auto ec = ZSTD_getErrorCode(dsize);
+        auto msg = ZSTD_getErrorName(ec);
+        log::warn("ZstdCompressor: compression failed: {} ({})", msg, (int) ec);
+        return Err(CompressorError::CompressionFailed);
+    }
+
+    dstSize = dsize;
+    return Ok();
 }
 
 }

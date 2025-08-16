@@ -33,4 +33,9 @@ private:
     ZSTD_DDict_s* m_dict = nullptr;
 };
 
+DecompressorResult<> decompressZstd(
+    const void* src, size_t srcSize,
+    void* dst, size_t& dstSize
+);
+
 }

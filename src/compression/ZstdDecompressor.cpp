@@ -80,4 +80,21 @@ DecompressorResult<> ZstdDecompressor::decompress(
     return Ok();
 }
 
+DecompressorResult<> decompressZstd(
+    const void* src, size_t srcSize,
+    void* dst, size_t& dstSize
+) {
+    size_t dsize = ZSTD_decompress(dst, dstSize, src, srcSize);
+
+    if (ZSTD_isError(dsize)) {
+        auto ec = ZSTD_getErrorCode(dsize);
+        auto msg = ZSTD_getErrorName(ec);
+        log::warn("ZstdCompressor: Decompression failed: {} ({})", msg, (int) ec);
+        return Err(DecompressorError::DecompressionFailed);
+    }
+
+    dstSize = dsize;
+    return Ok();
+}
+
 }

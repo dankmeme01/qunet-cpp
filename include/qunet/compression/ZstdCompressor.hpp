@@ -29,12 +29,20 @@ public:
     );
 
     /// Returns the maximum size of the compressed data for a given source size.
-    size_t compressBound(size_t srcSize) const;
+    static size_t compressBound(size_t srcSize);
 
 private:
     ZSTD_CCtx_s* m_ctx = nullptr;
     ZSTD_CDict_s* m_dict = nullptr;
     int m_level = 0;
 };
+
+/// Compress data from `src` to `dst` using zstandard.
+/// `dstSize` will be set to the size of the compressed data.
+CompressorResult<> compressZstd(
+    const void* src, size_t srcSize,
+    void* dst, size_t& dstSize,
+    int level
+);
 
 }
