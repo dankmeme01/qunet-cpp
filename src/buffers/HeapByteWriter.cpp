@@ -133,7 +133,7 @@ Result<void> HeapByteWriter::writeStringVar(std::string_view str) {
 }
 
 Result<void> HeapByteWriter::writeStringU8(std::string_view str) {
-    if (str.size() > 255) {
+    if (str.size() > std::numeric_limits<uint8_t>::max()) {
         return Err(ByteWriterError::StringTooLong);
     }
 
@@ -144,11 +144,22 @@ Result<void> HeapByteWriter::writeStringU8(std::string_view str) {
 }
 
 Result<void> HeapByteWriter::writeStringU16(std::string_view str) {
-    if (str.size() > 65535) {
+    if (str.size() > std::numeric_limits<uint16_t>::max()) {
         return Err(ByteWriterError::StringTooLong);
     }
 
     this->writeU16(str.size());
+    this->writeBytes((const uint8_t*)str.data(), str.size());
+
+    return Ok();
+}
+
+Result<void> HeapByteWriter::writeStringU32(std::string_view str) {
+    if (str.size() > std::numeric_limits<uint32_t>::max()) {
+        return Err(ByteWriterError::StringTooLong);
+    }
+
+    this->writeU32(str.size());
     this->writeBytes((const uint8_t*)str.data(), str.size());
 
     return Ok();

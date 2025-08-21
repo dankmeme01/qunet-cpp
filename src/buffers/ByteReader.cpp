@@ -158,6 +158,11 @@ Result<std::string> ByteReader::readStringU16() {
     return this->readFixedString(len);
 }
 
+Result<std::string> ByteReader::readStringU32() {
+    auto len = GEODE_UNWRAP(this->readU32());
+    return this->readFixedString(len);
+}
+
 Result<std::string> ByteReader::readString() {
     return this->readStringU16();
 }

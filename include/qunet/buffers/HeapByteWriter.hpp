@@ -52,6 +52,7 @@ public:
     Result<void> writeStringVar(std::string_view str);
     Result<void> writeStringU8(std::string_view str);
     Result<void> writeStringU16(std::string_view str);
+    Result<void> writeStringU32(std::string_view str);
 
     std::vector<uint8_t> toVector() const;
     std::vector<uint8_t> intoVector() &&;
