@@ -989,7 +989,7 @@ void Connection::onFatalConnectionError(const ConnectionError& err) {
 
 void Connection::onConnectionError(const ConnectionError& err) {
     if (auto e = std::get_if<qsox::Error>(&err.asTransportError().m_kind)) {
-        if (*e == qsox::Error::ConnectionClosed) {
+        if (*e == qsox::Error::ConnectionClosed || *e == qsox::Error::ConnectionReset) {
             this->onUnexpectedClosure();
         }
     } else if (err == TransportError::Closed) {
