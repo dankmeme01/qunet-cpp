@@ -117,9 +117,33 @@ Result<double> ByteReader::readDouble() {
 }
 
 Result<int64_t> ByteReader::readVarInt() {
-    // TODO
-    return Err(ByteReaderError::VarintOverflow);
+    int64_t value = 0;
+    int shift = 0;
+    int size = 64;
+    uint8_t byte;
+
+    while (true) {
+        byte = GEODE_UNWRAP(this->readU8());
+
+        if (shift == 64 && byte != 0 && byte != 1) {
+            return Err(ByteReaderError::VarintOverflow);
+        }
+
+        value |= (uint64_t)(byte & 0x7f) << shift;
+        shift += 7;
+
+        if ((byte & 0x80) == 0) {
+            break;
+        }
+    }
+
+    if (shift < size && (byte & 0x40) != 0) {
+        value |= -1 << shift;
+    }
+
+    return Ok(value);
 }
+
 Result<uint64_t> ByteReader::readVarUint() {
     uint64_t value = 0;
     size_t shift = 0;
