@@ -198,7 +198,7 @@ private:
             }
         }
 
-        log::warn("Poller removeHandle failed: could not find handle {}", (void*) handle);
+        // log::debug("Poller removeHandle failed: could not find handle {}", (void*) handle);
     }
 };
 
