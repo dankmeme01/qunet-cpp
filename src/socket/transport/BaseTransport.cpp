@@ -58,6 +58,34 @@ TransportResult<QunetMessage> BaseTransport::performHandshake(
     return this->receiveMessage();
 }
 
+TransportResult<QunetMessage> BaseTransport::performReconnect(
+    const std::optional<asp::time::Duration>& timeout
+) {
+    auto startedAt = Instant::now();
+
+    GEODE_UNWRAP(this->sendMessage(ClientReconnectMessage{}, false));
+
+    while (true) {
+        auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;
+        if (remTimeout && remTimeout->isZero()) {
+            return Err(TransportError::TimedOut);
+        }
+
+        if (!GEODE_UNWRAP(this->poll(remTimeout))) {
+            continue;
+        }
+
+        bool msgAvailable = GEODE_UNWRAP(this->processIncomingData());
+        if (msgAvailable) {
+            break;
+        }
+    }
+
+    QN_DEBUG_ASSERT(!m_recvMsgQueue.empty());
+
+    return this->receiveMessage();
+}
+
 TransportResult<QunetMessage> BaseTransport::receiveMessage() {
     if (!m_recvMsgQueue.empty()) {
         auto msg = std::move(m_recvMsgQueue.front());

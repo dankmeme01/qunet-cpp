@@ -19,6 +19,8 @@ constexpr inline uint8_t MSG_CLIENT_RECONNECT = 10;
 constexpr inline uint8_t MSG_CONNECTION_ERROR = 11;
 constexpr inline uint8_t MSG_QDB_CHUNK_REQUEST = 12;
 constexpr inline uint8_t MSG_QDB_CHUNK_RESPONSE = 13;
+constexpr inline uint8_t MSG_RECONNECT_SUCCESS = 14;
+constexpr inline uint8_t MSG_RECONNECT_FAILURE = 15;
 
 constexpr inline uint8_t MSG_QDBG_TOGGLE = 64;
 constexpr inline uint8_t MSG_QDBG_REPORT = 65;

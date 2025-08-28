@@ -204,7 +204,7 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         if (message.is<KeepaliveMessage>()) {
             message.as<KeepaliveMessage>().timestamp = this->getKeepaliveTimestamp();
             this->updateLastKeepalive();
-            m_unackedKeepalive = true;
+            m_unackedKeepalives++;
         }
 
         HeapByteWriter writer;
@@ -351,7 +351,7 @@ TransportResult<bool> UdpTransport::processIncomingData() {
         auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
 
         if (msg.is<KeepaliveResponseMessage>()) {
-            m_unackedKeepalive = false;
+            m_unackedKeepalives = 0;
         }
 
         this->_pushFinalControlMessage(std::move(msg));
@@ -407,9 +407,9 @@ Duration UdpTransport::untilTimerExpiry() const {
 }
 
 Duration UdpTransport::untilKeepalive() const {
-    if (m_unackedKeepalive) {
+    if (m_unackedKeepalives > 0) {
         // if a keepalive is in flight but has not been acknowledged (lost?), send another one after a bit
-        return Duration::fromSecs(3) - this->sinceLastActivity();
+        return Duration::fromSecs(2) - this->sinceLastActivity();
     } else {
         // if no keepalives sent in a while, send one
         // timeout is different depending on how many keepalives we have sent so far,
@@ -469,6 +469,11 @@ TransportResult<> UdpTransport::handleTimerExpiry() {
         }};
 
         GEODE_UNWRAP(this->doSendUnfragmentedData(msg, false));
+    }
+
+    // if we have sent 3 keepalives with no response, reconnect
+    if (m_unackedKeepalives >= 3) {
+        return Err(TransportError::TimedOut);
     }
 
     // if we haven't sent any messages in a while, we should send a keepalive message

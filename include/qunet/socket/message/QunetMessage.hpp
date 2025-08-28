@@ -24,10 +24,12 @@ class QunetMessage {
         HandshakeFailureMessage,
         // ClientCloseMessage,
         ServerCloseMessage,
-        // ClientReconnectMessage,
+        ClientReconnectMessage,
         ConnectionErrorMessage,
         // QdbChunkRequestMessage,
         // QdbChunkResponseMessage,
+        ReconnectSuccessMessage,
+        ReconnectFailureMessage,
         // QdbgToggleMessage,
         // QdbgReportMessage,
         DataMessage
@@ -44,7 +46,7 @@ public:
     QunetMessage(HandshakeFailureMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(ClientCloseMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ServerCloseMessage msg) : m_kind(std::move(msg)) {}
-    // QunetMessage(ClientReconnectMessage msg) : m_kind(std::move(msg)) {}
+    QunetMessage(ClientReconnectMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ConnectionErrorMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbChunkRequestMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbChunkResponseMessage msg) : m_kind(std::move(msg)) {}

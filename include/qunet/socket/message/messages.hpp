@@ -175,7 +175,16 @@ struct ServerCloseMessage {
     QN_NO_ENCODE(ServerCloseMessage);
 };
 
-struct ClientReconnectMessage {};
+struct ClientReconnectMessage {
+    uint64_t connectionId;
+
+    MessageEncodeResult encode(auto& writer) const {
+        writer.writeU64(connectionId);
+        return Ok();
+    }
+
+    QN_NO_DECODE(ClientReconnectMessage);
+};
 
 struct ConnectionErrorMessage {
     uint32_t errorCode;
@@ -205,6 +214,22 @@ struct ConnectionErrorMessage {
 struct QdbChunkRequestMessage {};
 
 struct QdbChunkResponseMessage {};
+
+struct ReconnectSuccessMessage {
+    static MessageDecodeResult<ReconnectSuccessMessage> decode(ByteReader& writer) {
+        return Ok(ReconnectSuccessMessage{});
+    }
+
+    QN_NO_ENCODE(ReconnectSuccessMessage);
+};
+
+struct ReconnectFailureMessage {
+    static MessageDecodeResult<ReconnectFailureMessage> decode(ByteReader& writer) {
+        return Ok(ReconnectFailureMessage{});
+    }
+
+    QN_NO_ENCODE(ReconnectFailureMessage);
+};
 
 struct QdbgToggleMessage {};
 

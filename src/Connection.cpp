@@ -267,7 +267,7 @@ Connection::Connection() {
             } break;
 
             case ConnectionState::Reconnecting: {
-                if (m_thrReconnectAttempt >= 3) {
+                if (m_thrReconnectAttempt >= 7) {
                     log::debug("Too many reconnect attempts, disconnecting");
                     this->setConnState(ConnectionState::Disconnected);
                     return;
@@ -276,13 +276,19 @@ Connection::Connection() {
                 log::debug("Reconnecting (attempt {})", m_thrReconnectAttempt + 1);
 
                 auto _lock = m_internalMutex.lock();
-                this->thrTryConnectWith(m_thrSuccessfulPair->first, m_thrSuccessfulPair->second);
+                auto res = this->thrTryReconnect();
 
-                if (m_connState == ConnectionState::Connected) {
+                if (res) {
                     m_thrReconnectAttempt = 0;
+                } else if (*res.err() == TransportError::Cancelled) {
+                    // cancelled, do nothing
+                } else if (*res.err() == TransportError::ReconnectFailed) {
+                    // server did not want to accept us, likely the server just got restarted, simply disconnect
+                    this->finishCancellation();
                 } else {
                     // failed, sleep for a bit and try again
-                    auto timeout = Duration::fromSecs(5) * (1 << m_thrReconnectAttempt);
+                    // initially 5 seconds, then jump to 10
+                    auto timeout = Duration::fromSecs(m_thrReconnectAttempt < 3 ? 5 : 10);
 
                     log::debug("Reconnect attempt failed, sleeping for {} before trying again", timeout.toString());
 
@@ -500,20 +506,11 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
         m_tlsContext = std::move(tlsres).unwrap();
     }
 
-    auto tlsPtr = m_tlsContext ? &*m_tlsContext : nullptr;
-    TransportOptions opts {
-        .address = addr,
-        .type = type,
-        .timeout = m_connTimeout,
-        .connOptions = &m_connOptions,
-        .tlsContext = tlsPtr
-    };
-
-    auto sock = Socket::connect(opts);
+    auto sock = this->thrConnectSocket(addr, type);
 
     if (!sock) {
         // try next..
-        log::debug("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), sock.unwrapErr().message());
+        log::info("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), sock.unwrapErr().message());
         return;
     }
 
@@ -523,6 +520,46 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
     m_thrSuccessfulPair = std::make_pair(addr, type);
 
     this->thrConnected();
+}
+
+TransportResult<> Connection::thrTryReconnect() {
+    if (m_cancelling) {
+        this->finishCancellation();
+        return Err(TransportError::Cancelled);
+    }
+
+    QN_ASSERT(m_socket && "m_socket must be nonnull when reconnecting");
+
+    auto& addr = m_thrSuccessfulPair->first;
+    auto type = m_thrSuccessfulPair->second;
+
+    auto res = this->thrConnectSocket(addr, type, true);
+    if (!res) {
+        log::info("Failed to reconnect to {} ({}): {}", addr.toString(), connTypeToString(type), res.unwrapErr().message());
+        return Err(std::move(res).unwrapErr());
+    }
+
+    log::debug("Reconnected to {}", addr.toString());
+
+    m_socket = std::move(res).unwrap();
+
+    this->thrConnected();
+
+    return Ok();
+}
+
+TransportResult<Socket> Connection::thrConnectSocket(const qsox::SocketAddress& addr, ConnectionType type, bool reconnecting) {
+    auto tlsPtr = m_tlsContext ? &*m_tlsContext : nullptr;
+    TransportOptions opts {
+        .address = addr,
+        .type = type,
+        .timeout = m_connTimeout,
+        .connOptions = &m_connOptions,
+        .tlsContext = tlsPtr,
+        .reconnecting = reconnecting,
+    };
+
+    return reconnecting ? Socket::reconnect(opts, m_socket.value()) : Socket::connect(opts);
 }
 
 void Connection::thrConnected() {

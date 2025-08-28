@@ -56,6 +56,12 @@ MessageEncodeResult QunetMessage::encodeControlHeader(
         [&](const QdbChunkResponseMessage& msg) {
             return writer.writeU8(MSG_QDB_CHUNK_RESPONSE);
         },
+        [&](const ReconnectSuccessMessage& msg) {
+            return writer.writeU8(MSG_RECONNECT_SUCCESS);
+        },
+        [&](const ReconnectFailureMessage& msg) {
+            return writer.writeU8(MSG_RECONNECT_FAILURE);
+        },
         [&](const QdbgToggleMessage& msg) {
             return writer.writeU8(MSG_QDBG_TOGGLE);
         },
@@ -174,6 +180,12 @@ std::string_view QunetMessage::typeStr() const {
         [&](const QdbChunkResponseMessage& msg) {
             return "QdbChunkResponseMessage";
         },
+        [&](const ReconnectSuccessMessage& msg) {
+            return "ReconnectSuccessMessage";
+        },
+        [&](const ReconnectFailureMessage& msg) {
+            return "ReconnectFailureMessage";
+        },
         [&](const QdbgToggleMessage& msg) {
             return "QdbgToggleMessage";
         },
@@ -219,6 +231,14 @@ geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decodeWithMeta(Qun
 
         case MSG_CONNECTION_ERROR: {
             return Ok(MAP_UNWRAP(ConnectionErrorMessage::decode(reader)));
+        } break;
+
+        case MSG_RECONNECT_SUCCESS: {
+            return Ok(MAP_UNWRAP(ReconnectSuccessMessage::decode(reader)));
+        } break;
+
+        case MSG_RECONNECT_FAILURE: {
+            return Ok(MAP_UNWRAP(ReconnectFailureMessage::decode(reader)));
         } break;
     }
 

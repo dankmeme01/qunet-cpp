@@ -22,18 +22,23 @@ struct TransportOptions {
     asp::time::Duration timeout;
     const struct ConnectionOptions* connOptions = nullptr;
     const ClientTlsContext* tlsContext = nullptr;
+    bool reconnecting = false;
 };
 
 class Socket {
 public:
     // Attempts to connect to the specified address using the given connection type.
     static TransportResult<Socket> connect(const TransportOptions& options);
+    static TransportResult<Socket> reconnect(const TransportOptions& options, Socket& prev);
 
     // Closes the transport. This does not send a `ClientClose` message. This may or may not block - see notes in BaseTransport::close.
     TransportResult<> close();
 
     // Returns true if `close()` was called and the transport finished closing.
     bool isClosed() const;
+
+    // Attempts to reconnect to the currently connected remote.
+    TransportResult<> reconnect();
 
     /// Send a message over the transport. Note: if it's a Data message, reliability and compression headers are ignored.
     /// The `reliable` argument is used to make the message reliable, and compression is applied automatically if needed.
@@ -62,12 +67,15 @@ public:
 
 private:
     std::shared_ptr<BaseTransport> m_transport;
+    asp::time::Duration m_connTimeout;
 
     Socket(std::shared_ptr<BaseTransport> transport) : m_transport(std::move(transport)) {}
 
     static TransportResult<std::shared_ptr<BaseTransport>> createTransport(const TransportOptions& options);
+    static TransportResult<std::pair<Socket, asp::time::Duration>> createSocket(const TransportOptions& options);
 
     TransportResult<> onHandshakeSuccess(const HandshakeFinishMessage& msg);
+    TransportResult<> onReconnectSuccess(Socket& older);
 
     CompressionType shouldCompress(size_t size) const;
     CompressorResult<> doCompressZstd(DataMessage& message) const;

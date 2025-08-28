@@ -268,6 +268,8 @@ private:
     // vvv thread functions, do not call outside of the thread vvv
     void thrTryConnectNext();
     void thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionType type);
+    TransportResult<> thrTryReconnect();
+    TransportResult<Socket> thrConnectSocket(const qsox::SocketAddress& addr, ConnectionType type, bool reconnecting = false);
     bool thrConnecting();
     void thrConnected();
     void thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr);

@@ -27,8 +27,10 @@ struct TransportError {
         DefragmentationError,
         TooUnreliable,
         InvalidQunetDatabase,
+        ReconnectFailed,
         TimedOut,
         Closed,
+        Cancelled,
         Other,
     } CustomCode;
 

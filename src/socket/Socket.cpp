@@ -14,10 +14,10 @@ using namespace asp::time;
 
 namespace qn {
 
-TransportResult<Socket> Socket::connect(const TransportOptions& options) {
+TransportResult<std::pair<Socket, Duration>> Socket::createSocket(const TransportOptions& options) {
     auto startedAt = Instant::now();
 
-    auto transport = GEODE_UNWRAP(createTransport(options));
+    auto transport = GEODE_UNWRAP(Socket::createTransport(options));
 
     if (startedAt.elapsed() > options.timeout) {
         return Err(TransportError::ConnectionTimedOut);
@@ -30,12 +30,18 @@ TransportResult<Socket> Socket::connect(const TransportOptions& options) {
         return Err(TransportError::ConnectionTimedOut);
     }
 
+    return Ok(std::pair{std::move(socket), handshakeTimeout});
+}
+
+TransportResult<Socket> Socket::connect(const TransportOptions& options) {
+    auto [socket, timeout] = GEODE_UNWRAP(createSocket(options));
+
     auto msg = GEODE_UNWRAP(socket.m_transport->performHandshake(HandshakeStartMessage {
         .majorVersion = MAJOR_VERSION,
         .fragLimit = UDP_PACKET_LIMIT,
         // TODO: qdb hash
         .qdbHash = std::array<uint8_t, 16>{}
-    }, handshakeTimeout));
+    }, timeout));
 
     if (msg.is<HandshakeFinishMessage>()) {
         auto& hf = msg.as<HandshakeFinishMessage>();
@@ -45,6 +51,23 @@ TransportResult<Socket> Socket::connect(const TransportOptions& options) {
         log::warn("Handshake failed: {}", hf.message());
 
         return Err(TransportError::HandshakeFailure(std::string(hf.message())));
+    } else {
+        return Err(TransportError::UnexpectedMessage);
+    }
+
+    return Ok(std::move(socket));
+}
+
+TransportResult<Socket> Socket::reconnect(const TransportOptions& options, Socket& prev) {
+    auto [socket, timeout] = GEODE_UNWRAP(createSocket(options));
+
+    auto msg = GEODE_UNWRAP(socket.m_transport->performReconnect(timeout));
+
+    if (msg.is<ReconnectSuccessMessage>()) {
+        GEODE_UNWRAP(socket.onReconnectSuccess(prev));
+    } else if (msg.is<ReconnectFailureMessage>()) {
+        log::warn("Reconnect failed!");
+        return Err(TransportError::ReconnectFailed);
     } else {
         return Err(TransportError::UnexpectedMessage);
     }
@@ -76,6 +99,16 @@ TransportResult<> Socket::onHandshakeSuccess(const HandshakeFinishMessage& msg) 
     } else {
         GEODE_UNWRAP(m_transport->initCompressors());
     }
+
+    return Ok();
+}
+
+TransportResult<> Socket::onReconnectSuccess(Socket& older) {
+    log::debug("Reconnect finished, connection ID: {}", older.m_transport->m_connectionId);
+    m_transport->setConnectionId(older.m_transport->m_connectionId);
+    m_transport->setMessageSizeLimit(older.m_transport->m_messageSizeLimit);
+    m_transport->m_zstdCompressor = std::move(older.m_transport->m_zstdCompressor);
+    m_transport->m_zstdDecompressor = std::move(older.m_transport->m_zstdDecompressor);
 
     return Ok();
 }

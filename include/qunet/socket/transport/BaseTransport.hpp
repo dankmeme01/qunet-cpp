@@ -31,6 +31,11 @@ public:
         const std::optional<asp::time::Duration>& timeout
     );
 
+    /// Like `performHandshake` but sends a reconnect message and waits for a reconnect success or failure.
+    virtual TransportResult<QunetMessage> performReconnect(
+        const std::optional<asp::time::Duration>& timeout
+    );
+
     /// Polls until any kind of data is available to be read.
     virtual TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) = 0;
 

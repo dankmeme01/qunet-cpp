@@ -18,8 +18,10 @@ std::string_view TransportError::CustomKind::message() const {
         case DefragmentationError: return "Defragmentation error, message could not be reassembled";
         case TooUnreliable: return "Transport is too unreliable, too many lost messages";
         case InvalidQunetDatabase: return "Invalid Qunet database, cannot decode";
+        case ReconnectFailed: return "Reconnect failed, server rejected the attempt";
         case TimedOut: return "Operation timed out";
         case Closed: return "Operation cannot be performed because the connection is already closed";
+        case Cancelled: return "Connection cancelled";
         case Other: return "Unknown transport error";
     }
 
