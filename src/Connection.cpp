@@ -400,12 +400,15 @@ Connection::Connection() {
                         auto [msg, reliable] = std::move(chan->front());
                         chan->pop();
 
+                        chan.unlock();
+
                         auto res = m_socket->sendMessage(std::move(msg), reliable);
                         if (!res) {
                             auto err = res.unwrapErr();
                             this->onConnectionError(err);
-                            continue;
                         }
+
+                        chan.relock();
                     }
                 }
             } break;
@@ -1025,16 +1028,19 @@ void Connection::onFatalConnectionError(const ConnectionError& err) {
 }
 
 void Connection::onConnectionError(const ConnectionError& err) {
-    if (auto e = std::get_if<qsox::Error>(&err.asTransportError().m_kind)) {
-        if (*e == qsox::Error::ConnectionClosed || *e == qsox::Error::ConnectionReset) {
-            this->onUnexpectedClosure();
-        }
-    } else if (err == TransportError::Closed) {
-        this->onUnexpectedClosure();
-    }
+    bool isMinor =
+        err == ConnectionError::Success
+        || err == ConnectionError::InProgress
+        || err == TransportError::CongestionLimited;
 
-    m_lastError = err;
-    log::warn("Connection error: {}", err.message());
+    // TODO: maybe add more minor errors
+
+    if (isMinor) {
+        m_lastError = err;
+        log::warn("Connection error: {}", err.message());
+    } else {
+        this->onFatalConnectionError(err);
+    }
 }
 
 void Connection::finishCancellation() {
