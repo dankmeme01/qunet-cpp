@@ -59,11 +59,12 @@ TransportResult<QunetMessage> BaseTransport::performHandshake(
 }
 
 TransportResult<QunetMessage> BaseTransport::performReconnect(
+    uint64_t connectionId,
     const std::optional<asp::time::Duration>& timeout
 ) {
     auto startedAt = Instant::now();
 
-    GEODE_UNWRAP(this->sendMessage(ClientReconnectMessage{}, false));
+    GEODE_UNWRAP(this->sendMessage(ClientReconnectMessage{ connectionId }, false));
 
     while (true) {
         auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;

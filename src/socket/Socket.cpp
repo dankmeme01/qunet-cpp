@@ -61,7 +61,7 @@ TransportResult<Socket> Socket::connect(const TransportOptions& options) {
 TransportResult<Socket> Socket::reconnect(const TransportOptions& options, Socket& prev) {
     auto [socket, timeout] = GEODE_UNWRAP(createSocket(options));
 
-    auto msg = GEODE_UNWRAP(socket.m_transport->performReconnect(timeout));
+    auto msg = GEODE_UNWRAP(socket.m_transport->performReconnect(prev.transport()->m_connectionId, timeout));
 
     if (msg.is<ReconnectSuccessMessage>()) {
         GEODE_UNWRAP(socket.onReconnectSuccess(prev));

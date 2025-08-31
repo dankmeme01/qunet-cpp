@@ -33,6 +33,7 @@ public:
 
     /// Like `performHandshake` but sends a reconnect message and waits for a reconnect success or failure.
     virtual TransportResult<QunetMessage> performReconnect(
+        uint64_t connectionId,
         const std::optional<asp::time::Duration>& timeout
     );
 
