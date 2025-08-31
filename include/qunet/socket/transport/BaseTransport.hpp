@@ -92,6 +92,7 @@ protected:
     std::optional<asp::time::Instant> m_lastActivity;
     std::optional<asp::time::Instant> m_lastKeepalive;
     size_t m_totalKeepalives = 0;
+    size_t m_unackedKeepalives = 0;
 
     // Called when a data message is almost completely ready to be dispatched.
     // Fragmentation and reliability headers are ignored, they must be processed beforehand.

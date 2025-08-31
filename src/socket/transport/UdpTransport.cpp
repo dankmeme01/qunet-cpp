@@ -204,7 +204,6 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         if (message.is<KeepaliveMessage>()) {
             message.as<KeepaliveMessage>().timestamp = this->getKeepaliveTimestamp();
             this->updateLastKeepalive();
-            m_unackedKeepalives++;
         }
 
         HeapByteWriter writer;
@@ -410,38 +409,38 @@ Duration UdpTransport::untilKeepalive() const {
     if (m_unackedKeepalives > 0) {
         // if a keepalive is in flight but has not been acknowledged (lost?), send another one after a bit
         return Duration::fromSecs(2) - this->sinceLastActivity();
-    } else {
-        // if no keepalives sent in a while, send one
-        // timeout is different depending on how many keepalives we have sent so far,
-        // we send more at the start to figure out the latency
+    }
 
-        auto orActive = [&](const Duration& dur) {
+    // if no keepalives sent in a while, send one
+    // timeout is different depending on how many keepalives we have sent so far,
+    // we send more at the start to figure out the latency
+
+    auto orActive = [&](const Duration& dur) {
+        if (m_activeKeepaliveInterval) {
+            return std::min(dur, *m_activeKeepaliveInterval) - this->sinceLastKeepalive();
+        } else {
+            return dur - this->sinceLastKeepalive();
+        }
+    };
+
+    switch (m_totalKeepalives) {
+        case 0:
+        case 1:
+            return orActive(Duration::fromSecs(3));
+        case 2:
+            return orActive(Duration::fromSecs(8));
+        case 3:
+            return orActive(Duration::fromSecs(12));
+        case 4:
+            return orActive(Duration::fromSecs(20));
+        default: {
             if (m_activeKeepaliveInterval) {
-                return std::min(dur, *m_activeKeepaliveInterval) - this->sinceLastKeepalive();
+                return std::min(
+                    Duration::fromSecs(30) - this->sinceLastActivity(),
+                    *m_activeKeepaliveInterval - this->sinceLastKeepalive()
+                );
             } else {
-                return dur - this->sinceLastKeepalive();
-            }
-        };
-
-        switch (m_totalKeepalives) {
-            case 0:
-            case 1:
-                return orActive(Duration::fromSecs(3));
-            case 2:
-                return orActive(Duration::fromSecs(8));
-            case 3:
-                return orActive(Duration::fromSecs(12));
-            case 4:
-                return orActive(Duration::fromSecs(20));
-            default: {
-                if (m_activeKeepaliveInterval) {
-                    return std::min(
-                        Duration::fromSecs(30) - this->sinceLastActivity(),
-                        *m_activeKeepaliveInterval - this->sinceLastKeepalive()
-                    );
-                } else {
-                    return Duration::fromSecs(30) - this->sinceLastActivity();
-                }
+                return Duration::fromSecs(30) - this->sinceLastActivity();
             }
         }
     }

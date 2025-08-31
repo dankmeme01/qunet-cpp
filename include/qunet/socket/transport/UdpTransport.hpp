@@ -40,7 +40,6 @@ private:
     qsox::UdpSocket m_socket;
     size_t m_mtu;
     bool m_closed = false;
-    size_t m_unackedKeepalives = 0;
     float m_lossSim = 0.f;
     std::optional<asp::time::Duration> m_activeKeepaliveInterval;
 

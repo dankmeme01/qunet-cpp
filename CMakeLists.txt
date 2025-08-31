@@ -28,7 +28,7 @@ if (NOT CURRENT_CPM_VERSION)
 endif()
 
 # add deps
-CPMAddPackage("gh:dankmeme01/qsox#0461139b")
+CPMAddPackage("gh:dankmeme01/qsox#ec9e968")
 CPMAddPackage("gh:dankmeme01/asp2#b8536532")
 CPMAddPackage(
     NAME c-ares

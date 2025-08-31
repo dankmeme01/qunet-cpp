@@ -116,6 +116,10 @@ Duration BaseTransport::untilTimerExpiry() const {
 }
 
 TransportResult<> BaseTransport::handleTimerExpiry() {
+    if (m_unackedKeepalives >= 3) {
+        return Err(TransportError::TimedOut);
+    }
+
     return Ok();
 }
 
@@ -207,6 +211,7 @@ void BaseTransport::updateLastActivity() {
 void BaseTransport::updateLastKeepalive() {
     m_lastKeepalive = Instant::now();
     m_totalKeepalives++;
+    m_unackedKeepalives++;
 }
 
 Duration BaseTransport::sinceLastActivity() const {

@@ -330,7 +330,8 @@ Connection::Connection() {
                 bool shouldPoll = !disconnect && !messages && !qsocket && !timerExpired;
 
                 if (shouldPoll) {
-                    auto pollTime = std::min(untilExpiry, Duration::fromSecs(1));
+                    auto pollTime = std::clamp(untilExpiry, Duration::fromMillis(1), Duration::fromSecs(1));
+                    // log::debug("polling for {}", pollTime.toString());
 
                     auto result = m_poller.poll(pollTime);
 
@@ -351,6 +352,8 @@ Connection::Connection() {
                     if (disconnect) m_disconnectPipe.consume();
                     if (qsocket) m_poller.clearReadiness(*m_socket);
                 }
+
+                // log::debug("poll finished, messages: {}, disconnect: {}, qsocket: {}", messages, disconnect, qsocket);
 
                 // check which events are ready
                 if (disconnect) {

@@ -60,7 +60,7 @@ TransportResult<bool> TcpTransport::poll(const std::optional<Duration>& dur) {
 
 TransportResult<bool> TcpTransport::processIncomingData() {
     GEODE_UNWRAP(streamcommon::processIncomingData(
-        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue
+        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue, m_unackedKeepalives
     ));
 
     return Ok(!m_recvMsgQueue.empty());
@@ -71,11 +71,18 @@ asp::time::Duration TcpTransport::untilTimerExpiry() const {
 }
 
 TransportResult<> TcpTransport::handleTimerExpiry() {
+    if (m_unackedKeepalives >= 3) {
+        return Err(TransportError::TimedOut);
+    }
+
     return this->sendMessage(KeepaliveMessage{}, false);
 }
 
 Duration TcpTransport::untilKeepalive() const {
     // similar to UDP, we send more keepalives at the start to figure out the latency
+    if (m_unackedKeepalives > 0) {
+        return Duration::fromSecs(3) - this->sinceLastActivity();
+    }
 
     auto orActive = [&](const Duration& dur) {
         if (m_activeKeepaliveInterval) {

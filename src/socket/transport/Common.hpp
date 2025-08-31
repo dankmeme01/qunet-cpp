@@ -69,7 +69,8 @@ inline TransportResult<> processIncomingData(
     BaseTransport& transport,
     CircularByteBuffer& buffer,
     size_t messageSizeLimit,
-    std::queue<QunetMessage>& msgQueue
+    std::queue<QunetMessage>& msgQueue,
+    size_t& unackedKeepalives
 ) {
     // read from the socket if applicable
     auto wnd = buffer.writeWindow();
@@ -129,6 +130,11 @@ inline TransportResult<> processIncomingData(
 
             if (meta.type != MSG_DATA) {
                 auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
+
+                if (msg.is<KeepaliveResponseMessage>()) {
+                    unackedKeepalives = 0;
+                }
+
                 transport._pushFinalControlMessage(std::move(msg));
                 return Ok();
             }
