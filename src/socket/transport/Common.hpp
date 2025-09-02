@@ -14,17 +14,17 @@ namespace qn::streamcommon {
 inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
     HeapByteWriter writer;
 
-    bool isHandshake = message.is<HandshakeStartMessage>();
+    bool hasLength = !(message.is<HandshakeStartMessage>() || message.is<ClientReconnectMessage>());
 
     // Leave space for message length
     size_t preMessagePos = 0;
-    if (!isHandshake) {
+    if (hasLength) {
         writer.writeU32(0);
         preMessagePos = writer.position();
     }
 
     auto prependLength = [&] {
-        if (!isHandshake) {
+        if (hasLength) {
             uint32_t messageSize = writer.position() - preMessagePos;
 
             writer.performAt(preMessagePos - sizeof(uint32_t), [&](auto& writer) {
