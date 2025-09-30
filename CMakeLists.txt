@@ -29,7 +29,7 @@ endif()
 
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#18c70db5")
-CPMAddPackage("gh:dankmeme01/asp2#b8536532")
+CPMAddPackage("gh:dankmeme01/asp2#c0f3d6ea")
 CPMAddPackage(
     NAME c-ares
     GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
