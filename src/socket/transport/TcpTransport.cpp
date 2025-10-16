@@ -47,7 +47,7 @@ TransportResult<> TcpTransport::sendMessage(QunetMessage message, bool reliable)
         this->updateLastKeepalive();
     }
 
-    return streamcommon::sendMessage(std::move(message), m_socket);
+    return streamcommon::sendMessage(std::move(message), m_socket, *this);
 }
 
 TransportResult<bool> TcpTransport::poll(const std::optional<Duration>& dur) {

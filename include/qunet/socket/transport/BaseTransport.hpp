@@ -5,6 +5,7 @@
 #include <qunet/compression/ZstdDecompressor.hpp>
 #include <qunet/compression/ZstdCompressor.hpp>
 #include <qunet/database/QunetDatabase.hpp>
+#include <qunet/util/StatTracker.hpp>
 
 #include <qsox/Error.hpp>
 #include <asp/time/Duration.hpp>
@@ -78,10 +79,13 @@ public:
     // Do not use this outside of the transport implementation.
     void _pushFinalControlMessage(QunetMessage&& meta);
 
+    StatTracker& _tracker() { return m_tracker; }
+
 protected:
     friend class Socket;
 
     std::queue<QunetMessage> m_recvMsgQueue;
+    StatTracker m_tracker;
     uint64_t m_connectionId = 0;
     size_t m_messageSizeLimit = -1;
 

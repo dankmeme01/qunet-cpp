@@ -197,10 +197,6 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
-        if (this->shouldLosePacket()) {
-            return Ok();
-        }
-
         if (message.is<KeepaliveMessage>()) {
             message.as<KeepaliveMessage>().timestamp = this->getKeepaliveTimestamp();
             this->updateLastKeepalive();
@@ -209,9 +205,15 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         HeapByteWriter writer;
         GEODE_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
         auto data = writer.written();
-        auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+
+        if (!this->shouldLosePacket()) {
+            auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+        }
 
         this->updateLastActivity();
+
+        m_tracker.onUpMessage(data[0], data.size());
+        m_tracker.onUpPacket(data.size());
 
         return Ok();
     }
@@ -243,6 +245,12 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
     auto& msg = message.as<DataMessage>();
     HeapByteWriter writer;
 
+    if (msg.compHeader) {
+        m_tracker.onUpMessage(MSG_DATA, msg.compHeader->uncompressedSize, msg.data.size(), {}, msg.relHeader);
+    } else {
+        m_tracker.onUpMessage(MSG_DATA, msg.data.size(), std::nullopt, {}, msg.relHeader);
+    }
+
     bool isReliable = msg.relHeader.has_value() && msg.relHeader->messageId != 0 && !retransmission;
 
     size_t relHdrSize = msg.relHeader.has_value() ? 4 + msg.relHeader->ackCount * 2 : 0; // 2 for message ID + 2 for ack count, 2 for each ACK
@@ -267,6 +275,8 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
         }
 
         this->updateLastActivity();
+
+        m_tracker.onUpPacket(data.size());
 
         return Ok();
     }
@@ -314,6 +324,8 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
         if (!this->shouldLosePacket()) {
             auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
         }
+
+        m_tracker.onUpPacket(data.size());
     }
 
     if (isReliable) {
@@ -342,6 +354,8 @@ TransportResult<bool> UdpTransport::processIncomingData() {
         return Err(TransportError::ZeroLengthMessage);
     }
 
+    m_tracker.onDownPacket(bytesRead);
+
     ByteReader reader(buffer, bytesRead);
     auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
 
@@ -353,6 +367,7 @@ TransportResult<bool> UdpTransport::processIncomingData() {
             m_unackedKeepalives = 0;
         }
 
+        m_tracker.onDownMessage(buffer[0], bytesRead);
         this->_pushFinalControlMessage(std::move(msg));
 
         return Ok(true);
@@ -372,7 +387,7 @@ TransportResult<bool> UdpTransport::processIncomingData() {
         meta = std::move(*recvf);
     }
 
-    QN_ASSERT(!meta.fragmentationHeader.has_value());
+    QN_DEBUG_ASSERT(!meta.fragmentationHeader.has_value());
 
     bool reliable = meta.reliabilityHeader.has_value();
     if (reliable) {

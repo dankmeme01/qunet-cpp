@@ -137,7 +137,6 @@ void BaseTransport::_pushFinalControlMessage(QunetMessage&& msg) {
             auto passed = Duration::fromNanos(now - ts);
             this->updateLatency(passed);
         }
-
     }
 
     m_recvMsgQueue.push(std::move(msg));
@@ -150,8 +149,11 @@ TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta
 
     if (!meta.compressionHeader) {
         data = std::move(meta.data);
+        m_tracker.onDownMessage(MSG_DATA, data.size(), std::nullopt, {}, meta.reliabilityHeader);
     } else {
         size_t uncSize = meta.compressionHeader->uncompressedSize;
+        m_tracker.onDownMessage(MSG_DATA, uncSize, meta.data.size(), {}, meta.reliabilityHeader);
+
         if (uncSize > m_messageSizeLimit) {
             return Err(TransportError::MessageTooLong);
         }
@@ -166,8 +168,6 @@ TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta
                     meta.data.data(), meta.data.size(),
                     data.data(), uncSize
                 ));
-
-                data.resize(uncSize);
             } break;
 
             case CompressionType::Lz4: {

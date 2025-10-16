@@ -70,6 +70,8 @@ struct ConnectionDebugOptions {
     bool verboseSsl = false;
     // Print verbose ngtcp2 debug output (QUIC)
     bool verboseQuic = false;
+    // Record metadata of all packets and messages
+    bool recordStats = false;
     // Simulate packet loss, 0.0f means no packet loss, 1.0f means 100% packet loss (QUIC, UDP)
     float packetLossSimulation = 0.0f;
 };

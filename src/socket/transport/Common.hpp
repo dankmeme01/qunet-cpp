@@ -11,7 +11,7 @@
 
 namespace qn::streamcommon {
 
-inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
+inline TransportResult<> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport) {
     HeapByteWriter writer;
 
     bool hasLength = !(message.is<HandshakeStartMessage>() || message.is<ClientReconnectMessage>());
@@ -43,6 +43,9 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
         auto data = writer.written();
         GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
 
+        transport._tracker().onUpMessage(data[0], data.size());
+        transport._tracker().onUpPacket(data.size());
+
         return Ok();
     }
 
@@ -59,6 +62,9 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket) {
 
     auto data = writer.written();
     GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
+
+    transport._tracker().onUpMessage(data[0], msg.data.size());
+    transport._tracker().onUpPacket(data.size());
 
     return Ok();
 }
@@ -90,6 +96,8 @@ inline TransportResult<> processIncomingData(
     if (len == 0) {
         return Err(TransportError::Closed);
     }
+
+    transport._tracker().onDownPacket(len);
 
     buffer.advanceWrite(len);
 
@@ -135,6 +143,7 @@ inline TransportResult<> processIncomingData(
                     unackedKeepalives = 0;
                 }
 
+                transport._tracker().onDownMessage(wrpread.first[0], length);
                 transport._pushFinalControlMessage(std::move(msg));
                 return Ok();
             }

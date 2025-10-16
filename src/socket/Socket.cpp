@@ -6,6 +6,7 @@
 #include <qunet/database/QunetDatabase.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Log.hpp>
+#include <qunet/Connection.hpp>
 
 #include <asp/time/Instant.hpp>
 
@@ -17,11 +18,17 @@ namespace qn {
 TransportResult<std::pair<Socket, Duration>> Socket::createSocket(const TransportOptions& options) {
     auto startedAt = Instant::now();
 
+    StatTracker tracker;
+    tracker.setEnabled(options.connOptions->debug.recordStats);
+
     auto transport = GEODE_UNWRAP(Socket::createTransport(options));
 
     if (startedAt.elapsed() > options.timeout) {
         return Err(TransportError::ConnectionTimedOut);
     }
+
+    tracker.onConnected();
+    transport->m_tracker = std::move(tracker);
 
     Socket socket(std::move(transport));
 

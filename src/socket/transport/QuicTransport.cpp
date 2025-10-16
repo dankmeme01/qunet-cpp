@@ -42,7 +42,7 @@ TransportResult<QuicTransport> QuicTransport::connect(
 }
 
 TransportResult<> QuicTransport::sendMessage(QunetMessage message, bool reliable) {
-    return streamcommon::sendMessage(std::move(message), *m_conn);
+    return streamcommon::sendMessage(std::move(message), *m_conn, *this);
 }
 
 TransportResult<bool> QuicTransport::poll(const std::optional<Duration>& dur) {
