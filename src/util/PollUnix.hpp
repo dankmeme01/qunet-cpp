@@ -123,20 +123,20 @@ private:
     }
 };
 
-inline qsox::SockFd MultiPoller::PollResult::fd() const {
+qsox::SockFd MultiPoller::PollResult::fd() const {
     return poller.m_impl->m_fds[which].fd;
 }
 
-inline bool MultiPoller::PollResult::isSocket(const qsox::BaseSocket& socket) const {
+bool MultiPoller::PollResult::isSocket(const qsox::BaseSocket& socket) const {
     return this->fd() == socket.handle();
 }
 
-inline bool MultiPoller::PollResult::isPipe(const PollPipe& pipe) const {
+bool MultiPoller::PollResult::isPipe(const PollPipe& pipe) const {
     return this->fd() == pipe.readFd() ||
             this->fd() == pipe.writeFd();
 }
 
-inline bool MultiPoller::PollResult::isQSocket(const qn::Socket& socket) const {
+bool MultiPoller::PollResult::isQSocket(const qn::Socket& socket) const {
     auto trans = socket.transport();
 
     if (auto quic = std::dynamic_pointer_cast<qn::QuicTransport>(trans)) {
