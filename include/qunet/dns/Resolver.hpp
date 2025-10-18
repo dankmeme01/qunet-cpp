@@ -1,9 +1,9 @@
 #pragma once
 #include <qunet/util/Error.hpp>
+#include <qunet/util/compat.hpp>
 #include <qsox/Resolver.hpp> // we don't use qsox resolver, but we use its error type
 
 #include <string>
-#include <functional>
 
 namespace qn {
 
@@ -39,7 +39,7 @@ struct DNSRecordSRV {
 };
 
 template <typename R>
-using ResolverCallback = std::function<void(ResolverResult<R>)>;
+using ResolverCallback = move_only_function<void(ResolverResult<R>)>;
 
 class Resolver {
 public:

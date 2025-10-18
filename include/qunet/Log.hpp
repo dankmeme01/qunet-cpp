@@ -1,9 +1,9 @@
 #pragma once
 
 #include <fmt/format.h>
+#include "util/compat.hpp"
 
 #include <string>
-#include <functional>
 
 namespace qn::log {
 
@@ -11,7 +11,7 @@ enum class Level {
     Debug, Info, Warning, Error
 };
 
-using LogFunction = std::function<void(Level, const std::string&)>;
+using LogFunction = move_only_function<void(Level, const std::string&)>;
 
 void setLogFunction(LogFunction func);
 LogFunction& getLogFunction();

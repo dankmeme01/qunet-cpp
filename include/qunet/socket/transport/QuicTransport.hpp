@@ -33,7 +33,7 @@ public:
     class QuicConnection& connection();
 
 private:
-    std::unique_ptr<class QuicConnection> m_conn = nullptr;
+    std::unique_ptr<class QuicConnection> m_conn;
     CircularByteBuffer m_recvBuffer;
 
     QuicTransport(std::unique_ptr<QuicConnection> connection);

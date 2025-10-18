@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 project(qunet VERSION 0.1.0)
 
@@ -29,7 +29,7 @@ endif()
 
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#18c70db5")
-CPMAddPackage("gh:dankmeme01/asp2#c0f3d6ea")
+CPMAddPackage("gh:dankmeme01/asp2#d8529fa5")
 CPMAddPackage(
     NAME c-ares
     GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
@@ -40,6 +40,7 @@ CPMAddPackage(
             "CARES_BUILD_TOOLS OFF"
 )
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
+CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 
 # pain and suffering
 
@@ -65,7 +66,7 @@ add_subdirectory(${BLAKE3_SOURCE_DIR}/c blake3)
 
 target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
 target_link_libraries(qunet PRIVATE c-ares libzstd_static lz4_static blake3)
-target_link_libraries(qunet PUBLIC qsox asp fmt)
+target_link_libraries(qunet PUBLIC qsox asp fmt std23::nontype_functional)
 
 if (QUNET_QUIC_SUPPORT)
     # TODO: we might move this out of here if we will need TLS but not for QUIC

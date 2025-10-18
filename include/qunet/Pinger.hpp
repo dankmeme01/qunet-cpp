@@ -1,6 +1,7 @@
 #pragma once
 
 #include <qunet/buffers/ByteReader.hpp>
+#include <qunet/util/compat.hpp>
 
 #include <qsox/UdpSocket.hpp>
 #include <asp/thread/Thread.hpp>
@@ -34,7 +35,7 @@ public:
 
     static Pinger& get();
 
-    using Callback = std::function<void(const PingResult&)>;
+    using Callback = move_only_function<void(const PingResult&)>;
 
     void ping(const qsox::SocketAddress& address, Callback callback);
 

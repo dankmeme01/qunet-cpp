@@ -740,13 +740,13 @@ ConnectionResult<> Connection::disconnect() {
     return Ok();
 }
 
-void Connection::setConnectionStateCallback(std::function<void(ConnectionState)> callback) {
+void Connection::setConnectionStateCallback(move_only_function<void(ConnectionState)> callback) {
     auto _lock = m_internalMutex.lock();
 
     m_connStateCallback = std::move(callback);
 }
 
-void Connection::setDataCallback(std::function<void(std::vector<uint8_t>)> callback) {
+void Connection::setDataCallback(move_only_function<void(std::vector<uint8_t>)> callback) {
     auto _lock = m_internalMutex.lock();
 
     m_dataCallback = std::move(callback);

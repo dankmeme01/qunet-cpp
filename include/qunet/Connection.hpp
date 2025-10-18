@@ -3,6 +3,7 @@
 #include "socket/Socket.hpp"
 #include "socket/transport/tls/ClientTlsContext.hpp"
 #include "util/Poll.hpp"
+#include "util/compat.hpp"
 #include "Pinger.hpp"
 
 #include <asp/sync/Channel.hpp>
@@ -123,10 +124,10 @@ public:
     ConnectionResult<> disconnect();
 
     // Set the callback that is called when the connection state changes.
-    void setConnectionStateCallback(std::function<void(ConnectionState)> callback);
+    void setConnectionStateCallback(move_only_function<void(ConnectionState)> callback);
 
     // Set the callback that is called when a data message is received.
-    void setDataCallback(std::function<void(std::vector<uint8_t>)> callback);
+    void setDataCallback(move_only_function<void(std::vector<uint8_t>)> callback);
 
     // Set the SRV query name prefix, by default it is `_qunet`.
     void setSrvPrefix(std::string_view pfx);
@@ -193,8 +194,8 @@ private:
     bool m_ipv6Enabled = true;
     bool m_tlsCertVerification = true;
     asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
-    std::function<void(ConnectionState)> m_connStateCallback;
-    std::function<void(std::vector<uint8_t>)> m_dataCallback;
+    move_only_function<void(ConnectionState)> m_connStateCallback;
+    move_only_function<void(std::vector<uint8_t>)> m_dataCallback;
 
     // vvv long lived fields vvv
     std::optional<ClientTlsContext> m_tlsContext;

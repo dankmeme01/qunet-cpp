@@ -15,63 +15,30 @@ MessageEncodeResult QunetMessage::encodeControlHeader(
     HeapByteWriter& writer,
     uint64_t connectionId
 ) const {
+#define FOR_MSG(t, v) if (this->is<t>()) { writer.writeU8(v); } else
+
     // Write the header byte
-    std::visit(makeVisitor {
-        [&](const PingMessage& msg) {
-            return writer.writeU8(MSG_PING);
-        },
-        [&](const PongMessage& msg) {
-            return writer.writeU8(MSG_PONG);
-        },
-        [&](const KeepaliveMessage& msg) {
-            return writer.writeU8(MSG_KEEPALIVE);
-        },
-        [&](const KeepaliveResponseMessage& msg) {
-            return writer.writeU8(MSG_KEEPALIVE_RESPONSE);
-        },
-        [&](const HandshakeStartMessage& msg) {
-            return writer.writeU8(MSG_HANDSHAKE_START);
-        },
-        [&](const HandshakeFinishMessage& msg) {
-            return writer.writeU8(MSG_HANDSHAKE_FINISH);
-        },
-        [&](const HandshakeFailureMessage& msg) {
-            return writer.writeU8(MSG_HANDSHAKE_FAILURE);
-        },
-        [&](const ClientCloseMessage& msg) {
-            return writer.writeU8(MSG_CLIENT_CLOSE);
-        },
-        [&](const ServerCloseMessage& msg) {
-            return writer.writeU8(MSG_SERVER_CLOSE);
-        },
-        [&](const ClientReconnectMessage& msg) {
-            return writer.writeU8(MSG_CLIENT_RECONNECT);
-        },
-        [&](const ConnectionErrorMessage& msg) {
-            return writer.writeU8(MSG_CONNECTION_ERROR);
-        },
-        [&](const QdbChunkRequestMessage& msg) {
-            return writer.writeU8(MSG_QDB_CHUNK_REQUEST);
-        },
-        [&](const QdbChunkResponseMessage& msg) {
-            return writer.writeU8(MSG_QDB_CHUNK_RESPONSE);
-        },
-        [&](const ReconnectSuccessMessage& msg) {
-            return writer.writeU8(MSG_RECONNECT_SUCCESS);
-        },
-        [&](const ReconnectFailureMessage& msg) {
-            return writer.writeU8(MSG_RECONNECT_FAILURE);
-        },
-        [&](const QdbgToggleMessage& msg) {
-            return writer.writeU8(MSG_QDBG_TOGGLE);
-        },
-        [&](const QdbgReportMessage& msg) {
-            return writer.writeU8(MSG_QDBG_REPORT);
-        },
-        [&](const DataMessage& msg) {
-            QN_ASSERT(false && "DataMessage should not be encoded with encodeHeader");
-        }
-    }, m_kind);
+    // FOR_MSG(PingMessage, MSG_PING)
+    // FOR_MSG(PongMessage, MSG_PONG)
+    FOR_MSG(KeepaliveMessage, MSG_KEEPALIVE)
+    FOR_MSG(KeepaliveResponseMessage, MSG_KEEPALIVE_RESPONSE)
+    FOR_MSG(HandshakeStartMessage, MSG_HANDSHAKE_START)
+    FOR_MSG(HandshakeFinishMessage, MSG_HANDSHAKE_FINISH)
+    FOR_MSG(HandshakeFailureMessage, MSG_HANDSHAKE_FAILURE)
+    // FOR_MSG(ClientCloseMessage, MSG_CLIENT_CLOSE)
+    FOR_MSG(ServerCloseMessage, MSG_SERVER_CLOSE)
+    FOR_MSG(ClientReconnectMessage, MSG_CLIENT_RECONNECT)
+    FOR_MSG(ConnectionErrorMessage, MSG_CONNECTION_ERROR)
+    // FOR_MSG(QdbChunkRequestMessage, MSG_QDB_CHUNK_REQUEST)
+    // FOR_MSG(QdbChunkResponseMessage, MSG_QDB_CHUNK_RESPONSE)
+    // FOR_MSG(ReconnectSuccessMessage, MSG_RECONNECT_SUCCESS)
+    // FOR_MSG(ReconnectFailureMessage, MSG_RECONNECT_FAILURE)
+    // FOR_MSG(QdbgToggleMessage, MSG_QDBG_TOGGLE)
+    // FOR_MSG(QdbgReportMessage, MSG_QDBG_REPORT)
+    /* else */ {
+        QN_ASSERT(false && "unsupported message in encodeHeader");
+    }
+#undef FOR_MSG
 
     if (connectionId != 0) {
         // write the connection ID (udp)
@@ -140,62 +107,29 @@ MessageEncodeResult QunetMessage::encodeDataHeader(HeapByteWriter& writer, uint6
 }
 
 std::string_view QunetMessage::typeStr() const {
-    return std::visit(makeVisitor {
-        [&](const PingMessage& msg) {
-            return "PingMessage";
-        },
-        [&](const PongMessage& msg) {
-            return "PongMessage";
-        },
-        [&](const KeepaliveMessage& msg) {
-            return "KeepaliveMessage";
-        },
-        [&](const KeepaliveResponseMessage& msg) {
-            return "KeepaliveResponseMessage";
-        },
-        [&](const HandshakeStartMessage& msg) {
-            return "HandshakeStartMessage";
-        },
-        [&](const HandshakeFinishMessage& msg) {
-            return "HandshakeFinishMessage";
-        },
-        [&](const HandshakeFailureMessage& msg) {
-            return "HandshakeFailureMessage";
-        },
-        [&](const ClientCloseMessage& msg) {
-            return "ClientCloseMessage";
-        },
-        [&](const ServerCloseMessage& msg) {
-            return "ServerCloseMessage";
-        },
-        [&](const ClientReconnectMessage& msg) {
-            return "ClientReconnectMessage";
-        },
-        [&](const ConnectionErrorMessage& msg) {
-            return "ConnectionErrorMessage";
-        },
-        [&](const QdbChunkRequestMessage& msg) {
-            return "QdbChunkRequestMessage";
-        },
-        [&](const QdbChunkResponseMessage& msg) {
-            return "QdbChunkResponseMessage";
-        },
-        [&](const ReconnectSuccessMessage& msg) {
-            return "ReconnectSuccessMessage";
-        },
-        [&](const ReconnectFailureMessage& msg) {
-            return "ReconnectFailureMessage";
-        },
-        [&](const QdbgToggleMessage& msg) {
-            return "QdbgToggleMessage";
-        },
-        [&](const QdbgReportMessage& msg) {
-            return "QdbgReportMessage";
-        },
-        [&](const DataMessage& msg) {
-            return "DataMessage";
-        }
-    }, m_kind);
+#define FOR_MSG(t) if (this->is<t>()) { return #t; } else
+
+    // FOR_MSG(PingMessage)
+    // FOR_MSG(PongMessage)
+    FOR_MSG(KeepaliveMessage)
+    FOR_MSG(KeepaliveResponseMessage)
+    FOR_MSG(HandshakeStartMessage)
+    FOR_MSG(HandshakeFinishMessage)
+    FOR_MSG(HandshakeFailureMessage)
+    // FOR_MSG(ClientCloseMessage)
+    FOR_MSG(ServerCloseMessage)
+    FOR_MSG(ClientReconnectMessage)
+    FOR_MSG(ConnectionErrorMessage)
+    // FOR_MSG(QdbChunkRequestMessage)
+    // FOR_MSG(QdbChunkResponseMessage)
+    FOR_MSG(ReconnectSuccessMessage)
+    FOR_MSG(ReconnectFailureMessage)
+    // FOR_MSG(QdbgToggleMessage)
+    // FOR_MSG(QdbgReportMessage)
+    /* else */ {
+        return "UnknownMessageType";
+    }
+#undef FOR_MSG
 }
 
 geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decodeWithMeta(QunetMessageMeta&& meta) {

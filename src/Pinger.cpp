@@ -141,7 +141,7 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
         domain = std::string(domain),
         port,
         callback = std::move(callback)
-    ](ResolverResult<DNSRecordA> record) {
+    ](ResolverResult<DNSRecordA> record) mutable {
         if (!record) {
             log::warn("Failed to resolve A record for '{}': {}", domain, record.unwrapErr().message());
             return;

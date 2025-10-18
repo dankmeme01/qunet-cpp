@@ -30,38 +30,21 @@ std::string_view TransportError::CustomKind::message() const {
 }
 
 std::string TransportError::message() const {
-    return std::visit(makeVisitor {
-        [](const qsox::Error& err) {
-            return fmt::format("Socket error: {}", err.message());
-        },
-        [](const QuicError& err) {
-            return fmt::format("QUIC error: {}", err.message());
-        },
-        [](const TlsError& err) {
-            return fmt::format("TLS error: {}", err.message());
-        },
-        [](const ByteReaderError& err) {
-            return fmt::format("Error decoding packet: {}", err.message());
-        },
-        [](const ByteWriterError& err) {
-            return fmt::format("Error encoding message: {}", err.message());
-        },
-        [](const HandshakeFailure& err) {
-            return fmt::format("Handshake failed: {}", err.message());
-        },
-        [](const MessageDecodeError& err) {
-            return fmt::format("Error decoding message: {}", err.message());
-        },
-        [](const CompressorError& err) {
-            return fmt::format("Compression error: {}", err.message());
-        },
-        [](const DecompressorError& err) {
-            return fmt::format("Decompression error: {}", err.message());
-        },
-        [](const CustomKind& kind) {
-            return fmt::format("{}", kind.message());
-        }
-    }, m_kind);
+#define FOR_MSG(t, msg) if (std::holds_alternative<t>(m_kind)) { return fmt::format(msg, std::get<t>(m_kind).message()); } else
+
+    FOR_MSG(qsox::Error, "Socket error: {}")
+    FOR_MSG(QuicError, "QUIC error: {}")
+    FOR_MSG(TlsError, "TLS error: {}")
+    FOR_MSG(ByteReaderError, "Error decoding packet: {}")
+    FOR_MSG(ByteWriterError, "Error encoding message: {}")
+    FOR_MSG(HandshakeFailure, "Handshake failed: {}")
+    FOR_MSG(MessageDecodeError, "Error decoding message: {}")
+    FOR_MSG(CompressorError, "Compression error: {}")
+    FOR_MSG(DecompressorError, "Decompression error: {}")
+    FOR_MSG(CustomKind, "{}")
+    /* else */ {
+        return "Unknown transport error";
+    }
 }
 
 }
