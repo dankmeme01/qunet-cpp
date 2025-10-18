@@ -6,13 +6,14 @@
 namespace qn {
 
 std::string_view DatabaseDecodeError::CustomKind::message() const {
-    using enum CustomCode;
+    // this crashes clang on macos/android
+    // using enum CustomCode;
 
     switch (code) {
-        case UnsupportedVersion: return "Unsupported Qunet database version";
-        case InvalidHeader: return "Invalid Qunet database header";
-        case SectionSizeInvalid: return "Section size is invalid";
-        case ZstdDictTooLarge: return "Zstd dictionary section is too large";
+        case CustomCode::UnsupportedVersion: return "Unsupported Qunet database version";
+        case CustomCode::InvalidHeader: return "Invalid Qunet database header";
+        case CustomCode::SectionSizeInvalid: return "Section size is invalid";
+        case CustomCode::ZstdDictTooLarge: return "Zstd dictionary section is too large";
     }
 
     qn::unreachable();

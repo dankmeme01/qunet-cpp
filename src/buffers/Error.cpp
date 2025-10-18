@@ -3,21 +3,23 @@
 namespace qn {
 
 std::string_view ByteReaderError::message() const {
-    using enum Code;
+    // this crashes clang on macos/android
+    // using enum Code;
 
     switch (m_code) {
-        case OutOfBoundsRead: return "ByteReader out of bounds read";
-        case VarintOverflow: return "Tried reading a varint that cannot fit into a 64-bit integer";
-        case StringTooLong: return "Tried decoding a string longer than the maximum permitted size";
+        case Code::OutOfBoundsRead: return "ByteReader out of bounds read";
+        case Code::VarintOverflow: return "Tried reading a varint that cannot fit into a 64-bit integer";
+        case Code::StringTooLong: return "Tried decoding a string longer than the maximum permitted size";
     }
 }
 
 std::string_view ByteWriterError::message() const {
-    using enum Code;
+    // this crashes clang on macos/android
+    // using enum Code;
 
     switch (m_code) {
-        case OutOfBoundsWrite: return "ByteWriter out of bounds write";
-        case StringTooLong: return "Tried encoding a string longer than the maximum permitted size";
+        case Code::OutOfBoundsWrite: return "ByteWriter out of bounds write";
+        case Code::StringTooLong: return "Tried encoding a string longer than the maximum permitted size";
     }
 }
 

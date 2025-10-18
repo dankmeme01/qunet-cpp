@@ -88,6 +88,10 @@ public:
         return std::nullopt;
     }
 
+    size_t trackedCount() const {
+        return m_fds.size();
+    }
+
     // Fortunately, on sane systems we don't need to do anything here.
     void clearReadiness(qsox::BaseSocket& socket) {}
     void clearReadiness(qn::Socket& socket) {}
@@ -116,10 +120,6 @@ private:
                 return;
             }
         }
-    }
-
-    size_t trackedCount() const {
-        return m_fds.size();
     }
 };
 
