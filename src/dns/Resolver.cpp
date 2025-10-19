@@ -81,9 +81,10 @@ void Resolver::wineWorkaround() {
 }
 
 Resolver::~Resolver() {
-    ares_queue_wait_empty((ares_channel_t*)m_channel, -1); // wait for all queries to finish
-    ares_destroy((ares_channel_t*)m_channel);
-    ares_library_cleanup();
+    // leak, otherwise it may cause issues
+    // ares_queue_wait_empty((ares_channel_t*)m_channel, -1); // wait for all queries to finish
+    // ares_destroy((ares_channel_t*)m_channel);
+    // ares_library_cleanup();
 }
 
 static ResolverError errorFromStatus(ares_status_t status) {
