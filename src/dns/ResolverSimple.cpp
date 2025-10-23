@@ -50,12 +50,16 @@ struct ResolverData {
     asp::Channel<ResolverQuery> channel;
 
     static ResolverData& from(Resolver& r) {
-        return from(r.m_data);
+        return from(&r);
     }
 
-    static ResolverData& from(void* ptr) {
-        return *reinterpret_cast<ResolverData*>(ptr);
+    static ResolverData& from(Resolver* ptr) {
+        return *reinterpret_cast<ResolverData*>(ptr->m_data);
     }
+
+    // static ResolverData& from(void* ptr) {
+    //     return *reinterpret_cast<ResolverData*>(ptr);
+    // }
 };
 
 Resolver::Resolver() {
