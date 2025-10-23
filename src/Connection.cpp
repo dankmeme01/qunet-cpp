@@ -502,6 +502,7 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
     }
 
     // if this connection requires TLS, check if we have a TLS context
+#ifdef QUNET_QUIC_SUPPORT
     if (type == ConnectionType::Quic && !m_tlsContext) {
         auto tlsres = ClientTlsContext::create(!m_tlsCertVerification);
         if (!tlsres) {
@@ -511,6 +512,7 @@ void Connection::thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionTy
 
         m_tlsContext = std::move(tlsres).unwrap();
     }
+#endif
 
     auto sock = this->thrConnectSocket(addr, type);
 
@@ -555,13 +557,14 @@ TransportResult<> Connection::thrTryReconnect() {
 }
 
 TransportResult<Socket> Connection::thrConnectSocket(const qsox::SocketAddress& addr, ConnectionType type, bool reconnecting) {
-    auto tlsPtr = m_tlsContext ? &*m_tlsContext : nullptr;
     TransportOptions opts {
         .address = addr,
         .type = type,
         .timeout = m_connTimeout,
         .connOptions = &m_connOptions,
-        .tlsContext = tlsPtr,
+#ifdef QUNET_TLS_SUPPORT
+        .tlsContext = m_tlsContext ? &*m_tlsContext : nullptr,
+#endif
         .reconnecting = reconnecting,
     };
 
@@ -782,7 +785,9 @@ void Connection::setTlsCertVerification(bool verify) {
     if (!this->disconnected()) return;
 
     m_tlsCertVerification = verify;
+#ifdef QUNET_TLS_SUPPORT
     m_tlsContext.reset();
+#endif
 }
 
 void Connection::setDebugOptions(const ConnectionDebugOptions& opts) {

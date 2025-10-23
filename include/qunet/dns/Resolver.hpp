@@ -54,7 +54,12 @@ public:
     ResolverResult<> querySRV(const std::string& name, ResolverCallback<DNSRecordSRV> callback);
 
 private:
+#ifdef QUNET_ADVANCED_DNS
     void* m_channel = nullptr; // ares_channel_t
+#else
+    friend class ResolverData;
+    void* m_data = nullptr;
+#endif
 
     Resolver();
     ~Resolver();

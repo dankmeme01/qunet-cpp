@@ -3,7 +3,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 project(qunet VERSION 0.1.0)
 
-option(QUNET_QUIC_SUPPORT "Enable QUIC support" ON)
+option(QUNET_QUIC_SUPPORT "Enable QUIC support" OFF)
+option(QUNET_ADVANCED_DNS "Enable advanced DNS resolver" ON)
 option(QUNET_DEBUG "Enable debug mode" OFF)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
@@ -30,15 +31,6 @@ endif()
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#18c70db5")
 CPMAddPackage("gh:dankmeme01/asp2#9d4f5cc7")
-CPMAddPackage(
-    NAME c-ares
-    GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
-    GIT_TAG "main" # TODO: use stable version when a 1.34.6 or 1.35 is out
-    OPTIONS "CARES_STATIC ON"
-            "CARES_SHARED OFF"
-            "CARES_INSTALL OFF"
-            "CARES_BUILD_TOOLS OFF"
-)
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 
@@ -64,11 +56,28 @@ if (WIN32)
 endif()
 add_subdirectory(${BLAKE3_SOURCE_DIR}/c blake3)
 
-target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
-target_link_libraries(qunet PRIVATE c-ares libzstd_static lz4_static blake3)
+target_link_libraries(qunet PRIVATE libzstd_static lz4_static blake3)
 target_link_libraries(qunet PUBLIC qsox asp fmt std23::nontype_functional)
 
+if (QUNET_ADVANCED_DNS)
+    CPMAddPackage(
+        NAME c-ares
+        GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
+        GIT_TAG "main" # TODO: use stable version when a 1.34.6 or 1.35 is out
+        OPTIONS "CARES_STATIC ON"
+                "CARES_SHARED OFF"
+                "CARES_INSTALL OFF"
+                "CARES_BUILD_TOOLS OFF"
+    )
+
+    target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
+    target_compile_definitions(qunet PUBLIC QUNET_ADVANCED_DNS=1)
+    target_link_libraries(qunet PRIVATE c-ares)
+endif()
+
 if (QUNET_QUIC_SUPPORT)
+    target_compile_definitions(qunet PUBLIC QUNET_QUIC_SUPPORT=1 QUNET_TLS_SUPPORT=1)
+
     # TODO: we might move this out of here if we will need TLS but not for QUIC
     set(WOLFSSL_DEBUG_OPTIONS "")
 

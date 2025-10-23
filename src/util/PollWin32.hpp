@@ -51,13 +51,16 @@ public:
     void addQSocket(qn::Socket& socket, qsox::PollType interest) {
         auto trans = socket.transport();
 
+#ifdef QUNET_QUIC_SUPPORT
         if (auto quic = std::dynamic_pointer_cast<qn::QuicTransport>(trans)) {
             auto rpipe = quic->connection().m_readablePipe.lock();
             QN_ASSERT(!rpipe->has_value() && "Readable pipe already exists for QUIC connection");
 
             rpipe->emplace(PollPipe{});
             this->addPipe(rpipe->value(), interest);
-        } else if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(trans)) {
+        } else
+#endif
+        if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(trans)) {
             auto event = createWsaEvent(tcp->m_socket.handle(), interest);
             this->addHandle(event, tcp->m_socket.handle());
         } else if (auto udp = std::dynamic_pointer_cast<qn::UdpTransport>(trans)) {
@@ -71,13 +74,16 @@ public:
     void removeQSocket(qn::Socket& socket) {
         auto _lock = m_mtx.lock();
 
+#ifdef QUNET_QUIC_SUPPORT
         if (auto quic = std::dynamic_pointer_cast<qn::QuicTransport>(socket.transport())) {
             auto rpipe = quic->connection().m_readablePipe.lock();
             if (rpipe->has_value()) {
                 this->removePipe(rpipe->value());
                 rpipe->reset(); // clear the pipe
             }
-        } else if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(socket.transport())) {
+        } else
+#endif
+        if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(socket.transport())) {
             this->removeEventForSocket(tcp->m_socket.handle());
         } else if (auto udp = std::dynamic_pointer_cast<qn::UdpTransport>(socket.transport())) {
             this->removeEventForSocket(udp->m_socket.handle());
@@ -131,9 +137,12 @@ public:
     void clearReadiness(qn::Socket& socket) {
         auto trans = socket.transport();
 
+#ifdef QUNET_QUIC_SUPPORT
         if (auto quic = std::dynamic_pointer_cast<qn::QuicTransport>(trans)) {
             // We don't need to clear the pipe, QuicTransport handles it internally
-        } else if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(trans)) {
+        } else
+#endif
+        if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(trans)) {
             this->clearReadiness(tcp->m_socket);
         } else if (auto udp = std::dynamic_pointer_cast<qn::UdpTransport>(trans)) {
             this->clearReadiness(udp->m_socket);
@@ -217,6 +226,7 @@ bool MultiPoller::PollResult::isPipe(const PollPipe& pipe) const {
 bool MultiPoller::PollResult::isQSocket(const qn::Socket& socket) const {
     auto trans = socket.transport();
 
+#ifdef QUNET_QUIC_SUPPORT
     if (auto quic = std::dynamic_pointer_cast<qn::QuicTransport>(trans)) {
         auto rpipe = quic->connection().m_readablePipe.lock();
 
@@ -225,15 +235,15 @@ bool MultiPoller::PollResult::isQSocket(const qn::Socket& socket) const {
         } else {
             return false;
         }
-    } else if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(trans)) {
+    } else
+#endif
+    if (auto tcp = std::dynamic_pointer_cast<qn::TcpTransport>(trans)) {
         return this->fd() == tcp->m_socket.handle();
     } else if (auto udp = std::dynamic_pointer_cast<qn::UdpTransport>(trans)) {
         return this->fd() == udp->m_socket.handle();
     } else {
         QN_ASSERT(false && "unknown transport type");
     }
-
-    return false;
 }
 
 }

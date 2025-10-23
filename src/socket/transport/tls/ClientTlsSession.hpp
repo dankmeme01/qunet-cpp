@@ -1,4 +1,5 @@
 #pragma once
+#ifdef QUNET_TLS_SUPPORT
 
 #include <qunet/socket/transport/tls/ClientTlsContext.hpp>
 
@@ -33,3 +34,5 @@ private:
 };
 
 }
+
+#endif

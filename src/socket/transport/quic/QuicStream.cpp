@@ -1,3 +1,5 @@
+#ifdef QUNET_QUIC_SUPPORT
+
 #include "QuicStream.hpp"
 #include "QuicConnection.hpp"
 
@@ -246,3 +248,5 @@ int64_t QuicStream::id() const {
 }
 
 }
+
+#endif

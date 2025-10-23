@@ -250,6 +250,7 @@ TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const Tr
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 
+#ifdef QUNET_QUIC_SUPPORT
         case ConnectionType::Quic: {
             auto transport = GEODE_UNWRAP(QuicTransport::connect(
                 options.address,
@@ -260,6 +261,7 @@ TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const Tr
             auto ptr = std::make_shared<QuicTransport>(std::move(transport));
             return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
+#endif
 
         default: {
             return Err(TransportError::NotImplemented);

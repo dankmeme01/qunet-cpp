@@ -1,3 +1,5 @@
+#ifdef QUNET_TLS_SUPPORT
+
 #include <qunet/socket/transport/tls/ClientTlsContext.hpp>
 #include <utility>
 
@@ -84,3 +86,5 @@ TlsResult<ClientTlsContext> ClientTlsContext::create(bool insecure) {
 }
 
 }
+
+#endif

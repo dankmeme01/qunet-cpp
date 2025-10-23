@@ -198,7 +198,9 @@ private:
     move_only_function<void(std::vector<uint8_t>)> m_dataCallback;
 
     // vvv long lived fields vvv
+#ifdef QUNET_TLS_SUPPORT
     std::optional<ClientTlsContext> m_tlsContext;
+#endif
 
     // vvv semi-public fields vvv
     ConnectionState m_connState = ConnectionState::Disconnected;

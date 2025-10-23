@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef QUNET_QUIC_SUPPORT
+
 #include <qunet/socket/transport/QuicTransport.hpp>
 #include <qunet/util/Poll.hpp>
 #include "QuicStream.hpp"
@@ -156,3 +158,5 @@ private:
 };
 
 }
+
+#endif

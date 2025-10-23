@@ -1,4 +1,5 @@
 #pragma once
+#ifdef QUNET_TLS_SUPPORT
 
 #include <qunet/socket/transport/Error.hpp>
 
@@ -30,3 +31,5 @@ protected:
 };
 
 }
+
+#endif

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef QUNET_QUIC_SUPPORT
+
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/util/SlidingBuffer.hpp>
 #include <qunet/buffers/CircularByteBuffer.hpp>
@@ -76,3 +78,5 @@ private:
 };
 
 }
+
+#endif

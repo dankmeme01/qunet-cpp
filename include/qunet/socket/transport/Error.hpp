@@ -57,8 +57,12 @@ struct TransportError {
     };
 
     TransportError(const qsox::Error& err) : m_kind(err) {}
+#ifdef QUNET_QUIC_SUPPORT
     TransportError(QuicError err) : m_kind(std::move(err)) {}
+#endif
+#ifdef QUNET_TLS_SUPPORT
     TransportError(TlsError err) : m_kind(std::move(err)) {}
+#endif
     TransportError(ByteReaderError err) : m_kind(std::move(err)) {}
     TransportError(ByteWriterError err) : m_kind(std::move(err)) {}
     TransportError(HandshakeFailure err) : m_kind(std::move(err)) {}
@@ -72,8 +76,12 @@ struct TransportError {
 
     std::variant<
         qsox::Error,
+#ifdef QUNET_QUIC_SUPPORT
         QuicError,
+#endif
+#ifdef QUNET_TLS_SUPPORT
         TlsError,
+#endif
         ByteReaderError,
         ByteWriterError,
         HandshakeFailure,

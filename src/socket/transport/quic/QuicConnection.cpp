@@ -1,3 +1,5 @@
+#ifdef QUNET_QUIC_SUPPORT
+
 #include "QuicConnection.hpp"
 #include <qunet/Connection.hpp>
 #include <qunet/protocol/constants.hpp>
@@ -861,3 +863,5 @@ bool QuicConnection::shouldLosePacket() const {
 }
 
 }
+
+#endif

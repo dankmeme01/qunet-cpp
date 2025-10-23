@@ -1,3 +1,5 @@
+#ifdef QUNET_TLS_SUPPORT
+
 #include "ClientTlsSession.hpp"
 #include "../quic/QuicConnection.hpp"
 #include <utility>
@@ -83,3 +85,5 @@ TlsError ClientTlsSession::lastError() {
 }
 
 }
+
+#endif

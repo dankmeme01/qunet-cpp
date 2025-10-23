@@ -1,3 +1,5 @@
+#ifdef QUNET_QUIC_SUPPORT
+
 #include <qunet/socket/transport/QuicTransport.hpp>
 #include <qunet/Connection.hpp>
 #include "quic/QuicConnection.hpp"
@@ -67,3 +69,5 @@ class QuicConnection& QuicTransport::connection() {
 }
 
 }
+
+#endif

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef QUNET_QUIC_SUPPORT
+
 #include "BaseTransport.hpp"
 #include "tls/ClientTlsContext.hpp"
 #include <qunet/buffers/CircularByteBuffer.hpp>
@@ -40,3 +42,5 @@ private:
 };
 
 }
+
+#endif

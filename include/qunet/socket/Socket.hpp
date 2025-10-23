@@ -21,7 +21,9 @@ struct TransportOptions {
     ConnectionType type;
     asp::time::Duration timeout;
     const struct ConnectionOptions* connOptions = nullptr;
+#ifdef QUNET_TLS_SUPPORT
     const ClientTlsContext* tlsContext = nullptr;
+#endif
     bool reconnecting = false;
 };
 
