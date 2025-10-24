@@ -128,15 +128,17 @@ bool Socket::isClosed() const {
     return m_transport->isClosed();
 }
 
-TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable) {
-    log::debug("Socket: sending message: {}", message.typeStr());
-
+TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable, bool uncompressed) {
     // determine if the message needs to be compressed
+    CompressionType ctype = CompressionType::None;
+
     if (message.is<DataMessage>()) {
         auto& msg = message.as<DataMessage>();
 
-        uint32_t uncSize = msg.data.size();
-        auto ctype = this->shouldCompress(uncSize);
+        if (!uncompressed) {
+            uint32_t uncSize = msg.data.size();
+            ctype = this->shouldCompress(uncSize);
+        }
 
         switch (ctype) {
             case CompressionType::Zstd: {
@@ -150,6 +152,8 @@ TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable) {
             default: break;
         }
     }
+
+    log::debug("Socket: sending message: {} (reliable: {}, compressed: {})", message.typeStr(), reliable, ctype != CompressionType::None);
 
     return m_transport->sendMessage(std::move(message), reliable);
 }

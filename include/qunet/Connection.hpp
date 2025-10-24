@@ -192,9 +192,15 @@ public:
     // Sends a keepalive message to the server. Does nothing if not connected.
     void sendKeepalive();
     // Sends a data message to the server. Does nothing if not connected.
-    void sendData(std::vector<uint8_t> data, bool reliable = true);
+    void sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false);
 
 private:
+    struct ChannelMsg {
+        QunetMessage message;
+        bool reliable = false;
+        bool uncompressed = false;
+    };
+
     // vvv settings vvv
     std::string m_srvPrefix = "_qunet";
     ConnectionType m_preferredConnType = ConnectionType::Tcp;
@@ -235,7 +241,7 @@ private:
 
     // vvv notifications, messages for the thread vvv
     MultiPoller m_poller;
-    asp::Mutex<std::queue<std::pair<QunetMessage, bool>>> m_msgChannel;
+    asp::Mutex<std::queue<ChannelMsg>> m_msgChannel;
     PollPipe m_msgPipe;
     PollPipe m_disconnectPipe;
     asp::Notify m_connStartedNotify;
@@ -273,7 +279,7 @@ private:
     void resetConnectionState();
     void sortUsedIps();
 
-    void doSend(QunetMessage&& message, bool reliable = true);
+    void doSend(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
 
     // Call when DNS resolution is over, we can proceed to either pinging or connecting to the destination
     void doneResolving();

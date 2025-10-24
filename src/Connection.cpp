@@ -422,12 +422,12 @@ Connection::Connection() {
                     auto chan = m_msgChannel.lock();
 
                     while (!chan->empty()) {
-                        auto [msg, reliable] = std::move(chan->front());
+                        auto cmsg = std::move(chan->front());
                         chan->pop();
 
                         chan.unlock();
 
-                        auto res = m_socket->sendMessage(std::move(msg), reliable);
+                        auto res = m_socket->sendMessage(std::move(cmsg.message), cmsg.reliable, cmsg.uncompressed);
                         if (!res) {
                             auto err = res.unwrapErr();
                             this->onConnectionError(err);
@@ -1018,18 +1018,22 @@ void Connection::sendKeepalive() {
     return this->doSend(KeepaliveMessage{});
 }
 
-void Connection::sendData(std::vector<uint8_t> data, bool reliable) {
-    return this->doSend(DataMessage{std::move(data)}, reliable);
+void Connection::sendData(std::vector<uint8_t> data, bool reliable, bool uncompressed) {
+    return this->doSend(DataMessage{std::move(data)}, reliable, uncompressed);
 }
 
-void Connection::doSend(QunetMessage&& message, bool reliable) {
+void Connection::doSend(QunetMessage&& message, bool reliable, bool uncompressed) {
     auto _lock = m_internalMutex.lock();
 
     if (!this->connected()) {
         return;
     }
 
-    m_msgChannel.lock()->push(std::make_pair(std::move(message), reliable));
+    m_msgChannel.lock()->push(ChannelMsg {
+        std::move(message),
+        reliable,
+        uncompressed
+    });
     m_msgPipe.notify();
 }
 

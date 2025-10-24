@@ -43,8 +43,8 @@ public:
     TransportResult<> reconnect();
 
     /// Send a message over the transport. Note: if it's a Data message, reliability and compression headers are ignored.
-    /// The `reliable` argument is used to make the message reliable, and compression is applied automatically if needed.
-    TransportResult<> sendMessage(QunetMessage&& message, bool reliable = true);
+    /// The `reliable` argument is used to make the message reliable, and compression is applied automatically if needed, unless `uncompressed` is set to true.
+    TransportResult<> sendMessage(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
     TransportResult<QunetMessage> receiveMessage(const std::optional<asp::time::Duration>& timeout);
 
     /// Processes incoming data from the transport. This method does not block, it will try to read as much data as available,
