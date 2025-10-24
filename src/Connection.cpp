@@ -748,6 +748,7 @@ void Connection::cancelConnection() {
 
     if (this->connecting()) {
         m_cancelling = true;
+        m_disconnectPipe.notify();
     }
 }
 
@@ -1084,8 +1085,8 @@ void Connection::finishCancellation() {
 void Connection::resetConnectionState() {
     auto _lock = m_internalMutex.lock();
 
-    this->setConnState(ConnectionState::Disconnected);
     m_lastError = ConnectionError::Success;
+    this->setConnState(ConnectionState::Disconnected);
     m_cancelling = false;
     m_resolvingIp = false;
     m_waitingForA = false;
