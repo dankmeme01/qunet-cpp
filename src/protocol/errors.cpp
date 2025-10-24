@@ -11,6 +11,7 @@ std::string_view messageForConnectionError(int code) {
         case 5: return "Protocol violation: client send a malformed zero-length message";
         case 6: return "Protocol violation: client sent a stream message that exceeds the maximum allowed length";
         case 7: return "Internal server error";
+        case 8: return "Server is shutting down";
         default: return "";
     }
 }

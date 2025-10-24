@@ -126,6 +126,7 @@ std::string_view QunetMessage::typeStr() const {
     FOR_MSG(ReconnectFailureMessage)
     // FOR_MSG(QdbgToggleMessage)
     // FOR_MSG(QdbgReportMessage)
+    FOR_MSG(DataMessage)
     /* else */ {
         return "UnknownMessageType";
     }

@@ -13,6 +13,12 @@
 
 namespace qn {
 
+struct ServerClosedError {
+    std::string reason;
+
+    std::string_view message() const;
+};
+
 class ConnectionError {
 public:
     typedef enum {
@@ -27,16 +33,18 @@ public:
         AllAddressesFailed,
         ProtocolDisabled,
         NoConnectionTypeFound,
-        ServerClosed,
     } Code;
 
     constexpr inline ConnectionError(Code code) : m_err(code) {}
-    inline ConnectionError(TransportError err) : m_err(err) {}
+    inline ConnectionError(TransportError err) : m_err(std::move(err)) {}
+    inline ConnectionError(ServerClosedError err) : m_err(std::move(err)) {}
 
     bool isOtherError() const;
     bool isTransportError() const;
+    bool isServerClosedError() const;
 
     const TransportError& asTransportError() const;
+    const ServerClosedError& asServerClosedError() const;
     Code asOtherError() const;
 
     bool operator==(const ConnectionError& other) const = default;
@@ -45,11 +53,13 @@ public:
     bool operator!=(Code code) const;
     bool operator==(const TransportError& err) const;
     bool operator!=(const TransportError& err) const;
+    bool operator==(const ServerClosedError& err) const;
+    bool operator!=(const ServerClosedError& err) const;
 
     std::string message() const;
 
 private:
-    std::variant<Code, TransportError> m_err;
+    std::variant<Code, TransportError, ServerClosedError> m_err;
 };
 
 template <typename T = void>

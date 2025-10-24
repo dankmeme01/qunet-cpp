@@ -44,12 +44,21 @@ bool ConnectionError::isTransportError() const {
     return std::holds_alternative<TransportError>(m_err);
 
 }
+
 bool ConnectionError::isOtherError() const {
     return std::holds_alternative<Code>(m_err);
 }
 
+bool ConnectionError::isServerClosedError() const {
+    return std::holds_alternative<ServerClosedError>(m_err);
+}
+
 const TransportError& ConnectionError::asTransportError() const {
     return std::get<TransportError>(m_err);
+}
+
+const ServerClosedError& ConnectionError::asServerClosedError() const {
+    return std::get<ServerClosedError>(m_err);
 }
 
 ConnectionError::Code ConnectionError::asOtherError() const {
@@ -57,7 +66,7 @@ ConnectionError::Code ConnectionError::asOtherError() const {
 }
 
 bool ConnectionError::operator==(Code code) const {
-    return std::holds_alternative<Code>(m_err) && std::get<Code>(m_err) == code;
+    return this->isOtherError() && this->asOtherError() == code;
 }
 
 bool ConnectionError::operator!=(Code code) const {
@@ -65,16 +74,30 @@ bool ConnectionError::operator!=(Code code) const {
 }
 
 bool ConnectionError::operator==(const TransportError& err) const {
-    return std::holds_alternative<TransportError>(m_err) && std::get<TransportError>(m_err) == err;
+    return this->isTransportError() && this->asTransportError() == err;
 }
 
 bool ConnectionError::operator!=(const TransportError& err) const {
     return !(*this == err);
 }
 
+bool ConnectionError::operator==(const ServerClosedError& err) const {
+    return this->isServerClosedError() && this->asServerClosedError().reason == err.reason;
+}
+
+bool ConnectionError::operator!=(const ServerClosedError& err) const {
+    return !(*this == err);
+}
+
+std::string_view ServerClosedError::message() const {
+    return reason.empty() ? "Server closed the connection" : std::string_view{reason};
+}
+
 std::string ConnectionError::message() const {
     if (this->isTransportError()) {
         return this->asTransportError().message();
+    } else if (this->isServerClosedError()) {
+        return std::string{this->asServerClosedError().message()};
     } else switch (this->asOtherError()) {
         case Code::Success: return "Success";
         case Code::InvalidProtocol: return "Invalid protocol specified";
@@ -87,7 +110,6 @@ std::string ConnectionError::message() const {
         case Code::AllAddressesFailed: return "Failed to connect to all possible addresses";
         case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
-        case Code::ServerClosed: return "The server closed the connection";
     }
 
     qn::unreachable();
@@ -601,7 +623,7 @@ void Connection::thrHandleIncomingMessage(QunetMessage&& message) {
     } else if (message.is<ServerCloseMessage>()) {
         auto& closeMsg = message.as<ServerCloseMessage>();
         log::warn("Received server close message: {}", closeMsg.message());
-        this->onFatalConnectionError(ConnectionError::ServerClosed);
+        this->onFatalConnectionError(ServerClosedError{ std::string{closeMsg.message()} });
     } else if (message.is<KeepaliveResponseMessage>()) {
         // do nothing!
         // TODO: actually forward the data to the client
