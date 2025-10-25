@@ -30,7 +30,7 @@ endif()
 
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#18c70db5")
-CPMAddPackage("gh:dankmeme01/asp2#728a96a6")
+CPMAddPackage("gh:dankmeme01/asp2#79c57086")
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 
