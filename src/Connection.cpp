@@ -306,7 +306,7 @@ Connection::Connection() {
                     // cancelled, do nothing
                 } else if (*res.err() == TransportError::ReconnectFailed) {
                     // server did not want to accept us, likely the server just got restarted, simply disconnect
-                    this->finishCancellation();
+                    this->resetConnectionState();
                 } else {
                     // failed, sleep for a bit and try again
                     // initially 5 seconds, then jump to 10
