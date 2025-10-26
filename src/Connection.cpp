@@ -1082,6 +1082,7 @@ void Connection::finishCancellation() {
     auto _lock = m_internalMutex.lock();
 
     log::debug("Connection cancelled");
+    m_lastError = ConnectionError::Success;
 
     this->resetConnectionState();
 }
@@ -1089,8 +1090,8 @@ void Connection::finishCancellation() {
 void Connection::resetConnectionState() {
     auto _lock = m_internalMutex.lock();
 
-    m_lastError = ConnectionError::Success;
     this->setConnState(ConnectionState::Disconnected);
+    m_lastError = ConnectionError::Success;
     m_cancelling = false;
     m_resolvingIp = false;
     m_waitingForA = false;
