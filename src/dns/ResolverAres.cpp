@@ -113,7 +113,7 @@ static void queryCallback(void* arg, ares_status_t status, size_t timeouts, cons
         } break;
 
         default: {
-            log::warn("DNS query failed with status {}: {}", (int) status, ares_strerror(status));
+            log::debug("DNS query failed with status {}: {}", (int) status, ares_strerror(status));
             callback(Err(errorFromStatus(status)));
         } break;
     }

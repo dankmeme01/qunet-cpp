@@ -943,7 +943,7 @@ ConnectionResult<> Connection::fetchIpAndConnect(const std::string& hostname, ui
 
                 this->sortUsedIps();
             } else {
-                log::warn("Failed to resolve A record: {}", record.unwrapErr().message());
+                log::debug("Failed to resolve A record: {}", record.unwrapErr().message());
             }
         });
 
@@ -973,7 +973,7 @@ ConnectionResult<> Connection::fetchIpAndConnect(const std::string& hostname, ui
 
                 this->sortUsedIps();
             } else {
-                log::warn("Failed to resolve AAAA record: {}", record.unwrapErr().message());
+                log::debug("Failed to resolve AAAA record: {}", record.unwrapErr().message());
             }
         });
 
