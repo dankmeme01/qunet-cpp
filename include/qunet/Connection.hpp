@@ -194,6 +194,13 @@ public:
     // Sends a data message to the server. Does nothing if not connected.
     void sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false);
 
+    /// Get a snapshot of various message data. If `period` is nonzero, will only include stats for that time period.
+    /// If `period` is zero (default), will include all-time stats.
+    StatSnapshot statSnapshot(asp::time::Duration period = {}) const;
+
+    /// Like `statSnapshot` but includes all-time stats plus extra fields
+    StatWholeSnapshot statSnapshotFull() const;
+
 private:
     struct ChannelMsg {
         QunetMessage message;

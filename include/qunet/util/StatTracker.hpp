@@ -42,6 +42,7 @@ struct StatSnapshot {
 
 struct StatWholeSnapshot : StatSnapshot {
     StatWholeSnapshot(StatSnapshot&& s) : StatSnapshot(std::move(s)) {}
+    StatWholeSnapshot() = default;
 
     asp::time::Duration connectionLifetime;
     asp::time::Duration tookToConnect;

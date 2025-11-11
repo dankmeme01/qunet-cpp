@@ -1022,6 +1022,22 @@ void Connection::sendData(std::vector<uint8_t> data, bool reliable, bool uncompr
     return this->doSend(DataMessage{std::move(data)}, reliable, uncompressed);
 }
 
+StatSnapshot Connection::statSnapshot(asp::time::Duration period) const {
+    if (m_socket) {
+        return m_socket->transport()->_tracker().snapshot(period);
+    }
+
+    return {};
+}
+
+StatWholeSnapshot Connection::statSnapshotFull() const {
+    if (m_socket) {
+        return m_socket->transport()->_tracker().snapshotFull();
+    }
+
+    return {};
+}
+
 void Connection::doSend(QunetMessage&& message, bool reliable, bool uncompressed) {
     auto _lock = m_internalMutex.lock();
 
