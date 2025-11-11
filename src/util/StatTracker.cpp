@@ -94,11 +94,6 @@ StatSnapshot StatTracker::snapshot(asp::time::Duration period) const {
 
     this->countRelStats(snap, messages);
 
-    snap.compUpAvgRatio = snap.compUpAvgRatio / snap.compressedUp;
-    snap.compDownAvgRatio = snap.compDownAvgRatio / snap.compressedDown;
-    snap.compUpSavedPercent = (float)snap.compUpSavedBytes / (float)(snap.bytesUp + snap.compUpSavedBytes);
-    snap.compDownSavedPercent = (float)snap.compDownSavedBytes / (float)(snap.bytesDown + snap.compDownSavedBytes);
-
     for (auto& p : packets) {
         auto& count = p.up ? snap.packetsUp : snap.packetsDown;
         auto& bytes = p.up ? snap.bytesUp : snap.bytesDown;
@@ -121,6 +116,11 @@ StatSnapshot StatTracker::snapshot(asp::time::Duration period) const {
     if (snap.minUpPacketSize == SMAX) {
         snap.minUpPacketSize = 0;
     }
+
+    snap.compUpAvgRatio = snap.compUpAvgRatio / snap.compressedUp;
+    snap.compDownAvgRatio = snap.compDownAvgRatio / snap.compressedDown;
+    snap.compUpSavedPercent = (float)snap.compUpSavedBytes / (float)(snap.bytesUp + snap.compUpSavedBytes);
+    snap.compDownSavedPercent = (float)snap.compDownSavedBytes / (float)(snap.bytesDown + snap.compDownSavedBytes);
 
     return snap;
 }
