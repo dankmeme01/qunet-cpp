@@ -2,6 +2,7 @@
 #include <qunet/util/Error.hpp>
 #include <qunet/util/compat.hpp>
 #include <qsox/Resolver.hpp> // we don't use qsox resolver, but we use its error type
+#include <arc/future/Future.hpp>
 
 #include <string>
 
@@ -52,6 +53,10 @@ public:
     ResolverResult<> queryA(const std::string& name, ResolverCallback<DNSRecordA> callback);
     ResolverResult<> queryAAAA(const std::string& name, ResolverCallback<DNSRecordAAAA> callback);
     ResolverResult<> querySRV(const std::string& name, ResolverCallback<DNSRecordSRV> callback);
+
+    arc::Future<ResolverResult<DNSRecordA>> asyncQueryA(const std::string& name);
+    arc::Future<ResolverResult<DNSRecordAAAA>> asyncQueryAAAA(const std::string& name);
+    arc::Future<ResolverResult<DNSRecordSRV>> asyncQuerySRV(const std::string& name);
 
 private:
 #ifdef QUNET_ADVANCED_DNS

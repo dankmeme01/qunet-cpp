@@ -6,12 +6,14 @@
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/Log.hpp>
 #include <queue>
+#include <arc/future/Future.hpp>
+#include <arc/util/Result.hpp>
 
 // Common operations for stream-like transport layers (TCP, QUIC, etc.)
 
 namespace qn::streamcommon {
 
-inline TransportResult<> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport) {
+inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport) {
     HeapByteWriter writer;
 
     bool hasLength = !(message.is<HandshakeStartMessage>() || message.is<ClientReconnectMessage>());
@@ -35,18 +37,18 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket, BaseTr
 
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
-        GEODE_UNWRAP(message.encodeControlMsg(writer, 0));
+        ARC_CO_UNWRAP(message.encodeControlMsg(writer, 0));
 
         // write message length
         prependLength();
 
         auto data = writer.written();
-        GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
+        ARC_CO_UNWRAP(co_await socket.sendAll(data.data(), data.size()));
 
         transport._tracker().onUpMessage(data[0], data.size());
         transport._tracker().onUpPacket(data.size());
 
-        return Ok();
+        co_return Ok();
     }
 
     auto& msg = message.as<DataMessage>();
@@ -61,16 +63,16 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket, BaseTr
     prependLength();
 
     auto data = writer.written();
-    GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
+    ARC_CO_UNWRAP(co_await socket.sendAll(data.data(), data.size()));
 
     transport._tracker().onUpMessage(data[0], msg.data.size());
     transport._tracker().onUpPacket(data.size());
 
-    return Ok();
+    co_return Ok();
 }
 
 // The logic here is similar to the one in rust implementation
-inline TransportResult<> processIncomingData(
+inline arc::Future<TransportResult<>> processIncomingData(
     auto&& socket,
     BaseTransport& transport,
     CircularByteBuffer& buffer,
@@ -84,17 +86,17 @@ inline TransportResult<> processIncomingData(
         // reserve more space if needed, but error if too much space is already reserved
         if (buffer.capacity() >= 1024 * 1024) {
             log::warn("processIncomingData: too much space reserved in buffer, capacity: {}, write window size: {}", buffer.capacity(), wnd.size());
-            return Err(TransportError::NoBufferSpace);
+            co_return Err(TransportError::NoBufferSpace);
         }
 
         buffer.reserve(2048);
         wnd = buffer.writeWindow();
     }
 
-    size_t len = GEODE_UNWRAP(socket.receive(wnd.data(), wnd.size()));
+    size_t len = ARC_CO_UNWRAP(co_await socket.receive(wnd.data(), wnd.size()));
 
     if (len == 0) {
-        return Err(TransportError::Closed);
+        co_return Err(TransportError::Closed);
     }
 
     transport._tracker().onDownPacket(len);
@@ -120,7 +122,7 @@ inline TransportResult<> processIncomingData(
             continue;
         } else if (messageSizeLimit && length > messageSizeLimit) {
             log::warn("Received message larger than limit: {} > {}", length, messageSizeLimit);
-            return Err(TransportError::MessageTooLong);
+            co_return Err(TransportError::MessageTooLong);
         }
 
         size_t totalLen = sizeof(uint32_t) + length;
@@ -153,10 +155,10 @@ inline TransportResult<> processIncomingData(
 
         auto res = dec();
         buffer.skip(length);
-        GEODE_UNWRAP(res);
+        ARC_CO_UNWRAP(res);
     }
 
-    return Ok();
+    co_return Ok();
 }
 
 }

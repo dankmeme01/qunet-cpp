@@ -29,25 +29,25 @@ TransportResult<> BaseTransport::initCompressors(const QunetDatabase* qdb) {
     return Ok();
 }
 
-TransportResult<QunetMessage> BaseTransport::performHandshake(
+arc::Future<TransportResult<QunetMessage>> BaseTransport::performHandshake(
     HandshakeStartMessage handshakeStart,
     const std::optional<asp::time::Duration>& timeout
 ) {
     auto startedAt = Instant::now();
 
-    GEODE_UNWRAP(this->sendMessage(std::move(handshakeStart), false));
+    ARC_CO_UNWRAP(co_await this->sendMessage(std::move(handshakeStart), false));
 
     while (true) {
         auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;
         if (remTimeout && remTimeout->isZero()) {
-            return Err(TransportError::TimedOut);
+            co_return Err(TransportError::TimedOut);
         }
 
-        if (!GEODE_UNWRAP(this->poll(remTimeout))) {
+        if (!ARC_CO_UNWRAP(co_await this->poll(remTimeout))) {
             continue;
         }
 
-        bool msgAvailable = GEODE_UNWRAP(this->processIncomingData());
+        bool msgAvailable = ARC_CO_UNWRAP(co_await this->processIncomingData());
         if (msgAvailable) {
             break;
         }
@@ -55,28 +55,28 @@ TransportResult<QunetMessage> BaseTransport::performHandshake(
 
     QN_DEBUG_ASSERT(!m_recvMsgQueue.empty());
 
-    return this->receiveMessage();
+    co_return co_await this->receiveMessage();
 }
 
-TransportResult<QunetMessage> BaseTransport::performReconnect(
+arc::Future<TransportResult<QunetMessage>> BaseTransport::performReconnect(
     uint64_t connectionId,
     const std::optional<asp::time::Duration>& timeout
 ) {
     auto startedAt = Instant::now();
 
-    GEODE_UNWRAP(this->sendMessage(ClientReconnectMessage{ connectionId }, false));
+    ARC_CO_UNWRAP(co_await this->sendMessage(ClientReconnectMessage{ connectionId }, false));
 
     while (true) {
         auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;
         if (remTimeout && remTimeout->isZero()) {
-            return Err(TransportError::TimedOut);
+            co_return Err(TransportError::TimedOut);
         }
 
-        if (!GEODE_UNWRAP(this->poll(remTimeout))) {
+        if (!ARC_CO_UNWRAP(co_await this->poll(remTimeout))) {
             continue;
         }
 
-        bool msgAvailable = GEODE_UNWRAP(this->processIncomingData());
+        bool msgAvailable = ARC_CO_UNWRAP(co_await this->processIncomingData());
         if (msgAvailable) {
             break;
         }
@@ -84,22 +84,22 @@ TransportResult<QunetMessage> BaseTransport::performReconnect(
 
     QN_DEBUG_ASSERT(!m_recvMsgQueue.empty());
 
-    return this->receiveMessage();
+    co_return co_await this->receiveMessage();
 }
 
-TransportResult<QunetMessage> BaseTransport::receiveMessage() {
+arc::Future<TransportResult<QunetMessage>> BaseTransport::receiveMessage() {
     if (!m_recvMsgQueue.empty()) {
         auto msg = std::move(m_recvMsgQueue.front());
         m_recvMsgQueue.pop();
-        return Ok(std::move(msg));
+        co_return Ok(std::move(msg));
     }
 
-    // block until a message is available
-    while (!GEODE_UNWRAP(this->processIncomingData()));
+    // wait until a message is available
+    while (!ARC_CO_UNWRAP(co_await this->processIncomingData()));
 
-    auto msg = GEODE_UNWRAP(this->receiveMessage());
+    auto msg = ARC_CO_UNWRAP(co_await this->receiveMessage());
 
-    return Ok(std::move(msg));
+    co_return Ok(std::move(msg));
 }
 
 uint64_t BaseTransport::getKeepaliveTimestamp() const {
@@ -116,12 +116,12 @@ Duration BaseTransport::untilTimerExpiry() const {
     return Duration::infinite();
 }
 
-TransportResult<> BaseTransport::handleTimerExpiry() {
+arc::Future<TransportResult<>> BaseTransport::handleTimerExpiry() {
     if (m_unackedKeepalives >= 3) {
-        return Err(TransportError::TimedOut);
+        co_return Err(TransportError::TimedOut);
     }
 
-    return Ok();
+    co_return Ok();
 }
 
 TransportResult<> BaseTransport::_pushPreFinalDataMessage(QunetMessageMeta&& meta) {

@@ -8,6 +8,8 @@
 #include <qunet/util/StatTracker.hpp>
 
 #include <qsox/Error.hpp>
+#include <arc/future/Future.hpp>
+#include <arc/util/Result.hpp>
 #include <asp/time/Duration.hpp>
 #include <asp/time/Instant.hpp>
 #include <stdint.h>
@@ -22,29 +24,29 @@ public:
     BaseTransport& operator=(BaseTransport&&) = default;
 
     virtual ~BaseTransport() = default;
-    virtual TransportResult<> sendMessage(QunetMessage message, bool reliable) = 0;
+    virtual arc::Future<TransportResult<>> sendMessage(QunetMessage message, bool reliable) = 0;
 
     /// Sends the qunet hadnshake to the server and waits for a response.
     /// The default implementation should only be used in reliable and ordered transports,
     /// it will return the first message as soon as it is received.
-    virtual TransportResult<QunetMessage> performHandshake(
+    virtual arc::Future<TransportResult<QunetMessage>> performHandshake(
         HandshakeStartMessage handshakeStart,
         const std::optional<asp::time::Duration>& timeout
     );
 
     /// Like `performHandshake` but sends a reconnect message and waits for a reconnect success or failure.
-    virtual TransportResult<QunetMessage> performReconnect(
+    virtual arc::Future<TransportResult<QunetMessage>> performReconnect(
         uint64_t connectionId,
         const std::optional<asp::time::Duration>& timeout
     );
 
     /// Polls until any kind of data is available to be read.
-    virtual TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) = 0;
+    virtual arc::Future<TransportResult<bool>> poll(const std::optional<asp::time::Duration>& dur) = 0;
 
     /// Processes incoming data from the transport. This function may block until data is available,
     /// but it will only block for a single read call, rather than until a whole message is available.
     /// Returns whether an entire message is available to be read with `receiveMessage()`.
-    virtual TransportResult<bool> processIncomingData() = 0;
+    virtual arc::Future<TransportResult<bool>> processIncomingData() = 0;
 
     /// Returns whether there is a message available to be read from the transport.
     virtual bool messageAvailable();
@@ -52,15 +54,15 @@ public:
     /// Returns how much time is left until the transport timer expires.
     virtual asp::time::Duration untilTimerExpiry() const;
     /// Handles the timer expiry. This may send various messages to the remote.
-    virtual TransportResult<> handleTimerExpiry();
+    virtual arc::Future<TransportResult<>> handleTimerExpiry();
 
     /// Receives a message from the transport. If no message is available, this will block until a message is received or an error occurs.
-    virtual TransportResult<QunetMessage> receiveMessage();
+    virtual arc::Future<TransportResult<QunetMessage>> receiveMessage();
 
     // Closes the transport. This method may or may not block until the transport is fully closed.
     // This does not send a `ClientClose` message.
     // After invoking, keep calling `isClosed()` to check if the transport is fully closed.
-    virtual TransportResult<> close() = 0;
+    virtual arc::Future<TransportResult<>> close() = 0;
     virtual bool isClosed() const = 0;
 
     virtual void setConnectionId(uint64_t connectionId);

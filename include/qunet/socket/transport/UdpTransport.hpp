@@ -3,7 +3,7 @@
 #include "BaseTransport.hpp"
 #include "udp/ReliableStore.hpp"
 #include "udp/FragmentStore.hpp"
-#include <qsox/UdpSocket.hpp>
+#include <arc/net/UdpSocket.hpp>
 
 namespace qn {
 
@@ -13,41 +13,41 @@ public:
     UdpTransport(UdpTransport&&) = default;
     UdpTransport& operator=(UdpTransport&&) = default;
 
-    static qsox::NetResult<UdpTransport> connect(
+    static arc::Future<qsox::NetResult<UdpTransport>> connect(
         const qsox::SocketAddress& address,
         const struct ConnectionOptions& connOptions
     );
 
-    TransportResult<QunetMessage> performHandshake(
+    arc::Future<TransportResult<QunetMessage>> performHandshake(
         HandshakeStartMessage handshakeStart,
         const std::optional<asp::time::Duration>& timeout
     ) override;
 
-    TransportResult<> close() override;
+    arc::Future<TransportResult<>> close() override;
     bool isClosed() const override;
-    TransportResult<> sendMessage(QunetMessage data, bool reliable) override;
-    TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) override;
-    TransportResult<bool> processIncomingData() override;
+    arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
+    arc::Future<TransportResult<bool>> poll(const std::optional<asp::time::Duration>& dur) override;
+    arc::Future<TransportResult<bool>> processIncomingData() override;
 
     asp::time::Duration untilTimerExpiry() const override;
-    TransportResult<> handleTimerExpiry() override;
+    arc::Future<TransportResult<>> handleTimerExpiry() override;
 
 private:
     friend class MultiPoller;
 
     ReliableStore m_relStore;
     FragmentStore m_fragStore;
-    qsox::UdpSocket m_socket;
+    arc::UdpSocket m_socket;
     size_t m_mtu;
     bool m_closed = false;
     float m_lossSim = 0.f;
     std::optional<asp::time::Duration> m_activeKeepaliveInterval;
 
-    UdpTransport(qsox::UdpSocket socket, size_t mtu, const struct ConnectionOptions& connOptions);
+    UdpTransport(arc::UdpSocket socket, size_t mtu, const struct ConnectionOptions& connOptions);
 
     // Performs fragmentation (if needed) and sends the message.
     // Reliability and compression headers should already be set in the message, if they are needed.
-    TransportResult<> doSendUnfragmentedData(QunetMessage& message, bool retransmission = false);
+    arc::Future<TransportResult<>> doSendUnfragmentedData(QunetMessage& message, bool retransmission = false);
 
     bool shouldLosePacket();
     asp::time::Duration untilKeepalive() const;

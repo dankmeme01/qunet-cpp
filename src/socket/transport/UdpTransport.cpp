@@ -12,12 +12,13 @@
 
 #define MAP_UNWRAP(x) GEODE_UNWRAP((x).mapErr([](const auto& err) { return TransportError::EncodingFailed; }))
 
-using namespace qsox;
+using namespace arc;
+using qsox::SocketAddress;
 using namespace asp::time;
 
 namespace qn {
 
-UdpTransport::UdpTransport(qsox::UdpSocket socket, size_t mtu, const ConnectionOptions& options)
+UdpTransport::UdpTransport(UdpSocket socket, size_t mtu, const ConnectionOptions& options)
     : m_socket(std::move(socket)),
       m_mtu(mtu),
       m_lossSim(options.debug.packetLossSimulation),
@@ -26,37 +27,37 @@ UdpTransport::UdpTransport(qsox::UdpSocket socket, size_t mtu, const ConnectionO
 
 UdpTransport::~UdpTransport() {}
 
-NetResult<UdpTransport> UdpTransport::connect(
+Future<NetResult<UdpTransport>> UdpTransport::connect(
     const SocketAddress& address,
     const struct ConnectionOptions& connOptions
 ) {
-    auto socket = GEODE_UNWRAP(UdpSocket::bindAny(address.isV6()));
-    GEODE_UNWRAP(socket.connect(address));
+    auto socket = ARC_CO_UNWRAP(co_await UdpSocket::bindAny(address.isV6()));
+    ARC_CO_UNWRAP(socket.connect(address));
 
-    return Ok(UdpTransport(
+    co_return Ok(UdpTransport(
         std::move(socket),
         UDP_PACKET_LIMIT,
         connOptions
     ));
 }
 
-TransportResult<> UdpTransport::close()  {
+Future<TransportResult<>> UdpTransport::close()  {
     // udp, of course, does not have any cleanup
     m_closed = true;
-    return Ok();
+    co_return Ok();
 }
 
 bool UdpTransport::isClosed() const {
     return m_closed;
 }
 
-TransportResult<QunetMessage> UdpTransport::performHandshake(
+arc::Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
     HandshakeStartMessage handshakeStart,
     const std::optional<asp::time::Duration>& timeout
 ) {
     auto startedAt = Instant::now();
 
-    GEODE_UNWRAP(this->sendMessage(handshakeStart, false));
+    ARC_CO_UNWRAP(co_await this->sendMessage(handshakeStart, false));
     auto lastSentHandshake = Instant::now();
     size_t sentAttempts = 1;
 
@@ -74,22 +75,22 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 
         // if full timeout expired, return a timeout error
         if (fullTimeout.isZero()) {
-            return Err(TransportError::TimedOut);
+            co_return Err(TransportError::TimedOut);
         }
 
         // if rem timeout expired, resend the handshake message
         if (remTimeout.isZero()) {
-            GEODE_UNWRAP(this->sendMessage(handshakeStart, false));
+            ARC_CO_UNWRAP(co_await this->sendMessage(handshakeStart, false));
             lastSentHandshake = Instant::now();
             sentAttempts++;
             continue;
         }
 
-        bool hasData = GEODE_UNWRAP(this->poll(remTimeout));
+        bool hasData = ARC_CO_UNWRAP(co_await this->poll(remTimeout));
         bool hasMessage = false;
 
         if (hasData) {
-            hasMessage = GEODE_UNWRAP(this->processIncomingData());
+            hasMessage = ARC_CO_UNWRAP(co_await this->processIncomingData());
         } else {
             hasMessage = this->messageAvailable();
         }
@@ -98,11 +99,11 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
             continue; // no message available, keep polling
         }
 
-        auto chunkmsg = GEODE_UNWRAP(this->receiveMessage());
+        auto chunkmsg = ARC_CO_UNWRAP(co_await this->receiveMessage());
 
         if (chunkmsg.is<HandshakeFailureMessage>()) {
             // if it's a failure message, return it directly
-            return Ok(std::move(chunkmsg));
+            co_return Ok(std::move(chunkmsg));
         } else if (!chunkmsg.is<HandshakeFinishMessage>()) {
             // since this is UDP, messages may arrive out of order, store unexpected messages for later
             unexpectedMessages.push(std::move(chunkmsg));
@@ -128,12 +129,12 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
             chunks.push_back(std::move(msg));
 
             if (outMessage.qdbData->compressedSize > 1024 * 1024) {
-                return Err(TransportError::HandshakeFailure{"Qdb data is too large"});
+                co_return Err(TransportError::HandshakeFailure{"Qdb data is too large"});
             }
         } else {
             // otherwise, check if connection ID matches and check if this is a duplicate chunk
             if (msg.connectionId != outMessage.connectionId) {
-                return Err(TransportError::HandshakeFailure{"Mismatch between connection IDs in handshake chunks"});
+                co_return Err(TransportError::HandshakeFailure{"Mismatch between connection IDs in handshake chunks"});
             }
 
             auto offset = msg.qdbData->chunkOffset;
@@ -164,7 +165,7 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 
             // check for out of bounds
             if (c.qdbData->chunkOffset > outMessage.qdbData->compressedSize || c.qdbData->chunkOffset + c.qdbData->chunkSize > outMessage.qdbData->compressedSize) {
-                return Err(TransportError::HandshakeFailure{"Qdb chunk data out of bounds"});
+                co_return Err(TransportError::HandshakeFailure{"Qdb chunk data out of bounds"});
             }
 
             std::memcpy(
@@ -191,10 +192,10 @@ TransportResult<QunetMessage> UdpTransport::performHandshake(
 
     // done!
 
-    return Ok(std::move(outMessage));
+    co_return Ok(std::move(outMessage));
 }
 
-TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
+arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
         if (message.is<KeepaliveMessage>()) {
@@ -203,11 +204,11 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         }
 
         HeapByteWriter writer;
-        GEODE_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
+        ARC_CO_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
         auto data = writer.written();
 
         if (!this->shouldLosePacket()) {
-            auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+            auto cres = ARC_CO_UNWRAP(co_await m_socket.send(data.data(), data.size()));
         }
 
         this->updateLastActivity();
@@ -215,7 +216,7 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         m_tracker.onUpMessage(data[0], data.size());
         m_tracker.onUpPacket(data.size());
 
-        return Ok();
+        co_return Ok();
     }
 
     // data messages are more interesting
@@ -238,10 +239,10 @@ TransportResult<> UdpTransport::sendMessage(QunetMessage message, bool reliable)
         msg.relHeader.reset();
     }
 
-    return this->doSendUnfragmentedData(message, false);
+    co_return co_await this->doSendUnfragmentedData(message, false);
 }
 
-TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bool retransmission) {
+arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bool retransmission) {
     auto& msg = message.as<DataMessage>();
     HeapByteWriter writer;
 
@@ -267,7 +268,7 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
         auto data = writer.written();
 
         if (!this->shouldLosePacket()) {
-            auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+            auto cres = ARC_CO_UNWRAP(co_await m_socket.send(data.data(), data.size()));
         }
 
         if (isReliable) {
@@ -278,7 +279,7 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
 
         m_tracker.onUpPacket(data.size());
 
-        return Ok();
+        co_return Ok();
     }
 
     // fragmentation is needed :(
@@ -322,7 +323,7 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
         auto data = fwriter.written();
 
         if (!this->shouldLosePacket()) {
-            auto cres = GEODE_UNWRAP(m_socket.send(data.data(), data.size()));
+            auto cres = ARC_CO_UNWRAP(co_await m_socket.send(data.data(), data.size()));
         }
 
         m_tracker.onUpPacket(data.size());
@@ -334,34 +335,45 @@ TransportResult<> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bo
 
     this->updateLastActivity();
 
-    return Ok();
+    co_return Ok();
 }
 
-TransportResult<bool> UdpTransport::poll(const std::optional<Duration>& dur) {
+// TODO: unify poll across all transports
+Future<TransportResult<bool>> UdpTransport::poll(const std::optional<Duration>& dur) {
     int timeout = dur ? dur->millis() : -1;
 
-    auto res = GEODE_UNWRAP(qsox::pollOne(m_socket, PollType::Read, timeout));
+    if (dur.has_value()) {
+        auto res = co_await arc::timeout(*dur, m_socket.pollReadable());
+        if (res) {
+            ARC_CO_UNWRAP(res.unwrap());
+            co_return Ok(true);
+        }
 
-    return Ok(res == PollResult::Readable);
+        co_return Ok(false);
+    } else {
+        ARC_CO_UNWRAP(co_await m_socket.pollReadable());
+        co_return Ok(true);
+    }
 }
 
-TransportResult<bool> UdpTransport::processIncomingData() {
+
+arc::Future<TransportResult<bool>> UdpTransport::processIncomingData() {
     uint8_t buffer[UDP_PACKET_LIMIT];
 
-    auto bytesRead = GEODE_UNWRAP(m_socket.recv(buffer, sizeof(buffer)));
+    auto bytesRead = ARC_CO_UNWRAP(co_await m_socket.recv(buffer, sizeof(buffer)));
 
     if (bytesRead == 0) {
-        return Err(TransportError::ZeroLengthMessage);
+        co_return Err(TransportError::ZeroLengthMessage);
     }
 
     m_tracker.onDownPacket(bytesRead);
 
     ByteReader reader(buffer, bytesRead);
-    auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
+    auto meta = ARC_CO_UNWRAP(QunetMessage::decodeMeta(reader));
 
     // not a data message, cannot be compressed/fragmented/reliable
     if (meta.type != MSG_DATA) {
-        auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
+        auto msg = ARC_CO_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
 
         if (msg.is<KeepaliveResponseMessage>()) {
             m_unackedKeepalives = 0;
@@ -370,17 +382,17 @@ TransportResult<bool> UdpTransport::processIncomingData() {
         m_tracker.onDownMessage(buffer[0], bytesRead);
         this->_pushFinalControlMessage(std::move(msg));
 
-        return Ok(true);
+        co_return Ok(true);
     }
 
     // handle fragmented / reliable messages
 
     if (meta.fragmentationHeader) {
-        auto recvf = GEODE_UNWRAP(m_fragStore.processFragment(std::move(meta)));
+        auto recvf = ARC_CO_UNWRAP(m_fragStore.processFragment(std::move(meta)));
 
         // if a message wasn't completed, just return false
         if (!recvf) {
-            return Ok(false);
+            co_return Ok(false);
         }
 
         // otherwise, keep processing
@@ -393,11 +405,11 @@ TransportResult<bool> UdpTransport::processIncomingData() {
     if (reliable) {
         if (!m_relStore.handleIncoming(meta)) {
             // duplicate message or otherwise invalid
-            return Ok(false);
+            co_return Ok(false);
         }
     }
 
-    GEODE_UNWRAP(this->pushPreFinalDataMessage(std::move(meta)));
+    ARC_CO_UNWRAP(this->pushPreFinalDataMessage(std::move(meta)));
 
     // if this was a reliable message, it is possible that messages that previously were received out of order are
     // now available to be properly processed. we want to push these messages too, but strictly *after* this one.
@@ -406,11 +418,11 @@ TransportResult<bool> UdpTransport::processIncomingData() {
             auto msg = m_relStore.popDelayedMessage();
             QN_DEBUG_ASSERT(msg.has_value());
 
-            GEODE_UNWRAP(this->pushPreFinalDataMessage(std::move(*msg)));
+            ARC_CO_UNWRAP(this->pushPreFinalDataMessage(std::move(*msg)));
         }
     }
 
-    return Ok(m_recvMsgQueue.size() > 0);
+    co_return Ok(m_recvMsgQueue.size() > 0);
 }
 
 Duration UdpTransport::untilTimerExpiry() const {
@@ -461,10 +473,10 @@ Duration UdpTransport::untilKeepalive() const {
     }
 }
 
-TransportResult<> UdpTransport::handleTimerExpiry() {
+arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
     while (auto msg = m_relStore.maybeRetransmit()) {
         // if we have a message to retransmit, send it
-        GEODE_UNWRAP(this->doSendUnfragmentedData(*msg, true));
+        ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(*msg, true));
     }
 
     // if we have not sent any data messages recently that we could tag acks onto,
@@ -482,20 +494,20 @@ TransportResult<> UdpTransport::handleTimerExpiry() {
             .relHeader = std::move(relHdr),
         }};
 
-        GEODE_UNWRAP(this->doSendUnfragmentedData(msg, false));
+        ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(msg, false));
     }
 
     // if we have sent 3 keepalives with no response, reconnect
     if (m_unackedKeepalives >= 3) {
-        return Err(TransportError::TimedOut);
+        co_return Err(TransportError::TimedOut);
     }
 
     // if we haven't sent any messages in a while, we should send a keepalive message
     if (this->untilKeepalive().isZero()) {
-        GEODE_UNWRAP(this->sendMessage(KeepaliveMessage{}, false));
+        ARC_CO_UNWRAP(co_await this->sendMessage(KeepaliveMessage{}, false));
     }
 
-    return Ok();
+    co_return Ok();
 }
 
 bool UdpTransport::shouldLosePacket() {

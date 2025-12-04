@@ -22,6 +22,7 @@ void signalHandler(int signal) {
     g_running = false;
 }
 
+/*
 int main(int argc, const char** argv) {
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
@@ -93,6 +94,7 @@ int main(int argc, const char** argv) {
         asp::time::sleep(asp::time::Duration::fromMillis(10));
     }
 }
+*/
 
 
 // int main(int argc, const char** argv) {
