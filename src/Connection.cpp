@@ -7,6 +7,7 @@
 
 #include <arc/future/Select.hpp>
 #include <arc/future/Join.hpp>
+#include <arc/time/Sleep.hpp>
 #include <asp/time/Duration.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/time/sleep.hpp>
@@ -64,15 +65,102 @@ static void sortAddresses(std::vector<SocketAddress>& addrs, bool preferIpv6) {
 
 namespace qn {
 
+// ConnectionError
+
+bool ConnectionError::isTransportError() const {
+    return std::holds_alternative<TransportError>(m_err);
+
+}
+
+bool ConnectionError::isOtherError() const {
+    return std::holds_alternative<Code>(m_err);
+}
+
+bool ConnectionError::isServerClosedError() const {
+    return std::holds_alternative<ServerClosedError>(m_err);
+}
+
+const TransportError& ConnectionError::asTransportError() const {
+    return std::get<TransportError>(m_err);
+}
+
+const ServerClosedError& ConnectionError::asServerClosedError() const {
+    return std::get<ServerClosedError>(m_err);
+}
+
+ConnectionError::Code ConnectionError::asOtherError() const {
+    return std::get<Code>(m_err);
+}
+
+bool ConnectionError::operator==(Code code) const {
+    return this->isOtherError() && this->asOtherError() == code;
+}
+
+bool ConnectionError::operator!=(Code code) const {
+    return !(*this == code);
+}
+
+bool ConnectionError::operator==(const TransportError& err) const {
+    return this->isTransportError() && this->asTransportError() == err;
+}
+
+bool ConnectionError::operator!=(const TransportError& err) const {
+    return !(*this == err);
+}
+
+bool ConnectionError::operator==(const ServerClosedError& err) const {
+    return this->isServerClosedError() && this->asServerClosedError().reason == err.reason;
+}
+
+bool ConnectionError::operator!=(const ServerClosedError& err) const {
+    return !(*this == err);
+}
+
+std::string_view ServerClosedError::message() const {
+    return reason.empty() ? "Server closed the connection" : std::string_view{reason};
+}
+
+std::string ConnectionError::message() const {
+    if (this->isTransportError()) {
+        return this->asTransportError().message();
+    } else if (this->isServerClosedError()) {
+        return std::string{this->asServerClosedError().message()};
+    } else switch (this->asOtherError()) {
+        case Code::Success: return "Success";
+        case Code::InvalidProtocol: return "Invalid protocol specified";
+        case Code::InvalidPort: return "Invalid port specified";
+        case Code::InProgress: return "Connection is already in progress";
+        case Code::NotConnected: return "Not connected to a server";
+        case Code::AlreadyConnected: return "Already connected to a server";
+        case Code::AlreadyClosing: return "Connection is already closing";
+        case Code::DnsResolutionFailed: return "DNS resolution failed";
+        case Code::AllAddressesFailed: return "Failed to connect to all possible addresses";
+        case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
+        case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
+    }
+
+    qn::unreachable();
+}
+
+// Connection
+
 struct WorkerThreadState {
     mpsc::Receiver<std::string> connectChan;
+    mpsc::Receiver<ChannelMsg> msgChan;
 };
 
 Future<std::shared_ptr<Connection>> Connection::create() {
     auto [cTx, cRx] = arc::mpsc::channel<std::string>(1);
-    auto conn = std::make_shared<Connection>(std::move(cTx));
+    auto [mTx, mRx] = arc::mpsc::channel<ChannelMsg>(128);
+
+    auto conn = std::make_shared<Connection>(
+        std::move(cTx),
+        std::move(mTx)
+    );
+
     WorkerThreadState wts{
-        .connectChan = std::move(cRx)
+        .connectChan = std::move(cRx),
+        .msgChan = std::move(mRx)
     };
 
     conn->m_workerTask = arc::spawn([](auto conn, auto wts) -> arc::Future<> {
@@ -94,9 +182,11 @@ Future<std::shared_ptr<Connection>> Connection::create() {
 }
 
 Connection::Connection(
-    mpsc::Sender<std::string> connectChan
+    mpsc::Sender<std::string> connectChan,
+    mpsc::Sender<ChannelMsg> msgChan
 )
-    : m_connectChan(std::move(connectChan))
+    : m_connectChan(std::move(connectChan)),
+      m_msgChan(std::move(msgChan))
 {}
 
 Connection::~Connection() {
@@ -118,16 +208,153 @@ Future<> Connection::workerThreadLoop(WorkerThreadState& wts) {
             QN_DEBUG_ASSERT(rres.isOk());
 
             std::string url = rres.unwrap();
-            auto res = co_await this->threadConnect(std::move(url));
+            co_await arc::select(
+                arc::selectee(
+                    this->threadConnect(std::move(url)),
+                    [&](auto res) {
+                        if (res) {
+                            this->setState(ConnectionState::Connected);
+                        } else {
+                            this->onFatalError(res.unwrapErr());
+                        }
 
-            // TODO: handle?
-            if (!res) {
-                this->setState(ConnectionState::Disconnected);
+                        wts.msgChan.drain();
+                    }
+                ),
+
+                arc::selectee(
+                    m_disconnectNotify.notified(),
+                    [&] -> arc::Future<> {
+                        co_await this->threadCancelConnection();
+                    }
+                )
+            );
+        } break;
+
+        // These are intermediary states and should never occur here
+        case ConnectionState::DnsResolving:
+        case ConnectionState::Pinging:
+        case ConnectionState::Connecting: {
+            QN_DEBUG_ASSERT(false && "Invalid connection state in worker thread loop");
+            this->setState(ConnectionState::Disconnected);
+        } break;
+
+        case ConnectionState::Connected: {
+            bool disconnectRequested = m_disconnectReq.load(acquire);
+            if (disconnectRequested) {
+                this->setState(ConnectionState::Closing);
+                co_return;
             }
+
+            auto untilExpiry = m_socket->untilTimerExpiry();
+
+            // wait for either of the events to occur:
+            co_await arc::select(
+                // New messages to send
+                arc::selectee(
+                    wts.msgChan.recv(),
+                    [&](auto recvRes) -> arc::Future<> {
+                        if (!recvRes) co_return; // channel closed?
+
+                        auto msg = std::move(recvRes).unwrap();
+                        auto res = co_await m_socket->sendMessage(
+                            std::move(msg.message),
+                            msg.reliable,
+                            msg.uncompressed
+                        );
+
+                        if (!res) {
+                            this->onConnectionError(res.unwrapErr());
+                        }
+                    }
+                ),
+
+                // Timer expiry
+                arc::selectee(
+                    arc::sleep(untilExpiry),
+                    [&] -> arc::Future<> {
+                        auto res = co_await m_socket->handleTimerExpiry();
+                        if (!res) {
+                            this->onConnectionError(res.unwrapErr());
+                        }
+                    }
+                ),
+
+                // Disconnect request
+                arc::selectee(
+                    m_disconnectNotify.notified(),
+                    [&] {
+                        this->setState(ConnectionState::Closing);
+                    }
+                ),
+
+                // Incoming messages
+                arc::selectee(
+                    // TODO: ensure receiveMessage is cancel safe
+                    m_socket->receiveMessage(std::nullopt),
+                    [&](auto res) -> arc::Future<> {
+                        if (!res) {
+                            this->onConnectionError(res.unwrapErr());
+                            co_return;
+                        }
+
+                        auto msg = std::move(res).unwrap();
+                        this->threadHandleIncomingMessage(std::move(msg));
+                    }
+                )
+            );
+        } break;
+
+        case ConnectionState::Closing: {
+            if (!m_socket) co_return;
+
+            auto res = co_await m_socket->close();
+            if (!res) {
+                log::warn("Failed to close socket: {}", res.unwrapErr().message());
+                this->onFatalError(res.unwrapErr());
+                co_return;
+            }
+
+            while (!m_socket->isClosed()) {
+                // wait for the socket to close
+                co_await arc::sleep(Duration::fromMillis(10));
+            }
+
+            log::debug("Connection closed cleanly");
+            this->resetConnectionState();
+        } break;
+
+        case ConnectionState::Reconnecting: {
+            // TODO
         } break;
     }
 
     co_return;
+}
+
+void Connection::resetConnectionState() {
+    *m_data.lock() = ConnectionData{};
+    m_disconnectReq.store(false, release);
+    m_socket.reset();
+}
+
+void Connection::onConnectionError(const ConnectionError& err) {
+    log::warn("Connection error: {}", err.message());
+    m_data.lock()->m_lastError = err;
+}
+
+void Connection::onFatalError(const ConnectionError& err) {
+    log::error("Fatal connection error: {}", err.message());
+
+    auto state = this->state();
+
+    if (state == ConnectionState::Connected) {
+        // attempt to reconnect
+        this->setState(ConnectionState::Reconnecting);
+    } else {
+        this->resetConnectionState();
+        this->setState(ConnectionState::Disconnected);
+    }
 }
 
 Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
@@ -142,8 +369,8 @@ Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
             co_return Err(ConnectionError::InvalidPort);
     }
 
+    this->resetConnectionState();
     auto type = parser.protocol().value();
-    m_data = {};
 
     if (parser.isIpWithPort()) {
         co_return co_await this->threadConnectIp(parser.asIpWithPort(), type);
@@ -163,20 +390,27 @@ Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
 }
 
 Future<ConnectionResult<>> Connection::threadConnectIp(qsox::SocketAddress addr, ConnectionType type) {
+    bool preferIpv6 = m_settings.lock()->m_preferIpv6;
+
     return this->threadConnectWithIps(
         std::vector<SocketAddress>{addr},
-        type
+        type,
+        preferIpv6
     );
 }
 
 static Future<ConnectionResult<>> fetchIps(
     std::vector<SocketAddress>& out,
     const std::string& hostname,
-    uint16_t port
+    uint16_t port,
+    bool ipv4,
+    bool ipv6
 ) {
     auto& resolver = Resolver::get();
 
     auto fut1 = [&](this auto self) -> Future<ResolverResult<>> {
+        if (!ipv4) co_return Ok();
+
         auto res = ARC_CO_UNWRAP(co_await resolver.asyncQueryA(hostname));
         for (auto& addr : res.addresses) {
             out.push_back(SocketAddress{addr, port});
@@ -185,6 +419,8 @@ static Future<ConnectionResult<>> fetchIps(
     }();
 
     auto fut2 = [&](this auto self) -> Future<ResolverResult<>> {
+        if (!ipv6) co_return Ok();
+
         auto res = ARC_CO_UNWRAP(co_await resolver.asyncQueryAAAA(hostname));
         for (auto& addr : res.addresses) {
             out.push_back(SocketAddress{addr, port});
@@ -215,21 +451,24 @@ static Future<ConnectionResult<>> fetchIps(
 
 Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view hostnameSv, std::optional<uint16_t> port, ConnectionType type) {
     this->setState(ConnectionState::DnsResolving);
-    auto settings = m_settings.lock();
-    auto& resolver = Resolver::get();
     std::string hostname{hostnameSv};
+    auto& resolver = Resolver::get();
+
+    auto settings = m_settings.lock();
+    auto srvName = fmt::format("{}.{}.{}", settings->m_srvPrefix, getSrvProto(type), hostname);
+    bool ipv4Allowed = settings->m_ipv4Enabled;
+    bool ipv6Allowed = settings->m_ipv6Enabled;
+    bool preferIpv6 = settings->m_preferIpv6;
+    settings.unlock();
 
     std::vector<SocketAddress> addrs;
 
     // If a port number is provided, skip the SRV query and just resolve A/AAAA records
     if (port.has_value()) {
         ARC_CO_UNWRAP(co_await fetchIps(
-            addrs,
-            hostname,
-            *port
+            addrs, hostname, *port, ipv4Allowed, ipv6Allowed
         ));
     } else {
-        auto srvName = fmt::format("{}.{}.{}", settings->m_srvPrefix, getSrvProto(type), hostname);
         auto res = co_await resolver.asyncQuerySRV(srvName);
 
         if (res) {
@@ -239,7 +478,9 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
             ARC_CO_UNWRAP(co_await fetchIps(
                 addrs,
                 ep.target,
-                endpoints[0].port ?: DEFAULT_PORT
+                endpoints[0].port ?: DEFAULT_PORT,
+                ipv4Allowed,
+                ipv6Allowed
             ));
         } else {
             auto err = res.unwrapErr();
@@ -253,35 +494,296 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
             ARC_CO_UNWRAP(co_await fetchIps(
                 addrs,
                 hostname,
-                DEFAULT_PORT
+                DEFAULT_PORT,
+                ipv4Allowed,
+                ipv6Allowed
             ));
         }
     }
 
     co_return co_await this->threadConnectWithIps(
         std::move(addrs),
-        type
+        type,
+        preferIpv6
     );
 }
 
-Future<ConnectionResult<>> Connection::threadConnectWithIps(std::vector<SocketAddress> addrs, ConnectionType type) {
+Future<ConnectionResult<>> Connection::threadConnectWithIps(std::vector<SocketAddress> addrs, ConnectionType type, bool preferIpv6) {
     if (addrs.empty()) {
         co_return Err(ConnectionError::DnsResolutionFailed);
     }
 
-    sortAddresses(
-        addrs,
-        m_settings.lock()->m_preferIpv6
-    );
+    sortAddresses(addrs, preferIpv6);
 
     // if we know the concrete connection type, connect instead of pinging
-    if (type != ConnectionType::Unknown) {
-        this->setState(ConnectionState::Connecting);
+    if (type == ConnectionType::Unknown) {
+        co_return co_await this->threadPingCandidates(std::move(addrs));
     } else {
-        this->setState(ConnectionState::Pinging);
+        std::vector<std::pair<SocketAddress, ConnectionType>> finalAddrs;
+        for (auto& addr : addrs) {
+            finalAddrs.push_back({ addr, type });
+        }
+
+        co_return co_await this->threadFinalConnect(std::move(finalAddrs));
+    }
+}
+
+Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAddress> addrs) {
+    this->setState(ConnectionState::Pinging);
+
+    auto startedAt = Instant::now();
+
+    auto [tx, rx] = mpsc::channel<std::pair<size_t, PingResult>>(8);
+
+    for (size_t i = 0; i < addrs.size(); i++) {
+        auto& addr = addrs[i];
+        log::debug("Sending ping to {}", addr.toString());
+
+        // TODO: refactor Pinger to be async/await, for now use callbacks
+        Pinger::get().ping(addr, [tx, i](const PingResult& result) mutable {
+            (void) tx.trySend({i, result});
+        });
     }
 
+    std::vector<std::pair<SocketAddress, Duration>> pingResults;
+    std::vector<SupportedProtocol> protocols;
+    std::vector<std::pair<SocketAddress, ConnectionType>> finalAddrs;
+
+    bool waiting = true;
+    while (pingResults.size() < addrs.size() && waiting) {
+        auto now = Instant::now();
+        // if any arrived already, terminate soon; otherwise wait longer
+        auto deadline = startedAt + (pingResults.size() > 0 ? Duration::fromMillis(50) : Duration::fromSecs(5));
+
+        if (now >= deadline) {
+            break;
+        }
+
+        co_await arc::select(
+            arc::selectee(arc::sleepUntil(deadline), [&] { waiting = false; }),
+
+            arc::selectee(rx.recv(), [&](auto res) {
+                if (!res) {
+                    // channel closed
+                    waiting = false;
+                    return;
+                }
+
+                auto [i, result] = std::move(res).unwrap();
+                pingResults.push_back({ addrs[i], result.responseTime });
+
+                // add supported protocols
+                for (auto& proto : result.protocols) {
+                    if (std::find_if(protocols.begin(), protocols.end(),
+                        [&proto](const auto& res) { return res.protocolId == proto.protocolId; }) == protocols.end())
+                    {
+                        protocols.push_back(proto);
+                    }
+                }
+            })
+        );
+    }
+
+    if (pingResults.empty()) {
+        log::warn("No pings arrived after {}, will try all the addresses in order",
+            startedAt.elapsed().toString()
+        );
+
+        for (auto& addr : addrs) {
+            finalAddrs.push_back({ addr, ConnectionType::Udp });
+            finalAddrs.push_back({ addr, ConnectionType::Tcp });
+            finalAddrs.push_back({ addr, ConnectionType::Quic });
+        }
+    } else {
+        log::debug("Pinging finished in {}, arrived pings: {} / {}, fastest address: {} ({})",
+            startedAt.elapsed().toString(),
+            pingResults.size(),
+            addrs.size(),
+            pingResults[0].first.toString(),
+            pingResults[0].second.toString()
+        );
+
+        bool preferIpv6 = m_settings.lock()->m_preferIpv6;
+
+        // sort ping results
+        std::sort(pingResults.begin(), pingResults.end(), [&](const auto& a, const auto& b) {
+            auto timeDiff = a.second.absDiff(b.second);
+
+            // if time difference is over 25ms or they are the same family, sort by time
+            if (timeDiff > Duration::fromMillis(25) || a.first.family() == b.first.family()) {
+                return a.second < b.second;
+            }
+
+            // otherwise, see the preferred address family
+            if (a.first.isV6() && !b.first.isV6()) {
+                return preferIpv6;
+            } else {
+                return !preferIpv6;
+            }
+        });
+
+        // prepare final addresses with connection types
+        for (auto [addr, _] : pingResults) {
+            for (auto ty : protocols) {
+                ConnectionType ctype;
+                switch (ty.protocolId) {
+                    case PROTO_UDP: ctype = ConnectionType::Udp; break;
+                    case PROTO_TCP: ctype = ConnectionType::Tcp; break;
+                    case PROTO_QUIC: ctype = ConnectionType::Quic; break;
+                    default:
+                        log::warn("Unknown protocol ID {} in supported protocols, skipping", ty.protocolId);
+                        continue;
+                }
+
+                addr.setPort(ty.port);
+                finalAddrs.push_back({ addr, ctype });
+            }
+        }
+    }
+
+    co_return co_await this->threadFinalConnect(finalAddrs);
+}
+
+Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<SocketAddress, ConnectionType>> addrs) {
+    this->setState(ConnectionState::Connecting);
+
+    auto preferred = m_settings.lock()->m_preferredConnType;
+
+    // sort by connection type
+    std::sort(addrs.begin(), addrs.end(), [&](const auto& a, const auto& b) {
+        // By default sort in the order Tcp > Quic > Udp
+        auto toNum = [](ConnectionType t) {
+            switch (t) {
+                case ConnectionType::Tcp: return 10;
+                case ConnectionType::Quic: return 20;
+                case ConnectionType::Udp: return 30;
+                default: QN_ASSERT(false && "ConnectionType must not be unknown in therSortConnTypes");
+            };
+        };
+
+        if (a.second == preferred) {
+            return true;
+        } else if (b.second == preferred) {
+            return false;
+        }
+
+        return toNum(a.second) < toNum(b.second);
+    });
+
+    // finally, try connecting in order
+
+    bool connected = false;
+
+    for (auto& [addr, type] : addrs) {
+        auto res = co_await this->threadEstablishConn(addr, type);
+
+        if (!res) {
+            log::info("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), res.unwrapErr().message());
+            continue;
+        }
+
+        log::debug("Connected to {} ({})", addr.toString(), connTypeToString(type));
+        connected = true;
+
+        auto data = m_data.lock();
+        data->m_address = addr;
+        data->m_connType = type;
+
+        break;
+    }
+
+    if (!connected) {
+        // we have tried all ips with all connection types, fail
+        log::warn("Tried all IP and connection type combinations, could not establish a connection.");
+        log::warn("Attempted addresses:");
+        for (auto& [addr, type] : addrs) {
+            log::warn(" - {} ({})", addr.toString(), connTypeToString(type));
+        }
+        co_return Err(ConnectionError::AllAddressesFailed);
+    }
+
+    // connected!
     co_return Ok();
+}
+
+Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, ConnectionType type) {
+    log::debug("Trying to connect to {} ({})", addr.toString(), connTypeToString(type));
+
+    // if this connection requires TLS, check if we have a TLS context
+#ifdef QUNET_QUIC_SUPPORT
+    if (type == ConnectionType::Quic && !m_tlsContext) {
+        auto tlsres = ClientTlsContext::create(!m_tlsCertVerification);
+        if (!tlsres) {
+            log::warn("Failed to create TLS context: {}", tlsres.unwrapErr().message());
+            return;
+        }
+
+        m_tlsContext = std::move(tlsres).unwrap();
+    }
+#endif
+
+    co_return co_await this->threadConnectSocket(addr, type, false);
+}
+
+TransportOptions Connection::makeOptions(SocketAddress addr, ConnectionType type, bool reconnect) {
+    auto settings = m_settings.lock();
+    return TransportOptions {
+        .address = addr,
+        .type = type,
+        .timeout = settings->m_connTimeout,
+        .connOptions = &settings->m_connOptions,
+#ifdef QUNET_TLS_SUPPORT
+        .tlsContext = m_tlsContext ? &*m_tlsContext : nullptr,
+#endif
+        .reconnecting = reconnect,
+    };
+}
+
+Future<ConnectionResult<>> Connection::threadConnectSocket(SocketAddress addr, ConnectionType type, bool reconnect) {
+    TransportOptions opts = makeOptions(addr, type, reconnect);
+    auto res = co_await (reconnect
+        ? Socket::reconnect(opts, *m_socket)
+        : Socket::connect(opts));
+
+    m_socket = ARC_CO_UNWRAP(res);
+    co_return Ok();
+}
+
+Future<> Connection::threadCancelConnection() {
+    this->resetConnectionState();
+    this->setState(ConnectionState::Disconnected);
+    co_return;
+}
+
+void Connection::threadHandleIncomingMessage(QunetMessage message) {
+    log::debug("Received message: {}", message.typeStr());
+
+    // Callbacks cannot be changed while connected, so this should be safe
+    auto settings = m_settings.lock();
+    auto& dataCb = settings->m_dataCallback;
+    settings.unlock();
+
+    if (message.is<DataMessage>() && dataCb) {
+        auto& msg = message.as<DataMessage>();
+        dataCb(std::move(msg.data));
+        return;
+    }
+
+    // TODO: handle other messages
+    if (message.is<ConnectionErrorMessage>()) {
+        auto& errMsg = message.as<ConnectionErrorMessage>();
+        log::warn("Received connection error message: {}", errMsg.message());
+        return;
+    } else if (message.is<ServerCloseMessage>()) {
+        auto& closeMsg = message.as<ServerCloseMessage>();
+        log::warn("Received server close message: {}", closeMsg.message());
+        this->onFatalError(ServerClosedError{ std::string{closeMsg.message()} });
+    } else if (message.is<KeepaliveResponseMessage>()) {
+        // do nothing!
+        // TODO: actually forward the data to the client
+    } else {
+        log::warn("Don't know how to handle this message: {}", message.typeStr());
+    }
 }
 
 ConnectionResult<> Connection::connect(std::string_view destination) {
@@ -292,11 +794,6 @@ ConnectionResult<> Connection::connect(std::string_view destination) {
         return Err(ConnectionError::InProgress);
     }
 
-    // TODO
-    // if (!m_ipv4Enabled && !m_ipv6Enabled) {
-    //     return Err(ConnectionError::ProtocolDisabled); // no protocols enabled
-    // }
-
     bool res = m_connectChan.trySend(std::string(destination)).isOk();
 
     if (res) {
@@ -306,12 +803,138 @@ ConnectionResult<> Connection::connect(std::string_view destination) {
     }
 }
 
+void Connection::disconnect() {
+    m_disconnectReq.store(true, release);
+    m_disconnectNotify.notifyAll();
+}
+
+void Connection::setConnectionStateCallback(move_only_function<void(ConnectionState)> callback) {
+    auto settings = m_settings.lock();
+    settings->m_connStateCallback = std::move(callback);
+}
+
+void Connection::setDataCallback(move_only_function<void(std::vector<uint8_t>)> callback) {
+    auto settings = m_settings.lock();
+    settings->m_dataCallback = std::move(callback);
+}
+
+void Connection::setSrvPrefix(std::string_view pfx) {
+    auto settings = m_settings.lock();
+    settings->m_srvPrefix = pfx;
+}
+
+void Connection::setPreferIpv6(bool preferIpv6) {
+    auto settings = m_settings.lock();
+    settings->m_preferIpv6 = preferIpv6;
+}
+
+void Connection::setPreferProtocol(ConnectionType type) {
+    auto settings = m_settings.lock();
+    settings->m_preferredConnType = type;
+}
+
+void Connection::setIpv4Enabled(bool enabled) {
+    auto settings = m_settings.lock();
+    settings->m_ipv4Enabled = enabled;
+}
+
+void Connection::setIpv6Enabled(bool enabled) {
+    auto settings = m_settings.lock();
+    settings->m_ipv6Enabled = enabled;
+}
+
+void Connection::setTlsCertVerification(bool verify) {
+    auto settings = m_settings.lock();
+    settings->m_tlsCertVerification = verify;
+}
+
+void Connection::setDebugOptions(const ConnectionDebugOptions& opts) {
+    auto settings = m_settings.lock();
+    settings->m_connOptions.debug = opts;
+}
+
+void Connection::setConnectTimeout(asp::time::Duration dur) {
+    auto settings = m_settings.lock();
+    settings->m_connTimeout = dur;
+}
+
+void Connection::setActiveKeepaliveInterval(std::optional<asp::time::Duration> interval) {
+    auto settings = m_settings.lock();
+    settings->m_connOptions.activeKeepaliveInterval = interval;
+}
+
+bool Connection::connecting() const {
+    auto state = this->state();
+    return state == ConnectionState::Connecting || state == ConnectionState::DnsResolving || state == ConnectionState::Pinging;
+}
+
+bool Connection::connected() const {
+    return this->state() == ConnectionState::Connected;
+}
+
+bool Connection::disconnected() const {
+    return this->state() == ConnectionState::Disconnected;
+}
+
+Duration Connection::getLatency() const {
+    return m_socket ? m_socket->getLatency() : Duration::zero();
+}
+
+bool Connection::sendKeepalive() {
+    return this->sendMsgToThread(KeepaliveMessage{});
+}
+
+bool Connection::sendData(std::vector<uint8_t> data, bool reliable, bool uncompressed) {
+    return this->sendMsgToThread(DataMessage{ std::move(data) }, reliable, uncompressed);
+}
+
+StatSnapshot Connection::statSnapshot(Duration period) const {
+    if (m_socket) {
+        return m_socket->transport()->_tracker().snapshot(period);
+    }
+
+    return {};
+}
+
+StatWholeSnapshot Connection::statSnapshotFull() const {
+    if (m_socket) {
+        return m_socket->transport()->_tracker().snapshotFull();
+    }
+
+    return {};
+}
+
+bool Connection::sendMsgToThread(QunetMessage&& message, bool reliable, bool uncompressed) {
+    if (!this->connected()) {
+        return false;
+    }
+
+    return m_msgChan.trySend(ChannelMsg{
+        .message = std::move(message),
+        .reliable = reliable,
+        .uncompressed = uncompressed
+    }).isOk();
+}
+
 ConnectionState Connection::state() const {
     return m_connState.load(acquire);
 }
 
 void Connection::setState(ConnectionState state) {
-    m_connState.store(state, release);
+    auto prev = m_connState.exchange(state, release);
+
+    if (prev != state) {
+        // a little unsafe
+        auto& cb = m_settings.lock()->m_connStateCallback;
+
+        if (cb) {
+            cb(state);
+        }
+    }
+}
+
+ConnectionError Connection::lastError() const {
+    return m_data.lock()->m_lastError;
 }
 
 }

@@ -109,7 +109,19 @@ struct ConnectionSettings {
 };
 
 struct WorkerThreadState;
-struct ConnectionData {};
+
+struct ConnectionData {
+    std::optional<qsox::SocketAddress> m_address;
+    ConnectionType m_connType{ConnectionType::Unknown};
+
+    ConnectionError m_lastError{ConnectionError::Success};
+};
+
+struct ChannelMsg {
+    QunetMessage message;
+    bool reliable = false;
+    bool uncompressed = false;
+};
 
 // Connection is a class that is a manager for connecting to a specific endpoint.
 // It handles DNS resolution, happy eyeballs (choosing ipv4 or ipv6),
@@ -120,7 +132,8 @@ public:
     static arc::Future<std::shared_ptr<Connection>> create();
     /// Do not use this. Use create() instead.
     Connection(
-        arc::mpsc::Sender<std::string> connectChan
+        arc::mpsc::Sender<std::string> connectChan,
+        arc::mpsc::Sender<ChannelMsg> msgChan
     );
     ~Connection();
 
@@ -154,24 +167,119 @@ public:
     // - quic://example.com:1234 - fetches an A/AAAA record and uses the specified port to connect using QUIC.
     ConnectionResult<> connect(std::string_view destination);
 
+    // Disconnect from the server, or aborts the current connection attempt.
+    // Does nothing if disconnected.
+    void disconnect();
+
+    // Set the callback that is called when the connection state changes.
+    void setConnectionStateCallback(move_only_function<void(ConnectionState)> callback);
+
+    // Set the callback that is called when a data message is received.
+    void setDataCallback(move_only_function<void(std::vector<uint8_t>)> callback);
+
+    // Set the SRV query name prefix, by default it is `_qunet`.
+    void setSrvPrefix(std::string_view pfx);
+
+    // Set the preferred address family (`true` for IPv6, `false` for IPv4). By default, IPv6 is preferred.
+    void setPreferIpv6(bool preferIpv6);
+
+    // Set the preferred connection protocol. By default, it is `ConnectionType::Tcp`.
+    // Set `ConnectionType::Unknown` to prefer no specific protocol.
+    void setPreferProtocol(ConnectionType type);
+
+    // Set whether to enable IPv4 connections. If `false`, only IPv6 connections will be attempted.
+    void setIpv4Enabled(bool enabled);
+    // Set whether to enable IPv6 connections. If `false`, only IPv4 connections will be attempted.
+    void setIpv6Enabled(bool enabled);
+
+    // Set whether to verify TLS certificates. If `false`, TLS (QUIC) connections will be established without certificate verification.
+    // This will do nothing if a connection is established, otherwise it will invalidate the current TLS context.
+    void setTlsCertVerification(bool verify);
+
+    // Set the debug options for the connection.
+    void setDebugOptions(const ConnectionDebugOptions& opts);
+
+    // Set the connection timeout. This is applied per a specific connection attempt to a single IP address with a single protocol.
+    // If multiple IPv4/IPv6 addresses and protocols are available, the full connection attempt may take way longer than this.
+    // Default is 5 seconds.
+    void setConnectTimeout(asp::time::Duration dur);
+
+    // Set whether to enable "active" keepalives, and the interval between them.
+    // By default, keepalives are only sent when the connection is idle for more than 30 seconds (45 for TCP).
+    // With this option, they will always be sent at the given interval, even if the connection is not idle.
+    // This can be useful for automatic measurement of the connection latency.
+    void setActiveKeepaliveInterval(std::optional<asp::time::Duration> interval);
+
+    // Returns whether a connection is currently in progress.
+    bool connecting() const;
+
+    // Returns whether a connection is established.
+    bool connected() const;
+
+    // Returns whether there is no connection established and no connection attempt is in progress.
+    bool disconnected() const;
+
+    // Returns the average latency of the connection, zero if not connected or if there's not enough ping data.
+    asp::time::Duration getLatency() const;
+
+    // Get the current connection state.
     ConnectionState state() const;
+
+    // Returns the last error that occurred during the connection process.
+    ConnectionError lastError() const;
+
+    // Sends a keepalive message to the server. Returns true on success,
+    // false if not connected or message buffer is full.
+    bool sendKeepalive();
+    // Sends a data message to the server. Returns true on success,
+    // false if not connected or message buffer is full.
+    bool sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false);
+
+    /// Get a snapshot of various message data. If `period` is nonzero, will only include stats for that time period.
+    /// If `period` is zero (default), will include all-time stats.
+    StatSnapshot statSnapshot(asp::time::Duration period = {}) const;
+
+    /// Like `statSnapshot` but includes all-time stats plus extra fields
+    StatWholeSnapshot statSnapshotFull() const;
+
 private:
     std::optional<arc::TaskHandle<void>> m_workerTask;
     std::atomic<ConnectionState> m_connState{ConnectionState::Disconnected};
     arc::CancellationToken m_cancel;
 
     arc::mpsc::Sender<std::string> m_connectChan;
+    arc::mpsc::Sender<ChannelMsg> m_msgChan;
 
     asp::Mutex<ConnectionSettings> m_settings;
-    ConnectionData m_data;
+    asp::SpinLock<ConnectionData> m_data;
+    std::optional<Socket> m_socket;
+
+    arc::Notify m_disconnectNotify;
+    std::atomic<bool> m_disconnectReq{false};
 
     void setState(ConnectionState state);
+
+    TransportOptions makeOptions(qsox::SocketAddress addr, ConnectionType type, bool reconnect);
 
     arc::Future<> workerThreadLoop(WorkerThreadState& wts);
     arc::Future<ConnectionResult<>> threadConnect(std::string url);
     arc::Future<ConnectionResult<>> threadConnectIp(qsox::SocketAddress addr, ConnectionType type);
     arc::Future<ConnectionResult<>> threadConnectDomain(std::string_view hostname, std::optional<uint16_t> port, ConnectionType type);
-    arc::Future<ConnectionResult<>> threadConnectWithIps(std::vector<qsox::SocketAddress> addrs, ConnectionType type);
+    arc::Future<ConnectionResult<>> threadConnectWithIps(std::vector<qsox::SocketAddress> addrs, ConnectionType type, bool preferIpv6);
+    arc::Future<ConnectionResult<>> threadPingCandidates(std::vector<qsox::SocketAddress> addrs);
+    arc::Future<ConnectionResult<>> threadFinalConnect(std::vector<std::pair<qsox::SocketAddress, ConnectionType>> addrs);
+    arc::Future<ConnectionResult<>> threadEstablishConn(qsox::SocketAddress addr, ConnectionType type);
+    arc::Future<ConnectionResult<>> threadConnectSocket(qsox::SocketAddress addr, ConnectionType type, bool reconnect);
+
+    arc::Future<> threadCancelConnection();
+
+    void threadHandleIncomingMessage(QunetMessage msg);
+
+    void resetConnectionState();
+    void onConnectionError(const ConnectionError& err);
+    void onFatalError(const ConnectionError& err);
+
+    bool sendMsgToThread(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
 };
 
 }
