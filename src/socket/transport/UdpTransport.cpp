@@ -41,10 +41,10 @@ Future<NetResult<UdpTransport>> UdpTransport::connect(
     ));
 }
 
-Future<TransportResult<>> UdpTransport::close()  {
+TransportResult<> UdpTransport::closeSync() {
     // udp, of course, does not have any cleanup
     m_closed = true;
-    co_return Ok();
+    return Ok();
 }
 
 bool UdpTransport::isClosed() const {

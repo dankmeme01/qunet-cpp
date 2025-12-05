@@ -142,6 +142,10 @@ Future<TransportResult<>> Socket::close() {
     return m_transport->close();
 }
 
+TransportResult<> Socket::closeSync() {
+    return m_transport->closeSync();
+}
+
 bool Socket::isClosed() const {
     return m_transport->isClosed();
 }

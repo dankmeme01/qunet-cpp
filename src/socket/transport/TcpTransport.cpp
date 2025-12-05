@@ -34,12 +34,11 @@ Future<NetResult<TcpTransport>> TcpTransport::connect(const SocketAddress& addre
     co_return Ok(std::move(ret));
 }
 
-Future<TransportResult<>> TcpTransport::close() {
-    ARC_CO_UNWRAP(co_await m_socket.shutdown(ShutdownMode::Both));
-
+TransportResult<> TcpTransport::closeSync() {
+    auto& stream = m_socket.inner();
+    ARC_UNWRAP(stream.shutdown(qsox::ShutdownMode::Both));
     m_closed = true;
-
-    co_return Ok();
+    return Ok();
 }
 
 bool TcpTransport::isClosed() const {

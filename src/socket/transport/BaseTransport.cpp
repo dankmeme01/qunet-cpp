@@ -76,6 +76,10 @@ arc::Future<TransportResult<>> BaseTransport::handleTimerExpiry() {
     co_return Ok();
 }
 
+arc::Future<TransportResult<>> BaseTransport::close() {
+    co_return this->closeSync();
+}
+
 TransportResult<QunetMessage> BaseTransport::decodePreFinalDataMessage(QunetMessageMeta&& meta) {
     // handle compression...
 

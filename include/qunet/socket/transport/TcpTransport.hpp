@@ -18,7 +18,8 @@ public:
         const struct ConnectionOptions& connOptions
     );
 
-    arc::Future<TransportResult<>> close() override;
+    // TCP shutdown is already synchronous, so no need for async close
+    TransportResult<> closeSync() override;
     bool isClosed() const override;
     arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
     arc::Future<TransportResult<>> poll() override;

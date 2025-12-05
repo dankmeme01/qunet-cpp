@@ -194,7 +194,13 @@ Connection::~Connection() {
 
     if (m_workerTask) {
         m_workerTask->abort();
-        // TODO: wait for task to finish?
+        // wait for task to finish
+        m_workerTask->blockOn();
+    }
+
+    // close the socket if applicable
+    if (m_socket) {
+        (void) m_socket->closeSync();
     }
 }
 

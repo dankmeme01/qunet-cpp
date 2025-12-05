@@ -33,8 +33,12 @@ public:
     static arc::Future<TransportResult<Socket>> connect(const TransportOptions& options);
     static arc::Future<TransportResult<Socket>> reconnect(const TransportOptions& options, Socket& prev);
 
-    // Closes the transport. This does not send a `ClientClose` message. This may or may not block - see notes in BaseTransport::close.
+    // Closes the transport. This does not send a `ClientClose` message.
+    // This may or may not block - see notes in BaseTransport::close.
     arc::Future<TransportResult<>> close();
+
+    /// Closes the transport without blocking. This may not fully clean up resources.
+    TransportResult<> closeSync();
 
     // Returns true if `close()` was called and the transport finished closing.
     bool isClosed() const;

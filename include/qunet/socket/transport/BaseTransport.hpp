@@ -53,7 +53,8 @@ public:
     // Closes the transport. This method may or may not block until the transport is fully closed.
     // This does not send a `ClientClose` message.
     // After invoking, keep calling `isClosed()` to check if the transport is fully closed.
-    virtual arc::Future<TransportResult<>> close() = 0;
+    virtual arc::Future<TransportResult<>> close();
+    virtual TransportResult<> closeSync() = 0;
     virtual bool isClosed() const = 0;
 
     virtual void setConnectionId(uint64_t connectionId);
