@@ -57,29 +57,15 @@ Future<TransportResult<>> TcpTransport::sendMessage(QunetMessage message, bool r
     return streamcommon::sendMessage(std::move(message), m_socket, *this);
 }
 
-Future<TransportResult<bool>> TcpTransport::poll(const std::optional<Duration>& dur) {
-    int timeout = dur ? dur->millis() : -1;
-
-    if (dur.has_value()) {
-        auto res = co_await arc::timeout(*dur, m_socket.pollReadable());
-        if (res) {
-            ARC_CO_UNWRAP(res.unwrap());
-            co_return Ok(true);
-        }
-
-        co_return Ok(false);
-    } else {
-        ARC_CO_UNWRAP(co_await m_socket.pollReadable());
-        co_return Ok(true);
-    }
+Future<TransportResult<>> TcpTransport::poll() {
+    ARC_CO_UNWRAP(co_await m_socket.pollReadable());
+    co_return Ok();
 }
 
-Future<TransportResult<bool>> TcpTransport::processIncomingData() {
-    ARC_CO_UNWRAP(co_await streamcommon::processIncomingData(
-        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue, m_unackedKeepalives
-    ));
-
-    co_return Ok(!m_recvMsgQueue.empty());
+Future<TransportResult<QunetMessage>> TcpTransport::receiveMessage() {
+    return streamcommon::receiveMessage(
+        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_unackedKeepalives
+    );
 }
 
 asp::time::Duration TcpTransport::untilTimerExpiry() const {

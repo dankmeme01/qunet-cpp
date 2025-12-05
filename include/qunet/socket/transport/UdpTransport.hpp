@@ -19,15 +19,14 @@ public:
     );
 
     arc::Future<TransportResult<QunetMessage>> performHandshake(
-        HandshakeStartMessage handshakeStart,
-        const std::optional<asp::time::Duration>& timeout
+        HandshakeStartMessage handshakeStart
     ) override;
 
     arc::Future<TransportResult<>> close() override;
     bool isClosed() const override;
     arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
-    arc::Future<TransportResult<bool>> poll(const std::optional<asp::time::Duration>& dur) override;
-    arc::Future<TransportResult<bool>> processIncomingData() override;
+    arc::Future<TransportResult<>> poll() override;
+    arc::Future<TransportResult<QunetMessage>> receiveMessage() override;
 
     asp::time::Duration untilTimerExpiry() const override;
     arc::Future<TransportResult<>> handleTimerExpiry() override;
@@ -42,6 +41,7 @@ private:
     bool m_closed = false;
     float m_lossSim = 0.f;
     std::optional<asp::time::Duration> m_activeKeepaliveInterval;
+    std::queue<QunetMessage> m_oobMessages;
 
     UdpTransport(arc::UdpSocket socket, size_t mtu, const struct ConnectionOptions& connOptions);
 
@@ -51,6 +51,8 @@ private:
 
     bool shouldLosePacket();
     asp::time::Duration untilKeepalive() const;
+
+    arc::Future<TransportResult<std::optional<QunetMessage>>> receiveMessageInner();
 };
 
 }

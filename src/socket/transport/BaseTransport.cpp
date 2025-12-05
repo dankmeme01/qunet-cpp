@@ -30,86 +30,38 @@ TransportResult<> BaseTransport::initCompressors(const QunetDatabase* qdb) {
 }
 
 arc::Future<TransportResult<QunetMessage>> BaseTransport::performHandshake(
-    HandshakeStartMessage handshakeStart,
-    const std::optional<asp::time::Duration>& timeout
+    HandshakeStartMessage handshakeStart
 ) {
-    auto startedAt = Instant::now();
-
     ARC_CO_UNWRAP(co_await this->sendMessage(std::move(handshakeStart), false));
-
-    while (true) {
-        auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;
-        if (remTimeout && remTimeout->isZero()) {
-            co_return Err(TransportError::TimedOut);
-        }
-
-        if (!ARC_CO_UNWRAP(co_await this->poll(remTimeout))) {
-            continue;
-        }
-
-        bool msgAvailable = ARC_CO_UNWRAP(co_await this->processIncomingData());
-        if (msgAvailable) {
-            break;
-        }
-    }
-
-    QN_DEBUG_ASSERT(!m_recvMsgQueue.empty());
-
     co_return co_await this->receiveMessage();
 }
 
 arc::Future<TransportResult<QunetMessage>> BaseTransport::performReconnect(
-    uint64_t connectionId,
-    const std::optional<asp::time::Duration>& timeout
+    uint64_t connectionId
 ) {
-    auto startedAt = Instant::now();
-
     ARC_CO_UNWRAP(co_await this->sendMessage(ClientReconnectMessage{ connectionId }, false));
-
-    while (true) {
-        auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;
-        if (remTimeout && remTimeout->isZero()) {
-            co_return Err(TransportError::TimedOut);
-        }
-
-        if (!ARC_CO_UNWRAP(co_await this->poll(remTimeout))) {
-            continue;
-        }
-
-        bool msgAvailable = ARC_CO_UNWRAP(co_await this->processIncomingData());
-        if (msgAvailable) {
-            break;
-        }
-    }
-
-    QN_DEBUG_ASSERT(!m_recvMsgQueue.empty());
-
     co_return co_await this->receiveMessage();
 }
 
-arc::Future<TransportResult<QunetMessage>> BaseTransport::receiveMessage() {
-    if (!m_recvMsgQueue.empty()) {
-        auto msg = std::move(m_recvMsgQueue.front());
-        m_recvMsgQueue.pop();
-        co_return Ok(std::move(msg));
+arc::Future<TransportResult<bool>> BaseTransport::pollTimeout(asp::time::Duration timeout) {
+    auto res = co_await arc::timeout(timeout, this->poll());
+
+    if (res.isErr()) {
+        co_return Ok(false); // timed out
+    } else {
+        auto inner = res.unwrap();
+        if (inner.isErr()) {
+            co_return Err(inner.unwrapErr());
+        } else {
+            co_return Ok(true);
+        }
     }
-
-    // wait until a message is available
-    while (!ARC_CO_UNWRAP(co_await this->processIncomingData()));
-
-    auto msg = ARC_CO_UNWRAP(co_await this->receiveMessage());
-
-    co_return Ok(std::move(msg));
 }
 
 uint64_t BaseTransport::getKeepaliveTimestamp() const {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
     ).count();
-}
-
-bool BaseTransport::messageAvailable() {
-    return !m_recvMsgQueue.empty();
 }
 
 Duration BaseTransport::untilTimerExpiry() const {
@@ -124,25 +76,7 @@ arc::Future<TransportResult<>> BaseTransport::handleTimerExpiry() {
     co_return Ok();
 }
 
-TransportResult<> BaseTransport::_pushPreFinalDataMessage(QunetMessageMeta&& meta) {
-    return this->pushPreFinalDataMessage(std::move(meta));
-}
-
-void BaseTransport::_pushFinalControlMessage(QunetMessage&& msg) {
-    if (msg.is<KeepaliveResponseMessage>()) {
-        auto ts = msg.as<KeepaliveResponseMessage>().timestamp;
-        auto now = this->getKeepaliveTimestamp();
-
-        if (now > ts) {
-            auto passed = Duration::fromNanos(now - ts);
-            this->updateLatency(passed);
-        }
-    }
-
-    m_recvMsgQueue.push(std::move(msg));
-}
-
-TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta) {
+TransportResult<QunetMessage> BaseTransport::decodePreFinalDataMessage(QunetMessageMeta&& meta) {
     // handle compression...
 
     std::vector<uint8_t> data;
@@ -181,16 +115,21 @@ TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta
         }
     }
 
-    // zero-sized data messages are special, they can be used for reliable ACKs, but are not shown to the user
-    if (data.empty()) {
-        return Ok();
-    }
-
-    m_recvMsgQueue.push(DataMessage {
+    return Ok(DataMessage {
         .data = std::move(data),
     });
+}
 
-    return Ok();
+void BaseTransport::onIncomingMessage(const QunetMessage& msg) {
+    if (msg.is<KeepaliveResponseMessage>()) {
+        auto ts = msg.as<KeepaliveResponseMessage>().timestamp;
+        auto now = this->getKeepaliveTimestamp();
+
+        if (now > ts) {
+            auto passed = Duration::fromNanos(now - ts);
+            this->updateLatency(passed);
+        }
+    }
 }
 
 Duration BaseTransport::getLatency() const {

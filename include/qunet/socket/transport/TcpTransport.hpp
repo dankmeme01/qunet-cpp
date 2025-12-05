@@ -21,8 +21,8 @@ public:
     arc::Future<TransportResult<>> close() override;
     bool isClosed() const override;
     arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
-    arc::Future<TransportResult<bool>> poll(const std::optional<asp::time::Duration>& dur) override;
-    arc::Future<TransportResult<bool>> processIncomingData() override;
+    arc::Future<TransportResult<>> poll() override;
+    arc::Future<TransportResult<QunetMessage>> receiveMessage() override;
 
     asp::time::Duration untilTimerExpiry() const override;
     arc::Future<TransportResult<>> handleTimerExpiry() override;

@@ -45,15 +45,7 @@ public:
     /// Send a message over the transport. Note: if it's a Data message, reliability and compression headers are ignored.
     /// The `reliable` argument is used to make the message reliable, and compression is applied automatically if needed, unless `uncompressed` is set to true.
     arc::Future<TransportResult<>> sendMessage(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
-    arc::Future<TransportResult<QunetMessage>> receiveMessage(const std::optional<asp::time::Duration>& timeout);
-
-    /// Processes incoming data from the transport. This method does not block, it will try to read as much data as available,
-    /// and return whether an entire message is available to be read.
-    arc::Future<TransportResult<bool>> processIncomingData();
-
-    /// Returns whether there is a message available to be read from the transport.
-    /// In this case, `receiveMessage()` will return a message without blocking.
-    bool messageAvailable();
+    arc::Future<TransportResult<QunetMessage>> receiveMessage();
 
     /// Returns the average latency of the connection.
     asp::time::Duration getLatency() const;

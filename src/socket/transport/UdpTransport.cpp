@@ -51,9 +51,8 @@ bool UdpTransport::isClosed() const {
     return m_closed;
 }
 
-arc::Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
-    HandshakeStartMessage handshakeStart,
-    const std::optional<asp::time::Duration>& timeout
+Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
+    HandshakeStartMessage handshakeStart
 ) {
     auto startedAt = Instant::now();
 
@@ -69,14 +68,7 @@ arc::Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
     while (true) {
         // UDP is an unreliable protocol, so this function may retransmit the handshake message if needed.
         // Polls are limited to 750ms, if no message arrives within that time, the handshake message is sent again.
-        // This repeats until a message is received or the timeout is reached.
-        auto fullTimeout = timeout ? *timeout - startedAt.elapsed() : Duration::infinite();
-        auto remTimeout = std::min(fullTimeout, Duration::fromMillis(750) - lastSentHandshake.elapsed());
-
-        // if full timeout expired, return a timeout error
-        if (fullTimeout.isZero()) {
-            co_return Err(TransportError::TimedOut);
-        }
+        auto remTimeout = Duration::fromMillis(750) - lastSentHandshake.elapsed();
 
         // if rem timeout expired, resend the handshake message
         if (remTimeout.isZero()) {
@@ -86,16 +78,9 @@ arc::Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
             continue;
         }
 
-        bool hasData = ARC_CO_UNWRAP(co_await this->poll(remTimeout));
-        bool hasMessage = false;
+        bool hasData = ARC_CO_UNWRAP(co_await this->pollTimeout(remTimeout));
 
-        if (hasData) {
-            hasMessage = ARC_CO_UNWRAP(co_await this->processIncomingData());
-        } else {
-            hasMessage = this->messageAvailable();
-        }
-
-        if (!hasMessage) {
+        if (!hasData) {
             continue; // no message available, keep polling
         }
 
@@ -184,11 +169,8 @@ arc::Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
         break;
     }
 
-    // push back any unexpected messages to the queue
-    while (!unexpectedMessages.empty()) {
-        m_recvMsgQueue.push(std::move(unexpectedMessages.front()));
-        unexpectedMessages.pop();
-    }
+    // store unexpected messages for later
+    m_oobMessages = std::move(unexpectedMessages);
 
     // done!
 
@@ -338,26 +320,32 @@ arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage
     co_return Ok();
 }
 
-// TODO: unify poll across all transports
-Future<TransportResult<bool>> UdpTransport::poll(const std::optional<Duration>& dur) {
-    int timeout = dur ? dur->millis() : -1;
+Future<TransportResult<QunetMessage>> UdpTransport::receiveMessage() {
+    std::optional<QunetMessage> msg;
 
-    if (dur.has_value()) {
-        auto res = co_await arc::timeout(*dur, m_socket.pollReadable());
-        if (res) {
-            ARC_CO_UNWRAP(res.unwrap());
-            co_return Ok(true);
-        }
-
-        co_return Ok(false);
-    } else {
-        ARC_CO_UNWRAP(co_await m_socket.pollReadable());
-        co_return Ok(true);
+    while (!msg.has_value()) {
+        msg = ARC_CO_UNWRAP(co_await this->receiveMessageInner());
     }
+
+    co_return Ok(std::move(*msg));
 }
 
+Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessageInner() {
+    // first, check if we have any messages sent before connection was established
+    if (!m_oobMessages.empty()) {
+        auto msg = std::move(m_oobMessages.front());
+        m_oobMessages.pop();
+        co_return Ok(std::move(msg));
+    }
 
-arc::Future<TransportResult<bool>> UdpTransport::processIncomingData() {
+    // now check if there are any delayed messages
+    if (auto msg = m_relStore.popDelayedMessage()) {
+        auto qmsg = ARC_CO_UNWRAP(this->decodePreFinalDataMessage(std::move(*msg)));
+        co_return Ok(std::move(qmsg));
+    }
+
+    // now actually poll the socket for a message
+
     uint8_t buffer[UDP_PACKET_LIMIT];
 
     auto bytesRead = ARC_CO_UNWRAP(co_await m_socket.recv(buffer, sizeof(buffer)));
@@ -380,9 +368,8 @@ arc::Future<TransportResult<bool>> UdpTransport::processIncomingData() {
         }
 
         m_tracker.onDownMessage(buffer[0], bytesRead);
-        this->_pushFinalControlMessage(std::move(msg));
 
-        co_return Ok(true);
+        co_return Ok(std::move(msg));
     }
 
     // handle fragmented / reliable messages
@@ -392,7 +379,7 @@ arc::Future<TransportResult<bool>> UdpTransport::processIncomingData() {
 
         // if a message wasn't completed, just return false
         if (!recvf) {
-            co_return Ok(false);
+            co_return Ok(std::nullopt);
         }
 
         // otherwise, keep processing
@@ -405,24 +392,17 @@ arc::Future<TransportResult<bool>> UdpTransport::processIncomingData() {
     if (reliable) {
         if (!m_relStore.handleIncoming(meta)) {
             // duplicate message or otherwise invalid
-            co_return Ok(false);
+            co_return Ok(std::nullopt);
         }
     }
 
-    ARC_CO_UNWRAP(this->pushPreFinalDataMessage(std::move(meta)));
+    auto msg = ARC_CO_UNWRAP(this->decodePreFinalDataMessage(std::move(meta)));
+    co_return Ok(std::move(msg));
+}
 
-    // if this was a reliable message, it is possible that messages that previously were received out of order are
-    // now available to be properly processed. we want to push these messages too, but strictly *after* this one.
-    if (reliable) {
-        while (m_relStore.hasDelayedMessage()) {
-            auto msg = m_relStore.popDelayedMessage();
-            QN_DEBUG_ASSERT(msg.has_value());
-
-            ARC_CO_UNWRAP(this->pushPreFinalDataMessage(std::move(*msg)));
-        }
-    }
-
-    co_return Ok(m_recvMsgQueue.size() > 0);
+Future<TransportResult<>> UdpTransport::poll() {
+    ARC_CO_UNWRAP(co_await m_socket.pollReadable());
+    co_return Ok();
 }
 
 Duration UdpTransport::untilTimerExpiry() const {

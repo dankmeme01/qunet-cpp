@@ -43,12 +43,22 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
 arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& options) {
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
 
-    auto msg = ARC_CO_UNWRAP(co_await socket.m_transport->performHandshake(HandshakeStartMessage {
+    auto hmsg = HandshakeStartMessage {
         .majorVersion = MAJOR_VERSION,
         .fragLimit = UDP_PACKET_LIMIT,
         // TODO: qdb hash
         .qdbHash = std::array<uint8_t, 16>{}
-    }, timeout));
+    };
+
+    auto tres = co_await arc::timeout(
+        timeout,
+        socket.m_transport->performHandshake(std::move(hmsg))
+    );
+    if (!tres) {
+        co_return Err(TransportError::ConnectionTimedOut);
+    }
+
+    auto msg = ARC_CO_UNWRAP(std::move(tres).unwrap());
 
     if (msg.is<HandshakeFinishMessage>()) {
         auto& hf = msg.as<HandshakeFinishMessage>();
@@ -68,9 +78,15 @@ arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& opt
 Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& options, Socket& prev) {
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
 
-    auto msg = ARC_CO_UNWRAP(
-        co_await socket.m_transport->performReconnect(prev.transport()->m_connectionId, timeout)
+    auto tres = co_await arc::timeout(
+        timeout,
+        socket.m_transport->performReconnect(prev.transport()->m_connectionId)
     );
+    if (!tres) {
+        co_return Err(TransportError::ConnectionTimedOut);
+    }
+
+    auto msg = ARC_CO_UNWRAP(std::move(tres).unwrap());
 
     if (msg.is<ReconnectSuccessMessage>()) {
         ARC_CO_UNWRAP(socket.onReconnectSuccess(prev));
@@ -196,36 +212,10 @@ CompressorResult<> Socket::doCompressLz4(DataMessage& message) const {
     return Err(CompressorError::NotInitialized);
 }
 
-Future<TransportResult<QunetMessage>> Socket::receiveMessage(const std::optional<Duration>& timeout) {
-    bool available = this->messageAvailable();
-
-    auto started = Instant::now();
-
-    while (!available) {
-        std::optional<Duration> remaining = timeout ? std::optional(*timeout - started.elapsed()) : std::nullopt;
-        auto pollRes = ARC_CO_UNWRAP(co_await m_transport->poll(remaining));
-
-        if (!pollRes) {
-            co_return Err(TransportError::TimedOut);
-        }
-
-        available = ARC_CO_UNWRAP(co_await this->processIncomingData());
-    }
-
-    co_return co_await m_transport->receiveMessage();
-}
-
-Future<TransportResult<bool>> Socket::processIncomingData() {
-    // check if there's any data available to read
-    bool hasData = ARC_CO_UNWRAP(co_await m_transport->poll(Duration{}));
-
-    co_return hasData
-        ? co_await m_transport->processIncomingData()
-        : Ok(this->messageAvailable());
-}
-
-bool Socket::messageAvailable() {
-    return m_transport->messageAvailable();
+Future<TransportResult<QunetMessage>> Socket::receiveMessage() {
+    auto msg = ARC_CO_UNWRAP(co_await m_transport->receiveMessage());
+    m_transport->onIncomingMessage(msg);
+    co_return Ok(std::move(msg));
 }
 
 Duration Socket::getLatency() const {

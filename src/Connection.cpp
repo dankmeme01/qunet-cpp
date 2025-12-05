@@ -290,8 +290,7 @@ Future<> Connection::workerThreadLoop(WorkerThreadState& wts) {
 
                 // Incoming messages
                 arc::selectee(
-                    // TODO: ensure receiveMessage is cancel safe
-                    m_socket->receiveMessage(std::nullopt),
+                    m_socket->receiveMessage(),
                     [&](auto res) -> arc::Future<> {
                         if (!res) {
                             this->onConnectionError(res.unwrapErr());
