@@ -142,7 +142,13 @@ struct HandshakeFailureMessage {
     QN_NO_ENCODE(HandshakeFailureMessage);
 };
 
-struct ClientCloseMessage {};
+struct ClientCloseMessage {
+    MessageEncodeResult encode(auto& writer) const {
+        return Ok();
+    }
+
+    QN_NO_DECODE(HandshakeStartMessage);
+};
 
 struct ServerCloseMessage {
     uint32_t errorCode;

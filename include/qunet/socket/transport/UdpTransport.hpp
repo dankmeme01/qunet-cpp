@@ -22,7 +22,6 @@ public:
         HandshakeStartMessage handshakeStart
     ) override;
 
-    arc::Future<TransportResult<>> close() override;
     TransportResult<> closeSync() override;
     bool isClosed() const override;
     arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;

@@ -137,6 +137,7 @@ std::string ConnectionError::message() const {
         case Code::AllAddressesFailed: return "Failed to connect to all possible addresses";
         case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
+        case Code::InternalError: return "An internal error occurred";
     }
 
     qn::unreachable();
@@ -144,26 +145,22 @@ std::string ConnectionError::message() const {
 
 // Connection
 
-struct WorkerThreadState {
-    mpsc::Receiver<std::string> connectChan;
-    mpsc::Receiver<ChannelMsg> msgChan;
-};
-
 Future<std::shared_ptr<Connection>> Connection::create() {
-    auto [cTx, cRx] = arc::mpsc::channel<std::string>(1);
+    auto [cTx, cRx] = arc::mpsc::channel<std::string>(std::nullopt);
     auto [mTx, mRx] = arc::mpsc::channel<ChannelMsg>(128);
-
-    auto conn = std::make_shared<Connection>(
-        std::move(cTx),
-        std::move(mTx)
-    );
 
     WorkerThreadState wts{
         .connectChan = std::move(cRx),
         .msgChan = std::move(mRx)
     };
 
-    conn->m_workerTask = arc::spawn([](auto conn, auto wts) -> arc::Future<> {
+    auto conn = std::make_shared<Connection>(
+        std::move(cTx),
+        std::move(mTx),
+        std::move(wts)
+    );
+
+    conn->m_workerTask = arc::spawn([](auto conn) -> arc::Future<> {
         bool running = true;
 
         while (running) {
@@ -173,20 +170,22 @@ Future<std::shared_ptr<Connection>> Connection::create() {
                     [&] { running = false; }
                 ),
 
-                arc::selectee(conn->workerThreadLoop(wts))
+                arc::selectee(conn->workerThreadLoop())
             );
         }
-    }(conn, std::move(wts)));
+    }(conn));
 
     co_return conn;
 }
 
 Connection::Connection(
     mpsc::Sender<std::string> connectChan,
-    mpsc::Sender<ChannelMsg> msgChan
+    mpsc::Sender<ChannelMsg> msgChan,
+    WorkerThreadState wts
 )
     : m_connectChan(std::move(connectChan)),
-      m_msgChan(std::move(msgChan))
+      m_msgChan(std::move(msgChan)),
+      m_wts(std::move(wts))
 {}
 
 Connection::~Connection() {
@@ -204,11 +203,11 @@ Connection::~Connection() {
     }
 }
 
-Future<> Connection::workerThreadLoop(WorkerThreadState& wts) {
+Future<> Connection::workerThreadLoop() {
     switch (this->state()) {
         case ConnectionState::Disconnected: {
             // wait for connect request
-            auto rres = co_await wts.connectChan.recv();
+            auto rres = co_await m_wts.connectChan.recv();
 
             // this should never fail?
             QN_DEBUG_ASSERT(rres.isOk());
@@ -224,7 +223,7 @@ Future<> Connection::workerThreadLoop(WorkerThreadState& wts) {
                             this->onFatalError(res.unwrapErr());
                         }
 
-                        wts.msgChan.drain();
+                        m_wts.msgChan.drain();
                     }
                 ),
 
@@ -258,7 +257,7 @@ Future<> Connection::workerThreadLoop(WorkerThreadState& wts) {
             co_await arc::select(
                 // New messages to send
                 arc::selectee(
-                    wts.msgChan.recv(),
+                    m_wts.msgChan.recv(),
                     [&](auto recvRes) -> arc::Future<> {
                         if (!recvRes) co_return; // channel closed?
 
@@ -310,8 +309,74 @@ Future<> Connection::workerThreadLoop(WorkerThreadState& wts) {
             );
         } break;
 
+        case ConnectionState::Reconnecting: {
+            bool disconnectRequested = m_disconnectReq.load(acquire);
+            if (disconnectRequested) {
+                co_await this->threadCancelConnection();
+                co_return;
+            }
+
+            uint16_t attempt;
+            bool tryStateless;
+            {
+                auto data = m_data.lock();
+                attempt = ++data->m_reconnectAttempt;
+                tryStateless = data->m_tryStatelessReconnect;
+            }
+
+            if (attempt >= 7) {
+                log::warn("Too many reconnect attempts, giving up");
+                co_await this->threadCancelConnection();
+                co_return;
+            }
+
+            log::debug("Reconnecting (attempt {})", attempt);
+
+            // initially 5 seconds, then jump to 10
+            auto timeout = Duration::fromSecs(attempt < 3 ? 5 : 10);
+
+            auto reconnectFut = [](auto self, auto timeout, bool stateless) -> arc::Future<> {
+                auto res = co_await self->threadTryReconnect(stateless);
+
+                if (res) {
+                    log::info("Reconnected successfully!");
+                    self->setState(ConnectionState::Connected);
+                    co_return;
+                }
+
+                auto err = res.unwrapErr();
+
+                if (err == TransportError::ReconnectFailed && !stateless) {
+                    // instead of waiting, attempt a stateless reconnect next time
+                    log::warn("Reconnect failed, will try stateless reconnect next time");
+                    self->m_data.lock()->m_tryStatelessReconnect = true;
+                    co_return;
+                }
+
+                // failed, sleep for a bit and try again
+                co_await arc::sleep(timeout);
+            };
+
+            // wait until either reconnect completes or a disconnect is requested
+            co_await arc::select(
+                arc::selectee(
+                    reconnectFut(this, timeout, tryStateless)
+                ),
+
+                arc::selectee(
+                    m_disconnectNotify.notified(),
+                    [&] -> arc::Future<>{
+                        co_await this->threadCancelConnection();
+                    }
+                )
+            );
+        } break;
+
         case ConnectionState::Closing: {
             if (!m_socket) co_return;
+
+            // send close message
+            (void) m_socket->sendMessage(ClientCloseMessage{});
 
             auto res = co_await m_socket->close();
             if (!res) {
@@ -327,10 +392,6 @@ Future<> Connection::workerThreadLoop(WorkerThreadState& wts) {
 
             log::debug("Connection closed cleanly");
             this->resetConnectionState();
-        } break;
-
-        case ConnectionState::Reconnecting: {
-            // TODO
         } break;
     }
 
@@ -355,6 +416,7 @@ void Connection::onFatalError(const ConnectionError& err) {
 
     if (state == ConnectionState::Connected) {
         // attempt to reconnect
+        m_wts.msgChan.drain();
         this->setState(ConnectionState::Reconnecting);
     } else {
         this->resetConnectionState();
@@ -754,6 +816,30 @@ Future<ConnectionResult<>> Connection::threadConnectSocket(SocketAddress addr, C
     co_return Ok();
 }
 
+Future<ConnectionResult<>> Connection::threadTryReconnect(bool stateless) {
+    auto data = m_data.lock();
+    auto addr = data->m_address;
+    auto type = data->m_connType;
+    data.unlock();
+
+    QN_ASSERT(addr && type != ConnectionType::Unknown);
+
+    log::info("Attempting to reconnect to {} ({})", addr->toString(), connTypeToString(type));
+
+    ARC_CO_UNWRAP(co_await this->threadConnectSocket(*addr, type, !stateless));
+
+    // success! notify the user in case this was a stateless reconnect
+    if (stateless) {
+        auto callbacks = m_callbacks.lock();
+
+        if (callbacks->m_stateResetCallback) {
+            callbacks->m_stateResetCallback();
+        }
+    }
+
+    co_return Ok();
+}
+
 Future<> Connection::threadCancelConnection() {
     this->resetConnectionState();
     this->setState(ConnectionState::Disconnected);
@@ -763,14 +849,13 @@ Future<> Connection::threadCancelConnection() {
 void Connection::threadHandleIncomingMessage(QunetMessage message) {
     log::debug("Received message: {}", message.typeStr());
 
-    // Callbacks cannot be changed while connected, so this should be safe
-    auto settings = m_settings.lock();
-    auto& dataCb = settings->m_dataCallback;
-    settings.unlock();
-
-    if (message.is<DataMessage>() && dataCb) {
+    if (message.is<DataMessage>()) {
         auto& msg = message.as<DataMessage>();
-        dataCb(std::move(msg.data));
+        auto callbacks = m_callbacks.lock();
+
+        if (callbacks->m_dataCallback) {
+            callbacks->m_dataCallback(std::move(msg.data));
+        }
         return;
     }
 
@@ -814,13 +899,18 @@ void Connection::disconnect() {
 }
 
 void Connection::setConnectionStateCallback(move_only_function<void(ConnectionState)> callback) {
-    auto settings = m_settings.lock();
-    settings->m_connStateCallback = std::move(callback);
+    auto callbacks = m_callbacks.lock();
+    callbacks->m_connStateCallback = std::move(callback);
 }
 
 void Connection::setDataCallback(move_only_function<void(std::vector<uint8_t>)> callback) {
-    auto settings = m_settings.lock();
-    settings->m_dataCallback = std::move(callback);
+    auto callbacks = m_callbacks.lock();
+    callbacks->m_dataCallback = std::move(callback);
+}
+
+void Connection::setStateResetCallback(move_only_function<void()> callback) {
+    auto callbacks = m_callbacks.lock();
+    callbacks->m_stateResetCallback = std::move(callback);
 }
 
 void Connection::setSrvPrefix(std::string_view pfx) {
@@ -929,11 +1019,17 @@ void Connection::setState(ConnectionState state) {
     auto prev = m_connState.exchange(state, release);
 
     if (prev != state) {
-        // a little unsafe
-        auto& cb = m_settings.lock()->m_connStateCallback;
+        auto callbacks = m_callbacks.lock();
 
-        if (cb) {
-            cb(state);
+        if (callbacks->m_connStateCallback) {
+            callbacks->m_connStateCallback(state);
+        }
+
+        // clean up some things when connected / disconnected
+        if (state == ConnectionState::Connected) {
+            auto data = m_data.lock();
+            data->m_reconnectAttempt = 0;
+            data->m_tryStatelessReconnect = false;
         }
     }
 }

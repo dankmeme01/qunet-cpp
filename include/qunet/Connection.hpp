@@ -36,6 +36,7 @@ public:
         AllAddressesFailed,
         ProtocolDisabled,
         NoConnectionTypeFound,
+        InternalError,
     } Code;
 
     constexpr inline ConnectionError(Code code) : m_err(code) {}
@@ -104,8 +105,12 @@ struct ConnectionSettings {
     bool m_ipv6Enabled = true;
     bool m_tlsCertVerification = true;
     asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
+};
+
+struct ConnectionCallbacks {
     move_only_function<void(ConnectionState)> m_connStateCallback;
     move_only_function<void(std::vector<uint8_t>)> m_dataCallback;
+    move_only_function<void()> m_stateResetCallback;
 };
 
 struct WorkerThreadState;
@@ -115,12 +120,19 @@ struct ConnectionData {
     ConnectionType m_connType{ConnectionType::Unknown};
 
     ConnectionError m_lastError{ConnectionError::Success};
+    uint16_t m_reconnectAttempt = 0;
+    bool m_tryStatelessReconnect = false;
 };
 
 struct ChannelMsg {
     QunetMessage message;
     bool reliable = false;
     bool uncompressed = false;
+};
+
+struct WorkerThreadState {
+    arc::mpsc::Receiver<std::string> connectChan;
+    arc::mpsc::Receiver<ChannelMsg> msgChan;
 };
 
 // Connection is a class that is a manager for connecting to a specific endpoint.
@@ -133,7 +145,8 @@ public:
     /// Do not use this. Use create() instead.
     Connection(
         arc::mpsc::Sender<std::string> connectChan,
-        arc::mpsc::Sender<ChannelMsg> msgChan
+        arc::mpsc::Sender<ChannelMsg> msgChan,
+        WorkerThreadState wts
     );
     ~Connection();
 
@@ -176,6 +189,12 @@ public:
 
     // Set the callback that is called when a data message is received.
     void setDataCallback(move_only_function<void(std::vector<uint8_t>)> callback);
+
+    // Set the callback that is called when a stateless reconnect occurs.
+    // A stateless reconnect is what typically occurs when the server is restarted, the client attempts to reconnect
+    // but the server no longer has any state and prior knowledge of the client.
+    // Thus, an entirely new connection has to be made, and with it, some connection state has to be reset.
+    void setStateResetCallback(move_only_function<void()> callback);
 
     // Set the SRV query name prefix, by default it is `_qunet`.
     void setSrvPrefix(std::string_view pfx);
@@ -244,6 +263,7 @@ public:
 
 private:
     std::optional<arc::TaskHandle<void>> m_workerTask;
+    WorkerThreadState m_wts;
     std::atomic<ConnectionState> m_connState{ConnectionState::Disconnected};
     arc::CancellationToken m_cancel;
 
@@ -251,6 +271,7 @@ private:
     arc::mpsc::Sender<ChannelMsg> m_msgChan;
 
     asp::Mutex<ConnectionSettings> m_settings;
+    asp::SpinLock<ConnectionCallbacks> m_callbacks;
     asp::SpinLock<ConnectionData> m_data;
     std::optional<Socket> m_socket;
 
@@ -261,7 +282,7 @@ private:
 
     TransportOptions makeOptions(qsox::SocketAddress addr, ConnectionType type, bool reconnect);
 
-    arc::Future<> workerThreadLoop(WorkerThreadState& wts);
+    arc::Future<> workerThreadLoop();
     arc::Future<ConnectionResult<>> threadConnect(std::string url);
     arc::Future<ConnectionResult<>> threadConnectIp(qsox::SocketAddress addr, ConnectionType type);
     arc::Future<ConnectionResult<>> threadConnectDomain(std::string_view hostname, std::optional<uint16_t> port, ConnectionType type);
@@ -270,6 +291,8 @@ private:
     arc::Future<ConnectionResult<>> threadFinalConnect(std::vector<std::pair<qsox::SocketAddress, ConnectionType>> addrs);
     arc::Future<ConnectionResult<>> threadEstablishConn(qsox::SocketAddress addr, ConnectionType type);
     arc::Future<ConnectionResult<>> threadConnectSocket(qsox::SocketAddress addr, ConnectionType type, bool reconnect);
+
+    arc::Future<ConnectionResult<>> threadTryReconnect(bool stateless);
 
     arc::Future<> threadCancelConnection();
 
