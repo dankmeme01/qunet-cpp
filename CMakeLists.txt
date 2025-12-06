@@ -30,8 +30,8 @@ endif()
 
 # add deps
 CPMAddPackage("gh:dankmeme01/qsox#49ecce6") # TODO: remove?
-CPMAddPackage("gh:dankmeme01/asp2#15da600")
-CPMAddPackage("gh:dankmeme01/arc#277078c6")
+CPMAddPackage("gh:dankmeme01/asp2#d60d707")
+CPMAddPackage("gh:dankmeme01/arc#86db86d")
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 

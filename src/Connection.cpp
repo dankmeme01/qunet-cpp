@@ -219,6 +219,7 @@ Future<> Connection::workerThreadLoop() {
                     [&](auto res) {
                         if (res) {
                             this->setState(ConnectionState::Connected);
+                            m_lastError.lock() = ConnectionError::Success;
                         } else {
                             this->onFatalError(res.unwrapErr());
                         }
@@ -392,6 +393,7 @@ Future<> Connection::workerThreadLoop() {
 
             log::debug("Connection closed cleanly");
             this->resetConnectionState();
+            this->setState(ConnectionState::Disconnected);
         } break;
     }
 
@@ -406,11 +408,12 @@ void Connection::resetConnectionState() {
 
 void Connection::onConnectionError(const ConnectionError& err) {
     log::warn("Connection error: {}", err.message());
-    m_data.lock()->m_lastError = err;
+    m_lastError.lock() = err;
 }
 
 void Connection::onFatalError(const ConnectionError& err) {
     log::error("Fatal connection error: {}", err.message());
+    m_lastError.lock() = err;
 
     auto state = this->state();
 
@@ -851,6 +854,12 @@ void Connection::threadHandleIncomingMessage(QunetMessage message) {
 
     if (message.is<DataMessage>()) {
         auto& msg = message.as<DataMessage>();
+
+        // do not forward 0 byte messages, they are used for internal purposes
+        if (msg.data.empty()) {
+            return;
+        }
+
         auto callbacks = m_callbacks.lock();
 
         if (callbacks->m_dataCallback) {
@@ -1035,7 +1044,7 @@ void Connection::setState(ConnectionState state) {
 }
 
 ConnectionError Connection::lastError() const {
-    return m_data.lock()->m_lastError;
+    return *m_lastError.lock();
 }
 
 }

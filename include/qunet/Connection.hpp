@@ -119,7 +119,6 @@ struct ConnectionData {
     std::optional<qsox::SocketAddress> m_address;
     ConnectionType m_connType{ConnectionType::Unknown};
 
-    ConnectionError m_lastError{ConnectionError::Success};
     uint16_t m_reconnectAttempt = 0;
     bool m_tryStatelessReconnect = false;
 };
@@ -273,6 +272,7 @@ private:
     asp::Mutex<ConnectionSettings> m_settings;
     asp::SpinLock<ConnectionCallbacks> m_callbacks;
     asp::SpinLock<ConnectionData> m_data;
+    asp::SpinLock<ConnectionError> m_lastError{ConnectionError::Success};
     std::optional<Socket> m_socket;
 
     arc::Notify m_disconnectNotify;
