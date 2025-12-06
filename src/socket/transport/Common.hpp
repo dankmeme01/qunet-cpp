@@ -207,8 +207,6 @@ inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
         size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
 
         if (length == 0) {
-            // TODO: idk if its worth erroring here?
-            // return Err(TransportError::ZeroLengthMessage);
             buffer.skip(sizeof(uint32_t));
             continue;
         } else if (messageSizeLimit && length > messageSizeLimit) {
