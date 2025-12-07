@@ -143,6 +143,7 @@ public:
     static arc::Future<std::shared_ptr<Connection>> create();
     /// Do not use this. Use create() instead.
     Connection(
+        arc::Runtime* runtime,
         arc::mpsc::Sender<std::string> connectChan,
         arc::mpsc::Sender<ChannelMsg> msgChan,
         WorkerThreadState wts
@@ -261,6 +262,7 @@ public:
     StatWholeSnapshot statSnapshotFull() const;
 
 private:
+    arc::Runtime* m_runtime;
     std::optional<arc::TaskHandle<void>> m_workerTask;
     WorkerThreadState m_wts;
     std::atomic<ConnectionState> m_connState{ConnectionState::Disconnected};

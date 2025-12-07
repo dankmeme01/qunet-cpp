@@ -155,6 +155,7 @@ Future<std::shared_ptr<Connection>> Connection::create() {
     };
 
     auto conn = std::make_shared<Connection>(
+        arc::Runtime::current(),
         std::move(cTx),
         std::move(mTx),
         std::move(wts)
@@ -179,13 +180,15 @@ Future<std::shared_ptr<Connection>> Connection::create() {
 }
 
 Connection::Connection(
+    arc::Runtime* runtime,
     mpsc::Sender<std::string> connectChan,
     mpsc::Sender<ChannelMsg> msgChan,
     WorkerThreadState wts
 )
     : m_connectChan(std::move(connectChan)),
       m_msgChan(std::move(msgChan)),
-      m_wts(std::move(wts))
+      m_wts(std::move(wts)),
+      m_runtime(runtime)
 {}
 
 Connection::~Connection() {
@@ -194,7 +197,9 @@ Connection::~Connection() {
     if (m_workerTask) {
         m_workerTask->abort();
         // wait for task to finish
-        m_workerTask->blockOn();
+        if (!m_runtime->isShuttingDown()) {
+            m_workerTask->blockOn();
+        }
     }
 
     // close the socket if applicable
