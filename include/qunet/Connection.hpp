@@ -32,11 +32,15 @@ public:
         NotConnected,
         AlreadyConnected,
         AlreadyClosing,
-        DnsResolutionFailed,
         AllAddressesFailed,
         ProtocolDisabled,
         NoConnectionTypeFound,
+        NoAddresses,
         InternalError,
+        /// dns resolution did not succeed due to a resolver failure
+        DnsResolutionFailed,
+        /// dns resolution succeeded but the domain was not found
+        DomainNotFound,
     } Code;
 
     constexpr inline ConnectionError(Code code) : m_err(code) {}

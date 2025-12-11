@@ -133,11 +133,13 @@ std::string ConnectionError::message() const {
         case Code::NotConnected: return "Not connected to a server";
         case Code::AlreadyConnected: return "Already connected to a server";
         case Code::AlreadyClosing: return "Connection is already closing";
-        case Code::DnsResolutionFailed: return "DNS resolution failed";
         case Code::AllAddressesFailed: return "Failed to connect to all possible addresses";
         case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
+        case Code::NoAddresses: return "No addresses were given, cannot connect";
         case Code::InternalError: return "An internal error occurred";
+        case Code::DnsResolutionFailed: return "DNS resolution failed (resolver error, see logs for more details)";
+        case Code::DomainNotFound: return "Could not resolve the requested hostname";
     }
 
     qn::unreachable();
@@ -576,6 +578,10 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
         }
     }
 
+    if (addrs.empty()) {
+        co_return Err(ConnectionError::DomainNotFound);
+    }
+
     co_return co_await this->threadConnectWithIps(
         std::move(addrs),
         type,
@@ -585,7 +591,7 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
 
 Future<ConnectionResult<>> Connection::threadConnectWithIps(std::vector<SocketAddress> addrs, ConnectionType type, bool preferIpv6) {
     if (addrs.empty()) {
-        co_return Err(ConnectionError::DnsResolutionFailed);
+        co_return Err(ConnectionError::NoAddresses);
     }
 
     sortAddresses(addrs, preferIpv6);
