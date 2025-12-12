@@ -19,18 +19,22 @@ public:
     QuicTransport(QuicTransport&&);
     QuicTransport& operator=(QuicTransport&&);
 
-    static TransportResult<QuicTransport> connect(
+    static arc::Future<TransportResult<QuicTransport>> connect(
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
         const ClientTlsContext* tlsContext = nullptr,
         const struct ConnectionOptions* connOptions = nullptr
     );
 
-    TransportResult<> close() override;
+    arc::Future<TransportResult<>> close() override;
+    TransportResult<> closeSync() override;
     bool isClosed() const override;
-    TransportResult<> sendMessage(QunetMessage data, bool reliable) override;
-    TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) override;
-    TransportResult<bool> processIncomingData() override;
+    arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
+    arc::Future<TransportResult<>> poll() override;
+    arc::Future<TransportResult<QunetMessage>> receiveMessage() override;
+
+    asp::time::Duration untilTimerExpiry() const override;
+    arc::Future<TransportResult<>> handleTimerExpiry() override;
 
     class QuicConnection& connection();
 

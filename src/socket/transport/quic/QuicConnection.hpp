@@ -3,28 +3,21 @@
 #ifdef QUNET_QUIC_SUPPORT
 
 #include <qunet/socket/transport/QuicTransport.hpp>
-#include <qunet/util/Poll.hpp>
+#include <socket/transport/tls/ClientTlsSession.hpp>
 #include "QuicStream.hpp"
-#include "../tls/ClientTlsSession.hpp"
 
-#include <qsox/UdpSocket.hpp>
+#include <arc/net/UdpSocket.hpp>
+#include <arc/sync/Notify.hpp>
+#include <arc/sync/Mutex.hpp>
+#include <asp/time/Instant.hpp>
 #include <ngtcp2/ngtcp2.h>
 #include <ngtcp2/ngtcp2_crypto.h>
-#include <asp/time/Duration.hpp>
-#include <asp/time/Instant.hpp>
-#include <asp/sync/Atomic.hpp>
-#include <asp/sync/Notify.hpp>
-#include <asp/thread/Thread.hpp>
 
 namespace qn {
 
 inline ngtcp2_tstamp timestamp() {
     return asp::time::Instant::now().rawNanos();
 }
-
-struct QuicConnectionStats {
-    size_t totalSent = 0, totalReceived = 0, totalDataSent = 0, totalDataReceived = 0;
-};
 
 class QuicConnection {
 public:
@@ -35,124 +28,93 @@ public:
     QuicConnection(QuicConnection&&) noexcept = delete;
     QuicConnection& operator=(QuicConnection&&) noexcept = delete;
 
-    static TransportResult<std::unique_ptr<QuicConnection>> connect(
+    static arc::Future<TransportResult<std::unique_ptr<QuicConnection>>> connect(
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
         const ClientTlsContext* tlsContext,
         const struct ConnectionOptions* connOptions
     );
 
-    // Blocks until data is available to be received, or the timeout expires.
-    // Returns true if data is available, false if the timeout expired, or an error if something went wrong.
-    TransportResult<bool> pollReadable(const std::optional<asp::time::Duration>& dur);
+    arc::Future<TransportResult<>> close();
+    TransportResult<> closeSync();
+    bool isClosed() const;
 
-    TransportResult<bool> pollWritable(const std::optional<asp::time::Duration>& dur);
+    // Polls the given stream for readability.
+    arc::Future<TransportResult<>> pollReadable(int64_t streamId);
+    // Polls the main stream for readability.
+    arc::Future<TransportResult<>> pollReadable();
+    // Polls the given stream for writability.
+    arc::Future<TransportResult<>> pollWritable(int64_t streamId);
+    // Polls the main stream for writability.
+    arc::Future<TransportResult<>> pollWritable();
 
-    // Sends data over the QUIC stream. Returns the number of bytes sent, or an error.
-    TransportResult<size_t> send(const uint8_t* data, size_t len);
+    // Sends data over the primary QUIC stream.
+    // Returns the number of bytes sent, or an error.
+    arc::Future<TransportResult<size_t>> send(const void* data, size_t len);
 
-    // Sends data over the QUIC stream. Blocks until all the data is sent or an error occurs.
-    TransportResult<> sendAll(const uint8_t* data, size_t len);
+    // Sends the data over the given QUIC stream, returns number of bytes sent.
+    arc::Future<TransportResult<size_t>> send(int64_t streamId, const void* data, size_t len);
 
-    // Receives data from the QUIC stream. Returns the number of bytes received, or an error.
-    // Blocks until data is available or an error occurs.
-    TransportResult<size_t> receive(uint8_t* buffer, size_t len);
+    // Sends all the given data over the primary QUIC stream.
+    arc::Future<TransportResult<>> sendAll(const void* data, size_t len);
 
-    QuicConnectionStats connStats() const;
+    // Sends all the given data over the given QUIC stream.
+    arc::Future<TransportResult<>> sendAll(int64_t streamId, const void* data, size_t len);
 
-    // Attempts to cleanly close the connection. If this returns an error, consider it fatal and destroy the connection.
-    // Destroying will not send a close packet and will abruptly terminate the connection.
-    TransportResult<> close();
+    // Receives data from the primary QUIC stream. Returns the number of bytes written.
+    arc::Future<TransportResult<size_t>> receive(void* buf, size_t bufSize);
 
-    // Returns whether the connection is fully closed now.
-    bool finishedClosing() const;
+    // Receives data from the given QUIC stream. Returns the number of bytes written.
+    arc::Future<TransportResult<size_t>> receive(int64_t streamId, void* buf, size_t bufSize);
 
-    // If a fatal error has occurred that caused this connection to terminate completely, this function returns the error.
-    // Otherwise, it returns nullopt.
-    std::optional<TransportError> fatalError() const;
+    // Retrieves a QUIC stream by its ID
+    TransportResult<QuicStream&> getStream(int64_t streamId);
+
+    // Creates a new bidirectional QUIC stream and returns its ID
+    QuicResult<int64_t> openStream();
+
+    // Closes a QUIC stream by the given ID
+    TransportResult<> closeStream(int64_t id);
 
     ngtcp2_conn* rawHandle() const;
     ngtcp2_crypto_conn_ref* connRef() const;
 
-private:
-    friend class ClientTlsSession;
-    friend class QuicStream;
-    friend class MultiPoller;
+    asp::time::Duration untilTimerExpiry() const;
+    arc::Future<TransportResult<>> handleTimerExpiry();
 
-    asp::Mutex<ngtcp2_conn*, true> m_conn = nullptr;
+private:
+    // friend class ClientTlsSession;
+    friend class QuicStream;
+
+    QuicConnection(ngtcp2_conn*);
+
+    asp::time::Instant m_connectDeadline;
+    asp::time::Instant m_nextExpiry;
+    ngtcp2_conn* m_conn = nullptr;
     ngtcp2_crypto_conn_ref m_connRef;
     ngtcp2_path_storage m_networkPath;
+    ngtcp2_tstamp m_connExpiry = UINT64_MAX;
 
-    float m_lossSimulation = 0.0f;
+    std::optional<ClientTlsSession> m_tls;
+    std::optional<arc::UdpSocket> m_socket;
+    std::unordered_map<int64_t, QuicStream> m_streams;
+    int64_t m_mainStreamId = -1;
+    float m_lossSimulation = 0.f;
+    bool m_closed = false;
 
-    std::optional<ClientTlsSession> m_tlsSession;
-    std::optional<qsox::UdpSocket> m_socket;
-    std::optional<QuicStream> m_mainStream;
-    asp::Thread<> m_connThread;
-    enum class ThreadState {
-        Idle,
-        Handshaking,
-        Running,
-        Stopping,
-        Stopped,
-    } m_connThreadState = ThreadState::Idle;
-    ngtcp2_tstamp m_connThrExpiry = UINT64_MAX;
-    asp::time::Duration m_connTimeout;
-    TransportResult<> m_handshakeResult = Ok();
-    std::optional<TransportError> m_fatalError;
-    asp::AtomicBool m_terminating{false};
-    asp::AtomicBool m_terminateCleanly{false};
-    asp::AtomicBool m_closed{false};
-    size_t m_congErrors = 0;
+    std::atomic<size_t> m_totalBytesSent{0};
+    std::atomic<size_t> m_totalBytesReceived{0};
     asp::time::Instant m_lastSendAttempt = asp::time::Instant::now();
 
-    asp::Notify m_connectionReady;
+    arc::Future<TransportResult<>> performHandshake();
 
-    // for tracking total bytes sent and received
-    std::atomic_size_t m_totalBytesSent = 0;
-    std::atomic_size_t m_totalBytesReceived = 0;
-    std::atomic_size_t m_totalDataBytesSent = 0;
-    std::atomic_size_t m_totalDataBytesReceived = 0;
-
-    QuicConnection(ngtcp2_conn* conn);
-
-    QuicResult<QuicStream> openBidiStream();
-    TransportResult<> performHandshake(const asp::time::Duration& timeout);
-
-    TransportResult<> doRecv();
-
-    TransportResult<bool> pollReadableSocket(const asp::time::Duration& dur);
-
-    TransportResult<> sendNonStreamPacket(bool handshake = false);
-    TransportResult<> sendClosePacket();
-
-    // Returns true if the given error is related to congestion, flow control or buffering,
-    // and the application should wait before sending more data.
-    bool isCongestionRelatedError(const TransportError& err);
-
-    // vvv thread functions vvv
-    void threadFunc(asp::StopToken<>& token);
-
-    struct ThrPollResult {
-        bool sockReadable = false;
-        bool newDataAvail = false;
-    };
-
-    // for [notify|waitUntil]Writable
-    asp::Notify m_writableNotify;
-    // for [notify|waitUntil]Readable
-    asp::Notify m_readableNotify;
-    // for MultiPoller
-    asp::Mutex<std::optional<qn::PollPipe>> m_readablePipe;
-
-    qn::PollPipe m_dataWrittenPipe;
-    qn::MultiPoller m_poller;
-
-    void thrOnIdleTimeout();
-    void thrOnFatalError(const TransportError& err);
-    void thrHandleError(const TransportError& err);
-    ThrPollResult thrPoll(const asp::time::Duration& timeout);
-    asp::time::Duration thrGetSendBackoff();
+    arc::Future<TransportResult<>> sendHandshakePacket();
+    arc::Future<TransportResult<>> sendNonStreamPacket();
+    arc::Future<TransportResult<>> sendStreamData(QuicStream& stream, bool fin = false);
+    arc::Future<TransportResult<>> sendClosePacket();
+    arc::Future<TransportResult<>> sendPacket(const uint8_t* buf, size_t size);
+    arc::Future<TransportResult<>> receivePacket();
+    TransportResult<size_t> wrapWritePacket(uint8_t* buf, size_t size, bool handshake);
 
     bool shouldLosePacket() const;
 };

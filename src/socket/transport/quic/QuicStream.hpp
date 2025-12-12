@@ -2,79 +2,61 @@
 
 #ifdef QUNET_QUIC_SUPPORT
 
+#include <stdint.h>
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/util/SlidingBuffer.hpp>
 #include <qunet/buffers/CircularByteBuffer.hpp>
-#include <asp/sync/Mutex.hpp>
-#include <atomic>
+#include <arc/sync/Notify.hpp>
 
 namespace qn {
 
-// Represents a bidirectional QUIC stream. This class has interior mutability and is fully thread-safe.
 class QuicStream {
 public:
-    QuicStream(class QuicConnection* conn, int64_t streamId);
+    QuicStream(class QuicConnection* conn, uint64_t id);
     ~QuicStream();
 
     QuicStream(const QuicStream&) = delete;
     QuicStream& operator=(const QuicStream&) = delete;
-
-    QuicStream(QuicStream&&);
-    QuicStream& operator=(QuicStream&&);
+    QuicStream(QuicStream&&) noexcept;
+    QuicStream& operator=(QuicStream&&) noexcept;
 
     int64_t id() const;
 
-    // Acknowledge the number of bytes that have been successfully received by the peer.
-    void onAck(uint64_t offset, uint64_t ackedBytes);
+    /// Returns amount of buffered bytes that have not been read by the application yet.
+    size_t unreadBytes() const;
+    /// Returns amount of bytes that have been written to the buffer but not yet sent.
+    size_t unflushedBytes() const;
+    /// Returns amount of bytes that have been sent but not yet acknowledged.
+    size_t unackedBytes() const;
+    size_t sendCapacity() const;
 
-    // Write data to this QUIC stream, returns the number of bytes that were written to the internal buffer.
-    // Even if all data has been written, this does not guarantee that the data has actually been sent over the network.
-    // Make sure to call `tryFlush()` to send more data and check how many bytes remain to be sent.
-    TransportResult<size_t> write(const uint8_t* data, size_t len);
+    void close();
 
-    // Try to send any pending data over the QUIC stream.
-    // Returns the number of bytes that remain in the internal buffer that have not been sent yet.
-    TransportResult<size_t> tryFlush();
+    size_t write(const uint8_t* data, size_t len);
+    size_t read(void* buffer, size_t len);
 
-    // Returns the number of bytes that are currently buffered and ready to be sent.
-    size_t toFlush();
+    arc::Future<> pollWritable();
+    arc::Future<> pollReadable();
 
-    // Returns the number of bytes that are currently buffered and ready to be read.
-    size_t toReceive() const;
-
-    // Returns whether the send buffer has any free space to write more data.
-    bool writable() const;
-
-    // Returns whether the receive buffer has any data that can be read.
-    bool readable() const;
-
-    // Returns whether there is any data that has been sent but not yet acknowledged by the peer.
-    bool hasDataInFlight() const;
-
-    // Read data from the receive buffer, returns the number of bytes that were read.
-    // This does not block and does not receive data from the stream, you should ensure
-    // `toReceive()` is greater than 0 before calling this method.
-    TransportResult<size_t> read(uint8_t* buffer, size_t len);
-
-    TransportResult<> close();
+    CircularByteBuffer::WrappedRead peekUnsentData();
+    void advanceSentData(size_t len);
 
 private:
     friend class QuicConnection;
 
-    class QuicConnection* m_conn = nullptr;
+    QuicConnection* m_conn = nullptr;
     int64_t m_streamId = -1;
+    bool m_closed = false;
+    arc::Notify m_writableNotify, m_readableNotify;
 
-    asp::Mutex<void, true> m_mutex;
-    asp::Mutex<CircularByteBuffer> m_writeBuffer;
-    asp::Mutex<CircularByteBuffer> m_recvBuffer;
-    std::atomic_size_t m_unackedBytes = 0;
-
-    uint64_t m_streamOffset = 0;
+    CircularByteBuffer m_sendBuffer;
+    CircularByteBuffer m_recvBuffer;
     uint64_t m_ackOffset = 0;
+    uint64_t m_unackedBytes = 0;
+    uint64_t m_streamOffset = 0;
 
-    TransportResult<size_t> doSend(bool fin = false);
-
-    TransportResult<size_t> deliverToRecvBuffer(const uint8_t* data, size_t len);
+    void onReceivedData(const uint8_t* data, size_t len);
+    void onAck(uint64_t offset, uint64_t ackedBytes);
 };
 
 }

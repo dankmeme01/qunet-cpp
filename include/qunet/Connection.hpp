@@ -37,6 +37,7 @@ public:
         NoConnectionTypeFound,
         NoAddresses,
         InternalError,
+        TlsInitFailed,
         /// dns resolution did not succeed due to a resolver failure
         DnsResolutionFailed,
         /// dns resolution succeeded but the domain was not found
@@ -280,6 +281,7 @@ private:
     asp::SpinLock<ConnectionData> m_data;
     asp::SpinLock<ConnectionError> m_lastError{ConnectionError::Success};
     std::optional<Socket> m_socket;
+    std::optional<ClientTlsContext> m_tlsContext;
 
     arc::Notify m_disconnectNotify;
     std::atomic<bool> m_disconnectReq{false};

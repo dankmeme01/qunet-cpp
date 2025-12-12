@@ -28,6 +28,7 @@ struct TransportError {
         DefragmentationError,
         TooUnreliable,
         InvalidQunetDatabase,
+        InvalidArgument,
         ReconnectFailed,
         TimedOut,
         Closed,

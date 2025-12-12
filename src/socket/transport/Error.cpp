@@ -19,6 +19,7 @@ std::string_view TransportError::CustomKind::message() const {
         case CustomCode::DefragmentationError: return "Defragmentation error, message could not be reassembled";
         case CustomCode::TooUnreliable: return "Transport is too unreliable, too many lost messages";
         case CustomCode::InvalidQunetDatabase: return "Invalid Qunet database, cannot decode";
+        case CustomCode::InvalidArgument: return "Invalid argument";
         case CustomCode::ReconnectFailed: return "Reconnect failed, server rejected the attempt";
         case CustomCode::TimedOut: return "Operation timed out";
         case CustomCode::Closed: return "Operation cannot be performed because the connection is already closed";

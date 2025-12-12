@@ -11,6 +11,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 add_library(qunet STATIC ${SOURCES})
 
 target_include_directories(qunet PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(qunet PRIVATE src)
 
 if (QUNET_DEBUG)
     target_compile_definitions(qunet PUBLIC QUNET_DEBUG=1)

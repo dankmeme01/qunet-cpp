@@ -138,6 +138,7 @@ std::string ConnectionError::message() const {
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
         case Code::NoAddresses: return "No addresses were given, cannot connect";
         case Code::InternalError: return "An internal error occurred";
+        case Code::TlsInitFailed: return "Failed to initialize TLS context";
         case Code::DnsResolutionFailed: return "DNS resolution failed (resolver error, see logs for more details)";
         case Code::DomainNotFound: return "Could not resolve the requested hostname";
     }
@@ -793,10 +794,11 @@ Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, C
     // if this connection requires TLS, check if we have a TLS context
 #ifdef QUNET_QUIC_SUPPORT
     if (type == ConnectionType::Quic && !m_tlsContext) {
-        auto tlsres = ClientTlsContext::create(!m_tlsCertVerification);
+        bool certVerification = m_settings.lock()->m_tlsCertVerification;
+        auto tlsres = ClientTlsContext::create(!certVerification);
         if (!tlsres) {
             log::warn("Failed to create TLS context: {}", tlsres.unwrapErr().message());
-            return;
+            co_return Err(ConnectionError::TlsInitFailed);
         }
 
         m_tlsContext = std::move(tlsres).unwrap();
