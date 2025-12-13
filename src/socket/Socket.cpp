@@ -8,6 +8,7 @@
 #include <qunet/Log.hpp>
 #include <qunet/Connection.hpp>
 
+#include <fmt/ranges.h>
 #include <asp/time/Instant.hpp>
 
 using namespace arc;
@@ -31,7 +32,7 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
     tracker.onConnected();
     transport->m_tracker = std::move(tracker);
 
-    Socket socket(std::move(transport));
+    Socket socket(std::move(transport), options.address);
 
     auto handshakeTimeout = options.timeout - startedAt.elapsed();
     if (handshakeTimeout.millis() <= 0) {
@@ -42,8 +43,18 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
     co_return Ok(std::pair{std::move(socket), handshakeTimeout});
 }
 
-arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& options) {
+arc::Future<TransportResult<Socket>> Socket::connect(
+    const TransportOptions& options,
+    std::optional<std::filesystem::path> qdbFolder
+) {
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
+
+    if (qdbFolder) {
+        socket.m_usedQdb = co_await arc::spawnBlocking<std::optional<QunetDatabase>>([&] {
+            return qn::tryFindQdb(*qdbFolder, options.address);
+        });
+        socket.m_qdbFolder = std::move(*qdbFolder);
+    }
 
     // this will be set to false at the very end if successful
     bool closeSocket = true;
@@ -53,11 +64,16 @@ arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& opt
         }
     });
 
+    std::array<uint8_t, 16> qdbHash = {};
+    if (socket.m_usedQdb) {
+        qdbHash = socket.m_usedQdb->getHash();
+        log::debug("Using qunet database with hash {:x}", fmt::join(qdbHash, ""));
+    }
+
     auto hmsg = HandshakeStartMessage {
         .majorVersion = MAJOR_VERSION,
         .fragLimit = UDP_PACKET_LIMIT,
-        // TODO: qdb hash
-        .qdbHash = std::array<uint8_t, 16>{}
+        .qdbHash = qdbHash,
     };
 
     auto tres = co_await arc::timeout(
@@ -72,7 +88,7 @@ arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& opt
 
     if (msg.is<HandshakeFinishMessage>()) {
         auto& hf = msg.as<HandshakeFinishMessage>();
-        ARC_CO_UNWRAP(socket.onHandshakeSuccess(hf));
+        ARC_CO_UNWRAP(co_await socket.onHandshakeSuccess(hf));
     } else if (msg.is<HandshakeFailureMessage>()) {
         auto& hf = msg.as<HandshakeFailureMessage>();
         log::warn("Handshake failed: {}", hf.message());
@@ -120,7 +136,7 @@ Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& option
     co_return Ok(std::move(socket));
 }
 
-TransportResult<> Socket::onHandshakeSuccess(const HandshakeFinishMessage& msg) {
+Future<TransportResult<>> Socket::onHandshakeSuccess(const HandshakeFinishMessage& msg) {
     log::debug("Handshake finished, connection ID: {}, qdb size: {}", msg.connectionId, msg.qdbData ? msg.qdbData->uncompressedSize : 0);
     m_transport->setConnectionId(msg.connectionId);
 
@@ -132,20 +148,33 @@ TransportResult<> Socket::onHandshakeSuccess(const HandshakeFinishMessage& msg) 
         size_t realSize = msg.qdbData->uncompressedSize;
         std::vector<uint8_t> qdbData(realSize);
 
-        GEODE_UNWRAP(dec.decompress(msg.qdbData->chunkData.data(), msg.qdbData->chunkData.size(), qdbData.data(), realSize));
-        qdbData.resize(realSize);
+        ARC_CO_UNWRAP(dec.decompress(msg.qdbData->chunkData.data(), msg.qdbData->chunkData.size(), qdbData.data(), realSize));
 
-        auto qdb = GEODE_UNWRAP(QunetDatabase::decode(qdbData).mapErr([&](const DatabaseDecodeError& err) {
+        auto qdb = ARC_CO_UNWRAP(QunetDatabase::decode(qdbData).mapErr([&](const DatabaseDecodeError& err) {
             log::warn("Failed to decode Qunet database: {}", err.message());
             return TransportError::InvalidQunetDatabase;
         }));
 
-        GEODE_UNWRAP(m_transport->initCompressors(&qdb));
+        ARC_CO_UNWRAP(m_transport->initCompressors(&qdb));
+
+        // save the qdb
+        if (m_qdbFolder) {
+            auto res = co_await arc::spawnBlocking<geode::Result<>>([&] {
+                return qn::saveQdb(qdbData, *m_qdbFolder, m_remoteAddress);
+            });
+
+            if (!res) {
+                log::warn("Failed to save Qunet database: {}", res.unwrapErr());
+            }
+        }
+    } else if (m_usedQdb) {
+        ARC_CO_UNWRAP(m_transport->initCompressors(&*m_usedQdb));
+        m_usedQdb.reset(); // no longer needed
     } else {
-        GEODE_UNWRAP(m_transport->initCompressors());
+        ARC_CO_UNWRAP(m_transport->initCompressors(nullptr));
     }
 
-    return Ok();
+    co_return Ok();
 }
 
 TransportResult<> Socket::onReconnectSuccess(Socket& older) {

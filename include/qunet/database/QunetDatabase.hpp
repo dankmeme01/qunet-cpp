@@ -2,10 +2,12 @@
 
 #include <qunet/buffers/ByteReader.hpp>
 #include <qunet/buffers/Error.hpp>
+#include <qsox/SocketAddress.hpp>
 #include <stdint.h>
 #include <stddef.h>
 #include <optional>
 #include <vector>
+#include <filesystem>
 
 namespace qn {
 
@@ -44,13 +46,24 @@ struct QunetDatabase {
     std::optional<std::vector<uint8_t>> lz4Dict;
     int zstdLevel;
     int lz4Level;
+    std::array<uint8_t, 16> hash;
 
     static geode::Result<QunetDatabase, DatabaseDecodeError> decode(const std::vector<uint8_t>& data);
-    static geode::Result<QunetDatabase, DatabaseDecodeError> decode(ByteReader& reader);
+
+    std::array<uint8_t, 16> getHash() const;
 
 private:
     geode::Result<void, DatabaseDecodeError> decodeSection(uint16_t type, size_t size, ByteReader& reader);
     geode::Result<void, DatabaseDecodeError> decodeZstdDictSection(size_t size, ByteReader& reader);
+
+    static geode::Result<QunetDatabase, DatabaseDecodeError> decode(ByteReader& reader);
 };
+
+std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address);
+geode::Result<> saveQdb(
+    const std::vector<uint8_t>& data,
+    const std::filesystem::path& folder,
+    const qsox::SocketAddress& address
+);
 
 }

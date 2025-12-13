@@ -871,9 +871,11 @@ TransportOptions Connection::makeOptions(SocketAddress addr, ConnectionType type
 
 Future<ConnectionResult<>> Connection::threadConnectSocket(SocketAddress addr, ConnectionType type, bool reconnect) {
     TransportOptions opts = makeOptions(addr, type, reconnect);
+    auto qdbDir = m_settings.lock()->m_qdbFolder;
+
     auto res = co_await (reconnect
         ? Socket::reconnect(opts, *m_socket)
-        : Socket::connect(opts));
+        : Socket::connect(opts, qdbDir));
 
     m_socket = ARC_CO_UNWRAP(std::move(res));
     co_return Ok();
@@ -928,7 +930,6 @@ void Connection::threadHandleIncomingMessage(QunetMessage message) {
         return;
     }
 
-    // TODO: handle other messages
     if (message.is<ConnectionErrorMessage>()) {
         auto& errMsg = message.as<ConnectionErrorMessage>();
         log::warn("Received connection error message: {}", errMsg.message());
@@ -1038,6 +1039,11 @@ void Connection::setIpv6Enabled(bool enabled) {
 void Connection::setTlsCertVerification(bool verify) {
     auto settings = m_settings.lock();
     settings->m_tlsCertVerification = verify;
+}
+
+void Connection::setQdbFolder(const std::filesystem::path& folder) {
+    auto settings = m_settings.lock();
+    settings->m_qdbFolder = folder;
 }
 
 void Connection::setDebugOptions(const ConnectionDebugOptions& opts) {

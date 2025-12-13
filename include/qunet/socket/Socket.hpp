@@ -31,7 +31,10 @@ struct TransportOptions {
 class Socket {
 public:
     // Attempts to connect to the specified address using the given connection type.
-    static arc::Future<TransportResult<Socket>> connect(const TransportOptions& options);
+    static arc::Future<TransportResult<Socket>> connect(
+        const TransportOptions& options,
+        std::optional<std::filesystem::path> qdbFolder = std::nullopt
+    );
     static arc::Future<TransportResult<Socket>> reconnect(const TransportOptions& options, Socket& prev);
 
     Socket(Socket&&) = default;
@@ -69,14 +72,18 @@ public:
 
 private:
     std::shared_ptr<BaseTransport> m_transport;
+    qsox::SocketAddress m_remoteAddress;
     asp::time::Duration m_connTimeout;
+    std::optional<QunetDatabase> m_usedQdb;
+    std::optional<std::filesystem::path> m_qdbFolder;
 
-    Socket(std::shared_ptr<BaseTransport> transport) : m_transport(std::move(transport)) {}
+    Socket(std::shared_ptr<BaseTransport> transport, qsox::SocketAddress remote)
+        : m_transport(std::move(transport)), m_remoteAddress(std::move(remote)) {}
 
     static arc::Future<TransportResult<std::shared_ptr<BaseTransport>>> createTransport(const TransportOptions& options);
     static arc::Future<TransportResult<std::pair<Socket, asp::time::Duration>>> createSocket(const TransportOptions& options);
 
-    TransportResult<> onHandshakeSuccess(const HandshakeFinishMessage& msg);
+    arc::Future<TransportResult<>> onHandshakeSuccess(const HandshakeFinishMessage& msg);
     TransportResult<> onReconnectSuccess(Socket& older);
 
     CompressionType shouldCompress(size_t size) const;

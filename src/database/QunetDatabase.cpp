@@ -1,7 +1,12 @@
 #include <qunet/database/QunetDatabase.hpp>
 #include <qunet/util/visit.hpp>
+#include <qunet/util/hash.hpp>
+#include <qunet/Log.hpp>
+
 #include <fmt/format.h>
+#include <asp/fs.hpp>
 #include <cstring>
+
 
 namespace qn {
 
@@ -27,7 +32,13 @@ std::string_view DatabaseDecodeError::message() const {
 
 geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(const std::vector<uint8_t>& data) {
     ByteReader reader(data);
-    return decode(reader);
+    auto qdb = GEODE_UNWRAP(decode(reader));
+
+    // compute hash
+    auto hash = qn::blake3Hash(data);
+    std::memcpy(qdb.hash.data(), hash.data, 16);
+
+    return Ok(std::move(qdb));
 }
 
 struct SectionHeader {
@@ -135,6 +146,54 @@ geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeZstdDictSection(si
     zstdDict = reader.readToEnd();
 
     return Ok();
+}
+
+std::array<uint8_t, 16> QunetDatabase::getHash() const {
+    return this->hash;
+}
+
+static std::filesystem::path pathForQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address) {
+    // use address hash as filename
+    auto hash = qn::blake3Hash(address.toString());
+    auto hexstr = hash.toString();
+    hexstr.resize(32);
+
+    return folder / (hexstr + ".qdb");
+}
+
+std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address) {
+    auto qdbPath = pathForQdb(folder, address);
+
+    if (!asp::fs::exists(qdbPath)) {
+        return std::nullopt;
+    }
+
+    auto res = asp::fs::read(qdbPath);
+    if (!res) {
+        log::warn("Failed to read QDB file {}: {}", qdbPath.string(), res.unwrapErr());
+        return std::nullopt;
+    }
+
+    auto qdb = QunetDatabase::decode(*res);
+    if (!qdb) {
+        log::warn("Failed to decode QDB file {}: {}", qdbPath.string(), qdb.unwrapErr().message());
+        return std::nullopt;
+    }
+
+    return std::move(qdb).unwrap();
+}
+
+geode::Result<> saveQdb(
+    const std::vector<uint8_t>& data,
+    const std::filesystem::path& folder,
+    const qsox::SocketAddress& address
+) {
+    auto qdbPath = pathForQdb(folder, address);
+    if (!asp::fs::exists(folder)) {
+        (void) asp::fs::createDirAll(folder);
+    }
+
+    return asp::fs::write(qdbPath, data);
 }
 
 }

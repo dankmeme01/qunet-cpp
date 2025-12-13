@@ -113,6 +113,7 @@ struct ConnectionSettings {
     bool m_ipv6Enabled = true;
     bool m_tlsCertVerification = true;
     asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
+    std::optional<std::filesystem::path> m_qdbFolder;
 };
 
 struct ConnectionCallbacks {
@@ -230,6 +231,12 @@ public:
     // Set whether to verify TLS certificates. If `false`, TLS (QUIC) connections will be established without certificate verification.
     // This will do nothing if a connection is established, otherwise it will invalidate the current TLS context.
     void setTlsCertVerification(bool verify);
+
+    // Set the directory that will be used to save and load QDB files.
+    // QDB files are files with compression dictionaries and other metadata,
+    // they are already used automatically but caching them may significantly help
+    // connection establishment times.
+    void setQdbFolder(const std::filesystem::path& folder);
 
     // Set the debug options for the connection.
     void setDebugOptions(const ConnectionDebugOptions& opts);
