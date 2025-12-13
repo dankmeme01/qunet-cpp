@@ -826,7 +826,6 @@ Future<TransportResult<>> QuicConnection::handleTimerExpiry() {
         ngtcp2Expiry = Instant::fromRawNanos(ngtcp2_conn_get_expiry(m_conn));
 
         if (code == NGTCP2_ERR_IDLE_CLOSE) {
-            // TODO: maybe handle other way
             co_return Err(TransportError::ConnectionTimedOut);
         }
 
