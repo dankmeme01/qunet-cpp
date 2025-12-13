@@ -33,9 +33,9 @@ endif()
 # add deps
 set(ARC_DEBUG ${QUNET_DEBUG})
 CPMAddPackage("gh:dankmeme01/asp2#c8328fc")
-CPMAddPackage("gh:dankmeme01/arc#9998913")
+CPMAddPackage("gh:dankmeme01/arc#v1.1.0")
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
-CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
+CPMAddPackage("gh:zhihaoy/nontype_functional#8ec2e09")
 
 # pain and suffering
 
@@ -62,6 +62,8 @@ add_subdirectory(${BLAKE3_SOURCE_DIR}/c blake3)
 target_link_libraries(qunet PRIVATE libzstd_static lz4_static blake3)
 target_link_libraries(qunet PUBLIC qsox asp arc fmt std23::nontype_functional)
 
+set(QUNET_HAS_TLS ${QUNET_QUIC_SUPPORT})
+
 if (QUNET_ADVANCED_DNS)
     CPMAddPackage(
         NAME c-ares
@@ -78,10 +80,8 @@ if (QUNET_ADVANCED_DNS)
     target_link_libraries(qunet PRIVATE c-ares)
 endif()
 
-if (QUNET_QUIC_SUPPORT)
-    target_compile_definitions(qunet PUBLIC QUNET_QUIC_SUPPORT=1 QUNET_TLS_SUPPORT=1)
-
-    # TODO: we might move this out of here if we will need TLS but not for QUIC
+if (QUNET_HAS_TLS)
+    target_compile_definitions(qunet PUBLIC QUNET_TLS_SUPPORT=1)
     set(WOLFSSL_DEBUG_OPTIONS "")
 
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -91,7 +91,7 @@ if (QUNET_QUIC_SUPPORT)
     CPMAddPackage(
         NAME wolfssl
         GIT_REPOSITORY "https://github.com/wolfSSL/wolfssl.git"
-        GIT_TAG "v5.8.0-stable"
+        GIT_TAG "v5.8.4-stable"
         OPTIONS "WOLFSSL_QUIC ON"
                 "WOLFSSL_HARDEN OFF"
                 "WOLFSSL_OLD_TLS OFF"
@@ -106,11 +106,15 @@ if (QUNET_QUIC_SUPPORT)
 
     get_target_property(WOLFSSL_DEFINITIONS wolfssl COMPILE_DEFINITIONS)
     get_target_property(WOLFSSL_INCLUDE_DIRS wolfssl INCLUDE_DIRECTORIES)
+endif()
+
+if (QUNET_QUIC_SUPPORT)
+    target_compile_definitions(qunet PUBLIC QUNET_QUIC_SUPPORT=1)
 
     CPMAddPackage(
         NAME ngtcp2
         GIT_REPOSITORY "https://github.com/ngtcp2/ngtcp2.git"
-        GIT_TAG "v1.13.0"
+        GIT_TAG "v1.18.0"
         OPTIONS "ENABLE_WOLFSSL ON"
                 "WOLFSSL_INCLUDE_DIR ${wolfssl_SOURCE_DIR}"
                 "WOLFSSL_LIBRARY $<TARGET_FILE:wolfssl>"
