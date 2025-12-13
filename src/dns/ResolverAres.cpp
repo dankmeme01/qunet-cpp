@@ -11,6 +11,11 @@
 
 namespace qn {
 
+template <typename T>
+struct QueryData {
+    ResolverCallback<T> callback;
+    std::string name;
+};
 
 Resolver::Resolver() {
     // we must do wsastartup manually, ares does not do it
@@ -43,6 +48,10 @@ Resolver::Resolver() {
         m_channel = nullptr;
         return;
     }
+
+    // prefill cache with localhost
+    m_aCache.lock()->emplace("localhost", DNSRecordA{{qsox::Ipv4Address::LOCALHOST}});
+    m_aaaaCache.lock()->emplace("localhost", DNSRecordAAAA{{qsox::Ipv6Address::LOCALHOST}});
 }
 
 void Resolver::wineWorkaround() {
@@ -102,33 +111,40 @@ template <typename T>
 static ResolverResult<T> parseQuery(const ares_dns_record_t* result);
 
 template <typename T>
-static void queryCallback(void* arg, ares_status_t status, size_t timeouts, const ares_dns_record_t* result) {
-    auto& callback = *reinterpret_cast<ResolverCallback<T>*>(arg);
+static void queryCallback(
+    void* arg,
+    ares_status_t status,
+    size_t timeouts,
+    const ares_dns_record_t* result
+) {
+    auto& qdata = *reinterpret_cast<QueryData<T>*>(arg);
     ares_srv_reply* a;
 
     switch (status) {
         case ARES_SUCCESS: {
             auto res = parseQuery<T>(result);
-            callback(std::move(res));
+
+            if (res) {
+                Resolver::get().cacheRecord(qdata.name, res.unwrap());
+            }
+
+            qdata.callback(std::move(res));
         } break;
 
         default: {
             log::debug("DNS query failed with status {}: {}", (int) status, ares_strerror(status));
-            callback(Err(errorFromStatus(status)));
+            qdata.callback(Err(errorFromStatus(status)));
         } break;
     }
 
-    delete &callback; // clean up the callback
+    delete &qdata; // clean up the data
 }
 
 ResolverResult<> Resolver::queryA(const std::string& name, ResolverCallback<DNSRecordA> callback) {
     log::debug("(Resolver) queryA for {}", name);
 
-    // localhost is treated specially
-    if (name == "localhost") {
-        DNSRecordA record;
-        record.addresses.push_back(qsox::Ipv4Address::LOCALHOST);
-        callback(Ok(std::move(record)));
+    if (auto record = this->getCachedA(name)) {
+        callback(Ok(std::move(*record)));
         return Ok();
     }
 
@@ -138,7 +154,7 @@ ResolverResult<> Resolver::queryA(const std::string& name, ResolverCallback<DNSR
         ARES_CLASS_IN,
         ARES_REC_TYPE_A,
         &queryCallback<DNSRecordA>,
-        new auto {std::move(callback)},
+        new QueryData {std::move(callback), name},
         nullptr
     );
 
@@ -153,11 +169,8 @@ ResolverResult<> Resolver::queryA(const std::string& name, ResolverCallback<DNSR
 ResolverResult<> Resolver::queryAAAA(const std::string& name, ResolverCallback<DNSRecordAAAA> callback) {
     log::debug("(Resolver) queryAAAA for {}", name);
 
-    // localhost is treated specially
-    if (name == "localhost") {
-        DNSRecordAAAA record;
-        record.addresses.push_back(qsox::Ipv6Address::LOCALHOST);
-        callback(Ok(std::move(record)));
+    if (auto record = this->getCachedAAAA(name)) {
+        callback(Ok(std::move(*record)));
         return Ok();
     }
 
@@ -167,7 +180,7 @@ ResolverResult<> Resolver::queryAAAA(const std::string& name, ResolverCallback<D
         ARES_CLASS_IN,
         ARES_REC_TYPE_AAAA,
         &queryCallback<DNSRecordAAAA>,
-        new auto {std::move(callback)},
+        new QueryData {std::move(callback), name},
         nullptr
     );
 
@@ -182,13 +195,18 @@ ResolverResult<> Resolver::queryAAAA(const std::string& name, ResolverCallback<D
 ResolverResult<> Resolver::querySRV(const std::string& name, ResolverCallback<DNSRecordSRV> callback) {
     log::debug("(Resolver) querySRV for {}", name);
 
+    if (auto record = this->getCachedSRV(name)) {
+        callback(Ok(std::move(*record)));
+        return Ok();
+    }
+
     auto res = ares_query_dnsrec(
         (ares_channel_t*)m_channel,
         name.c_str(),
         ARES_CLASS_IN,
         ARES_REC_TYPE_SRV,
         &queryCallback<DNSRecordSRV>,
-        new auto {std::move(callback)},
+        new QueryData {std::move(callback), name},
         nullptr
     );
 
@@ -240,6 +258,24 @@ void Resolver::reloadServers() {
     }
 
     ares_set_servers_csv((ares_channel_t*)m_channel, servers.c_str());
+}
+
+std::optional<DNSRecordA> Resolver::getCachedA(const std::string& name) {
+    auto cache = m_aCache.lock();
+    auto it = cache->find(name);
+    return it != cache->end() ? std::optional<DNSRecordA>{it->second} : std::nullopt;
+}
+
+std::optional<DNSRecordAAAA> Resolver::getCachedAAAA(const std::string& name) {
+    auto cache = m_aaaaCache.lock();
+    auto it = cache->find(name);
+    return it != cache->end() ? std::optional<DNSRecordAAAA>{it->second} : std::nullopt;
+}
+
+std::optional<DNSRecordSRV> Resolver::getCachedSRV(const std::string& name) {
+    auto cache = m_srvCache.lock();
+    auto it = cache->find(name);
+    return it != cache->end() ? std::optional<DNSRecordSRV>{it->second} : std::nullopt;
 }
 
 template <>
@@ -334,6 +370,24 @@ ResolverResult<DNSRecordSRV> parseQuery(const ares_dns_record_t* result) {
     });
 
     return Ok(std::move(record));
+}
+
+template <>
+void Resolver::cacheRecord(const std::string& name, const DNSRecordA& record) {
+    auto cache = m_aCache.lock();
+    (*cache)[name] = record;
+}
+
+template <>
+void Resolver::cacheRecord(const std::string& name, const DNSRecordAAAA& record) {
+    auto cache = m_aaaaCache.lock();
+    (*cache)[name] = record;
+}
+
+template <>
+void Resolver::cacheRecord(const std::string& name, const DNSRecordSRV& record) {
+    auto cache = m_srvCache.lock();
+    (*cache)[name] = record;
 }
 
 }

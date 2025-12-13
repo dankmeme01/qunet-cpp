@@ -3,6 +3,7 @@
 #include <qunet/util/compat.hpp>
 #include <qsox/Resolver.hpp> // we don't use qsox resolver, but we use its error type
 #include <arc/future/Future.hpp>
+#include <asp/sync/Mutex.hpp>
 
 #include <string>
 
@@ -69,13 +70,24 @@ public:
     void setCustomDnsServers(std::optional<qsox::IpAddress> primary, std::optional<qsox::IpAddress> secondary = std::nullopt);
     geode::Result<> setDnsTransport(DNSTransport transport);
 
+#ifdef QUNET_ADVANCED_DNS
+    template <typename T>
+    void cacheRecord(const std::string& name, const T& record);
+#endif
+
 private:
 #ifdef QUNET_ADVANCED_DNS
     void* m_channel = nullptr; // ares_channel_t
     std::optional<qsox::IpAddress> m_primaryNs, m_secondaryNs;
     DNSTransport m_transport = DNSTransport::Udp;
+    asp::Mutex<std::unordered_map<std::string, DNSRecordA>> m_aCache;
+    asp::Mutex<std::unordered_map<std::string, DNSRecordAAAA>> m_aaaaCache;
+    asp::Mutex<std::unordered_map<std::string, DNSRecordSRV>> m_srvCache;
 
     void reloadServers();
+    std::optional<DNSRecordA> getCachedA(const std::string& name);
+    std::optional<DNSRecordAAAA> getCachedAAAA(const std::string& name);
+    std::optional<DNSRecordSRV> getCachedSRV(const std::string& name);
 #else
     friend class ResolverData;
     void* m_data = nullptr;
