@@ -6,6 +6,7 @@ project(qunet VERSION 1.0.0)
 option(QUNET_QUIC_SUPPORT "Enable QUIC support" OFF)
 option(QUNET_ADVANCED_DNS "Enable advanced DNS resolver" ON)
 option(QUNET_DEBUG "Enable debug mode" OFF)
+option(QUNET_BUILD_TESTER OFF)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 add_library(qunet STATIC ${SOURCES})
@@ -30,8 +31,9 @@ if (NOT CURRENT_CPM_VERSION)
 endif()
 
 # add deps
-CPMAddPackage("gh:dankmeme01/asp2#d60d707")
-CPMAddPackage("gh:dankmeme01/arc@1.0.3")
+set(ARC_DEBUG ${QUNET_DEBUG})
+CPMAddPackage("gh:dankmeme01/asp2#c8328fc")
+CPMAddPackage("gh:dankmeme01/arc#9998913")
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 
@@ -140,7 +142,13 @@ if (QUNET_QUIC_SUPPORT)
     target_link_libraries(qunet PRIVATE wolfssl ngtcp2_static ngtcp2_crypto_wolfssl_static)
 endif()
 
-# Qunet tester
-file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS tester/*.cpp)
-add_executable(qunet_tester ${TESTER_SOURCES})
-target_link_libraries(qunet_tester PRIVATE qunet qsox)
+if (QUNET_BUILD_TESTER)
+    # Qunet tester
+    file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS tester/*.cpp)
+    add_executable(qunet_tester ${TESTER_SOURCES})
+    target_link_libraries(qunet_tester PRIVATE qunet qsox)
+
+    # add asan
+    target_compile_options(qunet_tester PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
+    target_link_options(qunet_tester PRIVATE -fsanitize=address)
+endif()

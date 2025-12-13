@@ -20,6 +20,9 @@ struct ServerClosedError {
     std::string reason;
 
     std::string_view message() const;
+
+    bool operator==(const ServerClosedError& other) const = default;
+    bool operator!=(const ServerClosedError& other) const = default;
 };
 
 class ConnectionError {
@@ -160,6 +163,9 @@ public:
     Connection(Connection&&) = delete;
     Connection& operator=(Connection&&) = delete;
 
+    // Destroys the connection, terminating the worker task.
+    void destroy();
+
     // Connect to an IP address or a domain name. This function supports many different protocols.
     // If a domain name is provided without a port number, _qunet.<proto>.<domain> SRV record is fetched (`_qunet` part can be configured),
     // if one is not found, then a regular A/AAAA record is fetched and port number 4340 is used. If an IP address is provided, it is used directly.
@@ -184,6 +190,10 @@ public:
     // does not ping the destination, just tries to connect using QUIC.
     // - quic://example.com:1234 - fetches an A/AAAA record and uses the specified port to connect using QUIC.
     ConnectionResult<> connect(std::string_view destination);
+
+    /// Like `connect`, but will wait for the connection to be established, or fail.
+    /// This will override some callbacks, so if you use custom callbacks, don't use this.
+    arc::Future<ConnectionResult<>> connectWait(std::string_view destination);
 
     // Disconnect from the server, or aborts the current connection attempt.
     // Does nothing if disconnected.
@@ -281,7 +291,9 @@ private:
     asp::SpinLock<ConnectionData> m_data;
     asp::SpinLock<ConnectionError> m_lastError{ConnectionError::Success};
     std::optional<Socket> m_socket;
+#ifdef QUNET_TLS_SUPPORT
     std::optional<ClientTlsContext> m_tlsContext;
+#endif
 
     arc::Notify m_disconnectNotify;
     std::atomic<bool> m_disconnectReq{false};

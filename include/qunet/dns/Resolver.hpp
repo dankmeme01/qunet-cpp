@@ -39,6 +39,13 @@ struct DNSRecordSRV {
     std::vector<SRVEndpoint> endpoints;
 };
 
+enum class DNSTransport {
+    Udp,
+    Tcp,
+    Tls,
+    Https,
+};
+
 template <typename R>
 using ResolverCallback = move_only_function<void(ResolverResult<R>)>;
 
@@ -58,9 +65,17 @@ public:
     arc::Future<ResolverResult<DNSRecordAAAA>> asyncQueryAAAA(const std::string& name);
     arc::Future<ResolverResult<DNSRecordSRV>> asyncQuerySRV(const std::string& name);
 
+    void setCustomDnsServer(qsox::IpAddress addr);
+    void setCustomDnsServers(std::optional<qsox::IpAddress> primary, std::optional<qsox::IpAddress> secondary = std::nullopt);
+    geode::Result<> setDnsTransport(DNSTransport transport);
+
 private:
 #ifdef QUNET_ADVANCED_DNS
     void* m_channel = nullptr; // ares_channel_t
+    std::optional<qsox::IpAddress> m_primaryNs, m_secondaryNs;
+    DNSTransport m_transport = DNSTransport::Udp;
+
+    void reloadServers();
 #else
     friend class ResolverData;
     void* m_data = nullptr;

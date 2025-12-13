@@ -31,7 +31,7 @@ Resolver::Resolver() {
     int optmask = ARES_OPT_TIMEOUTMS | ARES_OPT_EVENT_THREAD;
     ares_options options = {};
     options.evsys = ARES_EVSYS_DEFAULT;
-    options.timeout = 1500;
+    options.timeout = 1000;
 
     if (qn::isWine()) {
         this->wineWorkaround();
@@ -124,6 +124,14 @@ static void queryCallback(void* arg, ares_status_t status, size_t timeouts, cons
 ResolverResult<> Resolver::queryA(const std::string& name, ResolverCallback<DNSRecordA> callback) {
     log::debug("(Resolver) queryA for {}", name);
 
+    // localhost is treated specially
+    if (name == "localhost") {
+        DNSRecordA record;
+        record.addresses.push_back(qsox::Ipv4Address::LOCALHOST);
+        callback(Ok(std::move(record)));
+        return Ok();
+    }
+
     auto res = ares_query_dnsrec(
         (ares_channel_t*)m_channel,
         name.c_str(),
@@ -144,6 +152,14 @@ ResolverResult<> Resolver::queryA(const std::string& name, ResolverCallback<DNSR
 
 ResolverResult<> Resolver::queryAAAA(const std::string& name, ResolverCallback<DNSRecordAAAA> callback) {
     log::debug("(Resolver) queryAAAA for {}", name);
+
+    // localhost is treated specially
+    if (name == "localhost") {
+        DNSRecordAAAA record;
+        record.addresses.push_back(qsox::Ipv6Address::LOCALHOST);
+        callback(Ok(std::move(record)));
+        return Ok();
+    }
 
     auto res = ares_query_dnsrec(
         (ares_channel_t*)m_channel,
@@ -182,6 +198,48 @@ ResolverResult<> Resolver::querySRV(const std::string& name, ResolverCallback<DN
     }
 
     return Ok();
+}
+
+void Resolver::setCustomDnsServer(qsox::IpAddress addr) {
+    this->setCustomDnsServers(addr, std::nullopt);
+}
+
+void Resolver::setCustomDnsServers(std::optional<qsox::IpAddress> primary, std::optional<qsox::IpAddress> secondary) {
+    m_primaryNs = primary;
+    m_secondaryNs = secondary;
+    this->reloadServers();
+}
+
+geode::Result<> Resolver::setDnsTransport(DNSTransport transport) {
+    if (transport == DNSTransport::Https || transport == DNSTransport::Tls) {
+        return Err("DNS over HTTPS/TLS is not supported yet");
+    }
+
+    m_transport = transport;
+    this->reloadServers();
+    return Ok();
+}
+
+void Resolver::reloadServers() {
+    std::string servers;
+
+    if (!m_primaryNs) {
+        // no dns servers would be invalid, so set 1.1.1.1 as default
+        m_primaryNs = qsox::Ipv4Address{1, 1, 1, 1};
+    }
+
+    for (auto addrOpt : {m_primaryNs, m_secondaryNs}) {
+        if (!addrOpt.has_value()) {
+            continue;
+        }
+
+        if (!servers.empty()) {
+            servers += ",";
+        }
+        servers += fmt::format("[{}]", addrOpt->toString());
+    }
+
+    ares_set_servers_csv((ares_channel_t*)m_channel, servers.c_str());
 }
 
 template <>

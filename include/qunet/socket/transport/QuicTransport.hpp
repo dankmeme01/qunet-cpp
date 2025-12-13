@@ -39,10 +39,10 @@ public:
     class QuicConnection& connection();
 
 private:
-    std::unique_ptr<class QuicConnection> m_conn;
+    std::shared_ptr<class QuicConnection> m_conn;
     CircularByteBuffer m_recvBuffer;
 
-    QuicTransport(std::unique_ptr<QuicConnection> connection);
+    QuicTransport(std::shared_ptr<QuicConnection> connection);
 };
 
 }

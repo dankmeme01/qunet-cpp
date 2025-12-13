@@ -197,17 +197,25 @@ Connection::Connection(
 Connection::~Connection() {
     m_cancel.cancel();
 
+    log::debug("Connection object destroyed");
+
+    // in practice, the worker task should have already finished running if the connection is being destroyed
     if (m_workerTask) {
-        m_workerTask->abort();
-        // wait for task to finish
-        if (!m_runtime->isShuttingDown()) {
-            m_workerTask->blockOn();
-        }
+        m_workerTask.reset();
     }
 
     // close the socket if applicable
     if (m_socket) {
         (void) m_socket->closeSync();
+    }
+}
+
+void Connection::destroy() {
+    m_cancel.cancel();
+
+    if (m_workerTask) {
+        m_workerTask->abort();
+        m_workerTask.reset();
     }
 }
 
@@ -374,7 +382,7 @@ Future<> Connection::workerThreadLoop() {
 
                 arc::selectee(
                     m_disconnectNotify.notified(),
-                    [&] -> arc::Future<>{
+                    [&] -> arc::Future<> {
                         co_await this->threadCancelConnection();
                     }
                 )
@@ -414,7 +422,36 @@ void Connection::resetConnectionState() {
     m_socket.reset();
 }
 
+static bool isFatalError(const ConnectionError& err) {
+    if (err.isServerClosedError()) {
+        return true;
+    }
+
+    if (err.isTransportError()) {
+        auto& terr = err.asTransportError();
+        return (
+            terr == TransportError::ConnectionTimedOut
+            || terr == TransportError::TooUnreliable
+            || terr == TransportError::TimedOut
+            || terr == TransportError::Closed
+            || terr == TransportError::Cancelled
+        );
+    }
+
+    if (err.isOtherError()) {
+        auto code = err.asOtherError();
+        return code != ConnectionError::Code::Success;
+    }
+
+    return false;
+}
+
 void Connection::onConnectionError(const ConnectionError& err) {
+    if (isFatalError(err)) {
+        this->onFatalError(err);
+        return;
+    }
+
     log::warn("Connection error: {}", err.message());
     m_lastError.lock() = err;
 }
@@ -828,7 +865,7 @@ Future<ConnectionResult<>> Connection::threadConnectSocket(SocketAddress addr, C
         ? Socket::reconnect(opts, *m_socket)
         : Socket::connect(opts));
 
-    m_socket = ARC_CO_UNWRAP(res);
+    m_socket = ARC_CO_UNWRAP(std::move(res));
     co_return Ok();
 }
 
@@ -840,7 +877,7 @@ Future<ConnectionResult<>> Connection::threadTryReconnect(bool stateless) {
 
     QN_ASSERT(addr && type != ConnectionType::Unknown);
 
-    log::info("Attempting to reconnect to {} ({})", addr->toString(), connTypeToString(type));
+    log::info("Attempting to reconnect to {} ({}, stateless: {})", addr->toString(), connTypeToString(type), stateless);
 
     ARC_CO_UNWRAP(co_await this->threadConnectSocket(*addr, type, !stateless));
 
@@ -912,6 +949,34 @@ ConnectionResult<> Connection::connect(std::string_view destination) {
         return Ok();
     } else {
         return Err(ConnectionError::InProgress);
+    }
+}
+
+Future<ConnectionResult<>> Connection::connectWait(std::string_view destination) {
+    // set up a connection state callback
+    arc::Notify notify;
+
+    this->setConnectionStateCallback([&](ConnectionState state) {
+        if (state == ConnectionState::Connected || state == ConnectionState::Disconnected) {
+            notify.notifyOne();
+        }
+    });
+
+    auto res = this->connect(destination);
+    if (!res) {
+        this->setConnectionStateCallback(nullptr);
+        co_return res;
+    }
+
+    co_await notify.notified();
+
+    this->setConnectionStateCallback(nullptr);
+
+    auto state = this->state();
+    if (state == ConnectionState::Connected) {
+        co_return Ok();
+    } else {
+        co_return Err(this->lastError());
     }
 }
 
