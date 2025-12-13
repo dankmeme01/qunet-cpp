@@ -5,8 +5,10 @@
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include "UrlParser.hpp"
 
-#include <asp/time/sleep.hpp>
+#include <arc/future/Select.hpp>
+#include <arc/time/Sleep.hpp>
 
+using namespace arc;
 using namespace asp::time;
 
 constexpr Duration PING_TIMEOUT = Duration::fromMillis(2000);
@@ -14,77 +16,19 @@ constexpr Duration PING_TIMEOUT = Duration::fromMillis(2000);
 namespace qn {
 
 Pinger::Pinger() {
-    m_pingThread.setLoopFunction([this](auto& stopToken) {
-        // TODO: might refactor this to not use condvars
-        auto item = m_channel.popTimeout(std::chrono::milliseconds{1000});
+    auto rt = arc::Runtime::current();
+    if (!rt) {
+        throw std::runtime_error("Pinger must be created within an arc runtime");
+    }
 
-        if (item) {
-            this->thrDoPing(item->first, std::move(item->second));
-        }
-    });
-    m_pingThread.start();
+    auto [tx, rx] = arc::mpsc::channel<std::pair<qsox::SocketAddress, Callback>>(1024);
+    m_pingTx = std::move(tx);
 
-    // TODO: maybe make the recv thread sleep longer if there are no outstanding pings
-    m_recvThread.setLoopFunction([this](auto& sotpToken) {
-        if (!m_socket) {
-            // block until we have a socket
-            m_socketNotify.wait({}, [&] {
-                return m_socket.has_value();
-            });
-
-            return;
-        }
-
-        qsox::SocketAddress src = qsox::SocketAddress::any();
-        uint8_t response[256];
-
-        auto res = m_socket->recvFrom(response, sizeof(response), src);
-        if (res) {
-            size_t bytes = res.unwrap();
-            auto res = this->thrParsePingResponse(response, bytes);
-            if (!res) {
-                log::warn("Failed to parse ping response: {}", res.unwrapErr().message());
-                return;
-            }
-
-            auto result = std::move(res).unwrap();
-
-            this->thrDispatchResult(result, src);
-        } else {
-            auto err = res.unwrapErr();
-            if (err != qsox::Error::TimedOut && err != qsox::Error::WouldBlock) {
-                log::warn("Failed to receive ping response: {}", err.message());
-            }
-        }
-
-        // check if any pings have timed out
-        auto pings = m_outgoingPings.lock();
-
-        for (size_t i = 0; i < pings->size(); ) {
-            auto& ping = (*pings)[i];
-            if (ping.sentAt.elapsed() > PING_TIMEOUT) {
-                PingResult result {
-                    .pingId = ping.pingId,
-                    .responseTime = Duration::fromMillis(0), // no response time
-                    .timedOut = true,
-                };
-                ping.callback(result);
-
-                pings->erase(pings->begin() + i);
-            } else {
-                ++i;
-            }
-        }
-    });
-    m_recvThread.start();
+    m_workerTask = rt->spawn(this->workerLoop(std::move(rx)));
 }
 
 Pinger::~Pinger() {
-    m_pingThread.stop();
-    m_recvThread.stop();
-
-    m_pingThread.join();
-    m_recvThread.join();
+    if (m_workerTask) m_workerTask->abort();
 }
 
 Pinger& Pinger::get() {
@@ -92,8 +36,93 @@ Pinger& Pinger::get() {
     return instance;
 }
 
+Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>> rx) {
+    auto res = co_await UdpSocket::bindAny();
+    if (!res) {
+        log::error("Failed to bind pinger UDP socket: {}", res.unwrapErr().message());
+        co_return;
+    }
+
+    m_socket = std::move(res).unwrap();
+
+    while (true) {
+        qsox::SocketAddress src = qsox::SocketAddress::any();
+        uint8_t response[256];
+
+        Instant nextTimeout = Instant::farFuture();
+
+        for (auto& ping : m_outgoingPings) {
+            auto pingTimeout = ping.sentAt + PING_TIMEOUT;
+            nextTimeout = std::min(nextTimeout, pingTimeout);
+        }
+
+        co_await arc::select(
+            // wait for a new ping request
+            arc::selectee(
+                rx.recv(),
+                [this](auto res) -> arc::Future<> {
+                    if (!res) co_return; // channel closed
+
+                    auto [address, callback] = std::move(res).unwrap();
+                    co_await this->thrDoPing(address, std::move(callback));
+                }
+            ),
+
+            // wait to receive a ping response
+            arc::selectee(
+                m_socket->recvFrom(response, sizeof(response), src),
+                [&](auto res) {
+                    if (!res) {
+                        log::warn("Failed to receive ping response: {}", res.unwrapErr().message());
+                        return;
+                    }
+
+                    size_t bytes = res.unwrap();
+                    auto pres = this->thrParsePingResponse(response, bytes);
+                    if (!pres) {
+                        log::warn("Failed to parse ping response: {}", pres.unwrapErr().message());
+                        return;
+                    }
+
+                    auto result = std::move(pres).unwrap();
+                    this->thrDispatchResult(result, src);
+                }
+            ),
+
+            // wait for the next timeout
+            arc::selectee(
+                arc::sleepUntil(nextTimeout),
+                [this] {
+                    // check for timed out pings
+                    this->thrRemoveTimedOutPings();
+                }
+            )
+        );
+    }
+}
+
+void Pinger::thrRemoveTimedOutPings() {
+    Instant now = Instant::now();
+
+    for (size_t i = 0; i < m_outgoingPings.size(); ) {
+        auto& ping = m_outgoingPings[i];
+        if (now.durationSince(ping.sentAt) > PING_TIMEOUT) {
+            PingResult result {
+                .pingId = ping.pingId,
+                .responseTime = Duration::fromMillis(0), // no response time
+                .timedOut = true,
+            };
+            ping.callback(result);
+
+            m_outgoingPings.erase(m_outgoingPings.begin() + i);
+        } else {
+            ++i;
+        }
+    }
+}
+
 void Pinger::ping(const qsox::SocketAddress& address, Callback callback) {
-    m_channel.push(std::make_pair(address, std::move(callback)));
+    (void) m_pingTx->send(std::make_pair(address, std::move(callback)));
 }
 
 geode::Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
@@ -124,16 +153,6 @@ geode::Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
 }
 
 geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, Callback callback) {
-    auto dnsCache = m_dnsCache.lock();
-    auto it = dnsCache->find(std::string(domain));
-
-    if (it != dnsCache->end()) {
-        this->ping(qsox::SocketAddress{it->second, port}, std::move(callback));
-        return Ok();
-    }
-
-    dnsCache.unlock();
-
     // not cached, resolve the domain
     auto& resolver = Resolver::get();
     auto res = resolver.queryA(std::string(domain), [
@@ -151,9 +170,6 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
 
         QN_ASSERT(!addrs.empty() && "DNS A record should not be empty");
 
-        auto dnsCache = m_dnsCache.lock();
-        dnsCache->emplace(domain, addrs[0]);
-
         // ping the first address
         this->ping(qsox::SocketAddress{addrs[0], port}, std::move(callback));
     });
@@ -165,23 +181,7 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
     return Ok();
 }
 
-void Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
-    if (!m_socket) {
-        auto res = qsox::UdpSocket::bindAny();
-        if (!res) {
-            log::error("Failed to bind pinger UDP socket: {}", res.unwrapErr().message());
-            return;
-        }
-
-        m_socket = std::move(res).unwrap();
-        m_socketNotify.notifyAll();
-
-        if (auto err = m_socket->setReadTimeout(100).err()) {
-            log::error("Failed to set read timeout on pinger UDP socket: {}", err->message());
-            return;
-        }
-    }
-
+Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
     uint32_t pingId = ++m_nextPingId;
 
     HeapByteWriter writer;
@@ -189,14 +189,14 @@ void Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
     writer.writeU32(pingId);
     writer.writeU8(this->isCached(address) ? 1 : 0); // flags
 
-    auto res = m_socket->sendTo(writer.written().data(), writer.written().size(), address);
+    auto res = co_await m_socket->sendTo(writer.written().data(), writer.written().size(), address);
     if (!res) {
         log::error("Failed to send ping to {}: {}", address.toString(), res.unwrapErr().message());
-        return;
+        co_return;
     }
 
-    m_outgoingPings.lock()->push_back({
-        .sentAt = SystemTime::now(),
+    m_outgoingPings.push_back({
+        .sentAt = Instant::now(),
         .callback = std::move(callback),
         .pingId = pingId,
     });
@@ -235,7 +235,7 @@ ByteReader::Result<PingResult> Pinger::thrParsePingResponse(const uint8_t* data,
 }
 
 void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& address) {
-    auto pings = m_outgoingPings.lock();
+    auto& pings = m_outgoingPings;
     auto cache = m_cache.lock();
 
     auto cacheEntry = cache->find(address);
@@ -257,8 +257,8 @@ void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& ad
         cacheEntry->second.protocols = result.protocols;
     }
 
-    for (size_t i = 0; i < pings->size(); i++) {
-        auto& ping = (*pings)[i];
+    for (size_t i = 0; i < pings.size(); i++) {
+        auto& ping = pings[i];
 
         if (result.pingId == ping.pingId) {
             Duration responseTime = ping.sentAt.elapsed();
@@ -266,7 +266,7 @@ void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& ad
             ping.callback(result);
 
             // remove the ping from the list
-            pings->erase(pings->begin() + i);
+            pings.erase(pings.begin() + i);
             break;
         }
     }

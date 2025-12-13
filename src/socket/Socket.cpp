@@ -10,21 +10,22 @@
 
 #include <asp/time/Instant.hpp>
 
-using namespace qsox;
+using namespace arc;
 using namespace asp::time;
 
 namespace qn {
 
-TransportResult<std::pair<Socket, Duration>> Socket::createSocket(const TransportOptions& options) {
+Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const TransportOptions& options) {
     auto startedAt = Instant::now();
 
     StatTracker tracker;
     tracker.setEnabled(options.connOptions->debug.recordStats);
 
-    auto transport = GEODE_UNWRAP(Socket::createTransport(options));
+    auto transport = ARC_CO_UNWRAP(co_await Socket::createTransport(options));
 
     if (startedAt.elapsed() > options.timeout) {
-        return Err(TransportError::ConnectionTimedOut);
+        (void) co_await transport->close();
+        co_return Err(TransportError::ConnectionTimedOut);
     }
 
     tracker.onConnected();
@@ -34,52 +35,89 @@ TransportResult<std::pair<Socket, Duration>> Socket::createSocket(const Transpor
 
     auto handshakeTimeout = options.timeout - startedAt.elapsed();
     if (handshakeTimeout.millis() <= 0) {
-        return Err(TransportError::ConnectionTimedOut);
+        (void) co_await transport->close();
+        co_return Err(TransportError::ConnectionTimedOut);
     }
 
-    return Ok(std::pair{std::move(socket), handshakeTimeout});
+    co_return Ok(std::pair{std::move(socket), handshakeTimeout});
 }
 
-TransportResult<Socket> Socket::connect(const TransportOptions& options) {
-    auto [socket, timeout] = GEODE_UNWRAP(createSocket(options));
+arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& options) {
+    auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
 
-    auto msg = GEODE_UNWRAP(socket.m_transport->performHandshake(HandshakeStartMessage {
+    // this will be set to false at the very end if successful
+    bool closeSocket = true;
+    auto _dtor = scopeDtor([&] {
+        if (closeSocket) {
+            (void) socket.closeSync();
+        }
+    });
+
+    auto hmsg = HandshakeStartMessage {
         .majorVersion = MAJOR_VERSION,
         .fragLimit = UDP_PACKET_LIMIT,
         // TODO: qdb hash
         .qdbHash = std::array<uint8_t, 16>{}
-    }, timeout));
+    };
+
+    auto tres = co_await arc::timeout(
+        timeout,
+        socket.m_transport->performHandshake(std::move(hmsg))
+    );
+    if (!tres) {
+        co_return Err(TransportError::ConnectionTimedOut);
+    }
+
+    auto msg = ARC_CO_UNWRAP(std::move(tres).unwrap());
 
     if (msg.is<HandshakeFinishMessage>()) {
         auto& hf = msg.as<HandshakeFinishMessage>();
-        GEODE_UNWRAP(socket.onHandshakeSuccess(hf));
+        ARC_CO_UNWRAP(socket.onHandshakeSuccess(hf));
     } else if (msg.is<HandshakeFailureMessage>()) {
         auto& hf = msg.as<HandshakeFailureMessage>();
         log::warn("Handshake failed: {}", hf.message());
 
-        return Err(TransportError::HandshakeFailure(std::string(hf.message())));
+        co_return Err(TransportError::HandshakeFailure(std::string(hf.message())));
     } else {
-        return Err(TransportError::UnexpectedMessage);
+        co_return Err(TransportError::UnexpectedMessage);
     }
 
-    return Ok(std::move(socket));
+    closeSocket = false;
+    co_return Ok(std::move(socket));
 }
 
-TransportResult<Socket> Socket::reconnect(const TransportOptions& options, Socket& prev) {
-    auto [socket, timeout] = GEODE_UNWRAP(createSocket(options));
+Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& options, Socket& prev) {
+    auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
 
-    auto msg = GEODE_UNWRAP(socket.m_transport->performReconnect(prev.transport()->m_connectionId, timeout));
+    // this will be set to false at the very end if successful
+    bool closeSocket = true;
+    auto _dtor = scopeDtor([&] {
+        if (closeSocket) {
+            (void) socket.closeSync();
+        }
+    });
 
-    if (msg.is<ReconnectSuccessMessage>()) {
-        GEODE_UNWRAP(socket.onReconnectSuccess(prev));
-    } else if (msg.is<ReconnectFailureMessage>()) {
-        log::warn("Reconnect failed!");
-        return Err(TransportError::ReconnectFailed);
-    } else {
-        return Err(TransportError::UnexpectedMessage);
+    auto tres = co_await arc::timeout(
+        timeout,
+        socket.m_transport->performReconnect(prev.transport()->m_connectionId)
+    );
+    if (!tres) {
+        co_return Err(TransportError::ConnectionTimedOut);
     }
 
-    return Ok(std::move(socket));
+    auto msg = ARC_CO_UNWRAP(std::move(tres).unwrap());
+
+    if (msg.is<ReconnectSuccessMessage>()) {
+        ARC_CO_UNWRAP(socket.onReconnectSuccess(prev));
+    } else if (msg.is<ReconnectFailureMessage>()) {
+        log::warn("Reconnect failed!");
+        co_return Err(TransportError::ReconnectFailed);
+    } else {
+        co_return Err(TransportError::UnexpectedMessage);
+    }
+
+    closeSocket = false;
+    co_return Ok(std::move(socket));
 }
 
 TransportResult<> Socket::onHandshakeSuccess(const HandshakeFinishMessage& msg) {
@@ -120,15 +158,19 @@ TransportResult<> Socket::onReconnectSuccess(Socket& older) {
     return Ok();
 }
 
-TransportResult<> Socket::close() {
+Future<TransportResult<>> Socket::close() {
     return m_transport->close();
+}
+
+TransportResult<> Socket::closeSync() {
+    return m_transport->closeSync();
 }
 
 bool Socket::isClosed() const {
     return m_transport->isClosed();
 }
 
-TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable, bool uncompressed) {
+Future<TransportResult<>> Socket::sendMessage(QunetMessage&& message, bool reliable, bool uncompressed) {
     // determine if the message needs to be compressed
     CompressionType ctype = CompressionType::None;
 
@@ -142,11 +184,11 @@ TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable, boo
 
         switch (ctype) {
             case CompressionType::Zstd: {
-                GEODE_UNWRAP(this->doCompressZstd(msg));
+                ARC_CO_UNWRAP(this->doCompressZstd(msg));
             } break;
 
             case CompressionType::Lz4: {
-                return Err(TransportError::NotImplemented);
+                co_return Err(TransportError::NotImplemented);
             } break;
 
             default: break;
@@ -155,7 +197,7 @@ TransportResult<> Socket::sendMessage(QunetMessage&& message, bool reliable, boo
 
     log::debug("Socket: sending message: {} (reliable: {}, compressed: {})", message.typeStr(), reliable, ctype != CompressionType::None);
 
-    return m_transport->sendMessage(std::move(message), reliable);
+    co_return co_await m_transport->sendMessage(std::move(message), reliable);
 }
 
 CompressionType Socket::shouldCompress(size_t size) const {
@@ -194,34 +236,10 @@ CompressorResult<> Socket::doCompressLz4(DataMessage& message) const {
     return Err(CompressorError::NotInitialized);
 }
 
-TransportResult<QunetMessage> Socket::receiveMessage(const std::optional<Duration>& timeout) {
-    bool available = this->messageAvailable();
-
-    auto started = Instant::now();
-
-    while (!available) {
-        std::optional<Duration> remaining = timeout ? std::optional(*timeout - started.elapsed()) : std::nullopt;
-        auto pollRes = GEODE_UNWRAP(m_transport->poll(remaining));
-
-        if (!pollRes) {
-            return Err(TransportError::TimedOut);
-        }
-
-        available = GEODE_UNWRAP(this->processIncomingData());
-    }
-
-    return m_transport->receiveMessage();
-}
-
-TransportResult<bool> Socket::processIncomingData() {
-    // check if there's any data available to read
-    bool hasData = GEODE_UNWRAP(m_transport->poll(Duration{}));
-
-    return hasData ? m_transport->processIncomingData() : Ok(this->messageAvailable());
-}
-
-bool Socket::messageAvailable() {
-    return m_transport->messageAvailable();
+Future<TransportResult<QunetMessage>> Socket::receiveMessage() {
+    auto msg = ARC_CO_UNWRAP(co_await m_transport->receiveMessage());
+    m_transport->onIncomingMessage(msg);
+    co_return Ok(std::move(msg));
 }
 
 Duration Socket::getLatency() const {
@@ -232,43 +250,46 @@ Duration Socket::untilTimerExpiry() const {
     return m_transport->untilTimerExpiry();
 }
 
-TransportResult<> Socket::handleTimerExpiry() {
+Future<TransportResult<>> Socket::handleTimerExpiry() {
     return m_transport->handleTimerExpiry();
 }
 
-TransportResult<std::shared_ptr<BaseTransport>> Socket::createTransport(const TransportOptions& options) {
+Future<TransportResult<std::shared_ptr<BaseTransport>>> Socket::createTransport(const TransportOptions& options) {
     switch (options.type) {
         case ConnectionType::Udp: {
-            auto transport = GEODE_UNWRAP(UdpTransport::connect(options.address, *options.connOptions));
+            auto transport = ARC_CO_UNWRAP(co_await UdpTransport::connect(
+                options.address,
+                *options.connOptions
+            ));
             auto ptr = std::make_shared<UdpTransport>(std::move(transport));
-            return Ok(std::static_pointer_cast<BaseTransport>(ptr));
+            co_return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 
         case ConnectionType::Tcp: {
-            auto transport = GEODE_UNWRAP(TcpTransport::connect(
+            auto transport = ARC_CO_UNWRAP(co_await TcpTransport::connect(
                 options.address,
                 options.timeout,
                 *options.connOptions
             ));
             auto ptr = std::make_shared<TcpTransport>(std::move(transport));
-            return Ok(std::static_pointer_cast<BaseTransport>(ptr));
+            co_return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 
 #ifdef QUNET_QUIC_SUPPORT
         case ConnectionType::Quic: {
-            auto transport = GEODE_UNWRAP(QuicTransport::connect(
+            auto transport = ARC_CO_UNWRAP(co_await QuicTransport::connect(
                 options.address,
                 options.timeout,
                 options.tlsContext,
                 options.connOptions
             ));
             auto ptr = std::make_shared<QuicTransport>(std::move(transport));
-            return Ok(std::static_pointer_cast<BaseTransport>(ptr));
+            co_return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 #endif
 
         default: {
-            return Err(TransportError::NotImplemented);
+            co_return Err(TransportError::NotImplemented);
         }
     }
 }

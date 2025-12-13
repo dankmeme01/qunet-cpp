@@ -2,7 +2,7 @@
 
 #include "BaseTransport.hpp"
 #include <qunet/buffers/CircularByteBuffer.hpp>
-#include <qsox/TcpStream.hpp>
+#include <arc/net/TcpStream.hpp>
 
 namespace qn {
 
@@ -12,30 +12,31 @@ public:
     TcpTransport(TcpTransport&&) = default;
     TcpTransport& operator=(TcpTransport&&) = default;
 
-    static qsox::NetResult<TcpTransport> connect(
+    static arc::Future<qsox::NetResult<TcpTransport>> connect(
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
         const struct ConnectionOptions& connOptions
     );
 
-    TransportResult<> close() override;
+    // TCP shutdown is already synchronous, so no need for async close
+    TransportResult<> closeSync() override;
     bool isClosed() const override;
-    TransportResult<> sendMessage(QunetMessage data, bool reliable) override;
-    TransportResult<bool> poll(const std::optional<asp::time::Duration>& dur) override;
-    TransportResult<bool> processIncomingData() override;
+    arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
+    arc::Future<TransportResult<>> poll() override;
+    arc::Future<TransportResult<QunetMessage>> receiveMessage() override;
 
     asp::time::Duration untilTimerExpiry() const override;
-    TransportResult<> handleTimerExpiry() override;
+    arc::Future<TransportResult<>> handleTimerExpiry() override;
 
 private:
     friend class MultiPoller;
 
-    qsox::TcpStream m_socket;
+    arc::TcpStream m_socket;
     CircularByteBuffer m_recvBuffer;
     std::optional<asp::time::Duration> m_activeKeepaliveInterval;
     bool m_closed = false;
 
-    TcpTransport(qsox::TcpStream socket);
+    TcpTransport(arc::TcpStream socket);
     asp::time::Duration untilKeepalive() const;
 };
 

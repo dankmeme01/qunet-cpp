@@ -6,32 +6,38 @@
 #include "Common.hpp"
 
 #include <qsox/Poll.hpp>
+#include <arc/time/Timeout.hpp>
 
 #define MAP_UNWRAP(x) GEODE_UNWRAP((x).mapErr([](const auto& err) { return TransportError::EncodingFailed; }))
 
-using namespace qsox;
+using namespace arc;
+using qsox::SocketAddress;
 using namespace asp::time;
 
 namespace qn {
 
-TcpTransport::TcpTransport(qsox::TcpStream socket) : m_socket(std::move(socket)), m_recvBuffer(512) {}
+TcpTransport::TcpTransport(TcpStream socket) : m_socket(std::move(socket)), m_recvBuffer(512) {}
 
 TcpTransport::~TcpTransport() {}
 
-NetResult<TcpTransport> TcpTransport::connect(const SocketAddress& address, const Duration& timeout, const ConnectionOptions& connOptions) {
-    auto socket = GEODE_UNWRAP(TcpStream::connect(address, timeout.millis()));
+Future<NetResult<TcpTransport>> TcpTransport::connect(const SocketAddress& address, const Duration& timeout, const ConnectionOptions& connOptions) {
+    auto result = ARC_CO_UNWRAP((co_await arc::timeout(
+        timeout,
+        TcpStream::connect(address)
+    )).mapErr([](const auto&) { return qsox::Error::TimedOut; }));
+
+    auto socket = ARC_CO_UNWRAP(std::move(result));
 
     TcpTransport ret(std::move(socket));
     ret.m_activeKeepaliveInterval = connOptions.activeKeepaliveInterval;
 
-    return Ok(std::move(ret));
+    co_return Ok(std::move(ret));
 }
 
-TransportResult<> TcpTransport::close() {
-    GEODE_UNWRAP(m_socket.shutdown(ShutdownMode::Both));
-
+TransportResult<> TcpTransport::closeSync() {
+    auto& stream = m_socket.inner();
+    ARC_UNWRAP(stream.shutdown(qsox::ShutdownMode::Both));
     m_closed = true;
-
     return Ok();
 }
 
@@ -39,7 +45,7 @@ bool TcpTransport::isClosed() const {
     return m_closed;
 }
 
-TransportResult<> TcpTransport::sendMessage(QunetMessage message, bool reliable) {
+Future<TransportResult<>> TcpTransport::sendMessage(QunetMessage message, bool reliable) {
     this->updateLastActivity();
 
     if (message.is<KeepaliveMessage>()) {
@@ -50,32 +56,27 @@ TransportResult<> TcpTransport::sendMessage(QunetMessage message, bool reliable)
     return streamcommon::sendMessage(std::move(message), m_socket, *this);
 }
 
-TransportResult<bool> TcpTransport::poll(const std::optional<Duration>& dur) {
-    int timeout = dur ? dur->millis() : -1;
-
-    auto res = GEODE_UNWRAP(qsox::pollOne(m_socket, PollType::Read, timeout));
-
-    return Ok(res == PollResult::Readable);
+Future<TransportResult<>> TcpTransport::poll() {
+    ARC_CO_UNWRAP(co_await m_socket.pollReadable());
+    co_return Ok();
 }
 
-TransportResult<bool> TcpTransport::processIncomingData() {
-    GEODE_UNWRAP(streamcommon::processIncomingData(
-        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_recvMsgQueue, m_unackedKeepalives
-    ));
-
-    return Ok(!m_recvMsgQueue.empty());
+Future<TransportResult<QunetMessage>> TcpTransport::receiveMessage() {
+    return streamcommon::receiveMessage(
+        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_unackedKeepalives
+    );
 }
 
 asp::time::Duration TcpTransport::untilTimerExpiry() const {
     return this->untilKeepalive();
 }
 
-TransportResult<> TcpTransport::handleTimerExpiry() {
+Future<TransportResult<>> TcpTransport::handleTimerExpiry() {
     if (m_unackedKeepalives >= 3) {
-        return Err(TransportError::TimedOut);
+        co_return Err(TransportError::TimedOut);
     }
 
-    return this->sendMessage(KeepaliveMessage{}, false);
+    co_return co_await this->sendMessage(KeepaliveMessage{}, false);
 }
 
 Duration TcpTransport::untilKeepalive() const {

@@ -5,6 +5,7 @@
 #include <qunet/util/Error.hpp>
 #include <qunet/buffers/Error.hpp>
 #include <qsox/Error.hpp>
+#include <arc/time/Timeout.hpp>
 
 // Various transport errors
 
@@ -27,6 +28,7 @@ struct TransportError {
         DefragmentationError,
         TooUnreliable,
         InvalidQunetDatabase,
+        InvalidArgument,
         ReconnectFailed,
         TimedOut,
         Closed,
@@ -70,6 +72,7 @@ struct TransportError {
     TransportError(CompressorError err) : m_kind(std::move(err)) {}
     TransportError(DecompressorError err) : m_kind(std::move(err)) {}
     TransportError(CustomCode code) : m_kind(CustomKind{code}) {}
+    TransportError(arc::TimedOut) : m_kind(qsox::Error{qsox::Error::TimedOut}) {}
 
     bool operator==(const TransportError& other) const = default;
     bool operator!=(const TransportError& other) const = default;

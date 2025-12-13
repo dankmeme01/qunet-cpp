@@ -22,7 +22,7 @@ class QunetMessage {
         HandshakeStartMessage,
         HandshakeFinishMessage,
         HandshakeFailureMessage,
-        // ClientCloseMessage,
+        ClientCloseMessage,
         ServerCloseMessage,
         ClientReconnectMessage,
         ConnectionErrorMessage,
@@ -44,7 +44,7 @@ public:
     QunetMessage(HandshakeStartMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(HandshakeFinishMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(HandshakeFailureMessage msg) : m_kind(std::move(msg)) {}
-    // QunetMessage(ClientCloseMessage msg) : m_kind(std::move(msg)) {}
+    QunetMessage(ClientCloseMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ServerCloseMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ClientReconnectMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ConnectionErrorMessage msg) : m_kind(std::move(msg)) {}

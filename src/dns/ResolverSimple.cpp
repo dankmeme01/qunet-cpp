@@ -118,6 +118,19 @@ ResolverResult<> Resolver::querySRV(const std::string& name, ResolverCallback<DN
     return Err(ResolverError::Other);
 }
 
+void Resolver::setCustomDnsServer(qsox::IpAddress addr) {
+    // not supported
+}
+
+void Resolver::setCustomDnsServers(std::optional<qsox::IpAddress> primary, std::optional<qsox::IpAddress> secondary) {
+    // not supported
+}
+
+geode::Result<> Resolver::setDnsTransport(DNSTransport transport) {
+    // not supported
+    return Err("not supported in simple resolver");
+}
+
 }
 
 #endif

@@ -3,6 +3,7 @@
 #include "Error.hpp"
 #include <qunet/util/assert.hpp>
 
+#include <cstring>
 #include <vector>
 #include <span>
 #include <string_view>

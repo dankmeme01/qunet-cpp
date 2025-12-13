@@ -6,12 +6,14 @@
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/Log.hpp>
 #include <queue>
+#include <arc/future/Future.hpp>
+#include <arc/util/Result.hpp>
 
 // Common operations for stream-like transport layers (TCP, QUIC, etc.)
 
 namespace qn::streamcommon {
 
-inline TransportResult<> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport) {
+inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport) {
     HeapByteWriter writer;
 
     bool hasLength = !(message.is<HandshakeStartMessage>() || message.is<ClientReconnectMessage>());
@@ -35,18 +37,18 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket, BaseTr
 
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
-        GEODE_UNWRAP(message.encodeControlMsg(writer, 0));
+        ARC_CO_UNWRAP(message.encodeControlMsg(writer, 0));
 
         // write message length
         prependLength();
 
         auto data = writer.written();
-        GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
+        ARC_CO_UNWRAP(co_await socket.sendAll(data.data(), data.size()));
 
         transport._tracker().onUpMessage(data[0], data.size());
         transport._tracker().onUpPacket(data.size());
 
-        return Ok();
+        co_return Ok();
     }
 
     auto& msg = message.as<DataMessage>();
@@ -61,71 +63,162 @@ inline TransportResult<> sendMessage(QunetMessage message, auto&& socket, BaseTr
     prependLength();
 
     auto data = writer.written();
-    GEODE_UNWRAP(socket.sendAll(data.data(), data.size()));
+    ARC_CO_UNWRAP(co_await socket.sendAll(data.data(), data.size()));
 
     transport._tracker().onUpMessage(data[0], msg.data.size());
     transport._tracker().onUpPacket(data.size());
 
-    return Ok();
+    co_return Ok();
 }
 
+// // The logic here is similar to the one in rust implementation
+// inline arc::Future<TransportResult<>> processIncomingData(
+//     auto&& socket,
+//     BaseTransport& transport,
+//     CircularByteBuffer& buffer,
+//     size_t messageSizeLimit,
+//     std::queue<QunetMessage>& msgQueue,
+//     size_t& unackedKeepalives
+// ) {
+//     // read from the socket if applicable
+//     auto wnd = buffer.writeWindow();
+//     if (wnd.size() < 2048) {
+//         // reserve more space if needed, but error if too much space is already reserved
+//         if (buffer.capacity() >= 1024 * 1024) {
+//             log::warn("processIncomingData: too much space reserved in buffer, capacity: {}, write window size: {}", buffer.capacity(), wnd.size());
+//             co_return Err(TransportError::NoBufferSpace);
+//         }
+
+//         buffer.reserve(2048);
+//         wnd = buffer.writeWindow();
+//     }
+
+//     size_t len = ARC_CO_UNWRAP(co_await socket.receive(wnd.data(), wnd.size()));
+
+//     if (len == 0) {
+//         co_return Err(TransportError::Closed);
+//     }
+
+//     transport._tracker().onDownPacket(len);
+
+//     buffer.advanceWrite(len);
+
+//     // decode messages until we have nothing left
+//     while (true) {
+//         if (buffer.size() < sizeof(uint32_t)) {
+//             // not enough data to read the length
+//             break;
+//         }
+
+//         uint8_t lenbuf[sizeof(uint32_t)];
+//         buffer.peek(lenbuf, sizeof(uint32_t));
+
+//         size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
+
+//         if (length == 0) {
+//             // TODO: idk if its worth erroring here?
+//             // return Err(TransportError::ZeroLengthMessage);
+//             buffer.skip(sizeof(uint32_t));
+//             continue;
+//         } else if (messageSizeLimit && length > messageSizeLimit) {
+//             log::warn("Received message larger than limit: {} > {}", length, messageSizeLimit);
+//             co_return Err(TransportError::MessageTooLong);
+//         }
+
+//         size_t totalLen = sizeof(uint32_t) + length;
+//         if (buffer.size() < totalLen) {
+//             break; // not enough data
+//         }
+
+//         // we have a full message in the buffer
+//         buffer.skip(sizeof(uint32_t));
+//         auto wrpread = buffer.peek(length);
+
+//         ByteReader reader = ByteReader::withTwoSpans(wrpread.first, wrpread.second);
+//         auto dec = [&]() -> TransportResult<> {
+//             auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
+
+//             if (meta.type != MSG_DATA) {
+//                 auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
+
+//                 if (msg.is<KeepaliveResponseMessage>()) {
+//                     unackedKeepalives = 0;
+//                 }
+
+//                 transport._tracker().onDownMessage(wrpread.first[0], length);
+//                 transport._pushFinalControlMessage(std::move(msg));
+//                 return Ok();
+//             }
+
+//             return transport._pushPreFinalDataMessage(std::move(meta));
+//         };
+
+//         auto res = dec();
+//         buffer.skip(length);
+//         ARC_CO_UNWRAP(res);
+//     }
+
+//     co_return Ok();
+// }
+
 // The logic here is similar to the one in rust implementation
-inline TransportResult<> processIncomingData(
-    auto&& socket,
+inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
+    auto&& stream,
     BaseTransport& transport,
     CircularByteBuffer& buffer,
     size_t messageSizeLimit,
-    std::queue<QunetMessage>& msgQueue,
     size_t& unackedKeepalives
 ) {
-    // read from the socket if applicable
-    auto wnd = buffer.writeWindow();
-    if (wnd.size() < 2048) {
-        // reserve more space if needed, but error if too much space is already reserved
-        if (buffer.capacity() >= 1024 * 1024) {
-            log::warn("processIncomingData: too much space reserved in buffer, capacity: {}, write window size: {}", buffer.capacity(), wnd.size());
-            return Err(TransportError::NoBufferSpace);
+    auto waitForData = [&](this auto self) -> arc::Future<TransportResult<>> {
+        auto wnd = buffer.writeWindow();
+        if (wnd.size() < 2048) {
+            // reserve more space if needed, but error if too much space is already reserved
+            if (buffer.capacity() >= 1024 * 1024) {
+                log::warn("receiveMessage: too much space reserved in buffer, capacity: {}, write window size: {}", buffer.capacity(), wnd.size());
+                co_return Err(TransportError::NoBufferSpace);
+            }
+
+            buffer.reserve(2048);
+            wnd = buffer.writeWindow();
         }
 
-        buffer.reserve(2048);
-        wnd = buffer.writeWindow();
-    }
+        size_t len = ARC_CO_UNWRAP(co_await stream.receive(wnd.data(), wnd.size()));
+        if (len == 0) {
+            co_return Err(TransportError::Closed);
+        }
 
-    size_t len = GEODE_UNWRAP(socket.receive(wnd.data(), wnd.size()));
+        transport._tracker().onDownPacket(len);
+        buffer.advanceWrite(len);
+        co_return Ok();
+    };
 
-    if (len == 0) {
-        return Err(TransportError::Closed);
-    }
-
-    transport._tracker().onDownPacket(len);
-
-    buffer.advanceWrite(len);
-
-    // decode messages until we have nothing left
     while (true) {
+        // first, try to parse a message already in the buffer
+
         if (buffer.size() < sizeof(uint32_t)) {
-            // not enough data to read the length
-            break;
+            // not enough data, read from the stream
+            ARC_CO_UNWRAP(co_await waitForData());
+            continue;
         }
 
+        // there's enough bytes to read the length, let's see if we have a full message
         uint8_t lenbuf[sizeof(uint32_t)];
         buffer.peek(lenbuf, sizeof(uint32_t));
-
         size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
 
         if (length == 0) {
-            // TODO: idk if its worth erroring here?
-            // return Err(TransportError::ZeroLengthMessage);
             buffer.skip(sizeof(uint32_t));
             continue;
         } else if (messageSizeLimit && length > messageSizeLimit) {
             log::warn("Received message larger than limit: {} > {}", length, messageSizeLimit);
-            return Err(TransportError::MessageTooLong);
+            co_return Err(TransportError::MessageTooLong);
         }
 
         size_t totalLen = sizeof(uint32_t) + length;
         if (buffer.size() < totalLen) {
-            break; // not enough data
+            // not enough data, read from the stream
+            ARC_CO_UNWRAP(co_await waitForData());
+            continue;
         }
 
         // we have a full message in the buffer
@@ -133,7 +226,7 @@ inline TransportResult<> processIncomingData(
         auto wrpread = buffer.peek(length);
 
         ByteReader reader = ByteReader::withTwoSpans(wrpread.first, wrpread.second);
-        auto dec = [&]() -> TransportResult<> {
+        auto dec = [&]() -> TransportResult<QunetMessage> {
             auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
 
             if (meta.type != MSG_DATA) {
@@ -144,19 +237,16 @@ inline TransportResult<> processIncomingData(
                 }
 
                 transport._tracker().onDownMessage(wrpread.first[0], length);
-                transport._pushFinalControlMessage(std::move(msg));
-                return Ok();
+                return Ok(std::move(msg));
             }
 
-            return transport._pushPreFinalDataMessage(std::move(meta));
+            return transport.decodePreFinalDataMessage(std::move(meta));
         };
 
         auto res = dec();
         buffer.skip(length);
-        GEODE_UNWRAP(res);
+        co_return res;
     }
-
-    return Ok();
 }
 
 }

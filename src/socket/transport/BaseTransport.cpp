@@ -29,77 +29,33 @@ TransportResult<> BaseTransport::initCompressors(const QunetDatabase* qdb) {
     return Ok();
 }
 
-TransportResult<QunetMessage> BaseTransport::performHandshake(
-    HandshakeStartMessage handshakeStart,
-    const std::optional<asp::time::Duration>& timeout
+arc::Future<TransportResult<QunetMessage>> BaseTransport::performHandshake(
+    HandshakeStartMessage handshakeStart
 ) {
-    auto startedAt = Instant::now();
-
-    GEODE_UNWRAP(this->sendMessage(std::move(handshakeStart), false));
-
-    while (true) {
-        auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;
-        if (remTimeout && remTimeout->isZero()) {
-            return Err(TransportError::TimedOut);
-        }
-
-        if (!GEODE_UNWRAP(this->poll(remTimeout))) {
-            continue;
-        }
-
-        bool msgAvailable = GEODE_UNWRAP(this->processIncomingData());
-        if (msgAvailable) {
-            break;
-        }
-    }
-
-    QN_DEBUG_ASSERT(!m_recvMsgQueue.empty());
-
-    return this->receiveMessage();
+    ARC_CO_UNWRAP(co_await this->sendMessage(std::move(handshakeStart), false));
+    co_return co_await this->receiveMessage();
 }
 
-TransportResult<QunetMessage> BaseTransport::performReconnect(
-    uint64_t connectionId,
-    const std::optional<asp::time::Duration>& timeout
+arc::Future<TransportResult<QunetMessage>> BaseTransport::performReconnect(
+    uint64_t connectionId
 ) {
-    auto startedAt = Instant::now();
-
-    GEODE_UNWRAP(this->sendMessage(ClientReconnectMessage{ connectionId }, false));
-
-    while (true) {
-        auto remTimeout = timeout ? std::optional(*timeout - startedAt.elapsed()) : std::nullopt;
-        if (remTimeout && remTimeout->isZero()) {
-            return Err(TransportError::TimedOut);
-        }
-
-        if (!GEODE_UNWRAP(this->poll(remTimeout))) {
-            continue;
-        }
-
-        bool msgAvailable = GEODE_UNWRAP(this->processIncomingData());
-        if (msgAvailable) {
-            break;
-        }
-    }
-
-    QN_DEBUG_ASSERT(!m_recvMsgQueue.empty());
-
-    return this->receiveMessage();
+    ARC_CO_UNWRAP(co_await this->sendMessage(ClientReconnectMessage{ connectionId }, false));
+    co_return co_await this->receiveMessage();
 }
 
-TransportResult<QunetMessage> BaseTransport::receiveMessage() {
-    if (!m_recvMsgQueue.empty()) {
-        auto msg = std::move(m_recvMsgQueue.front());
-        m_recvMsgQueue.pop();
-        return Ok(std::move(msg));
+arc::Future<TransportResult<bool>> BaseTransport::pollTimeout(asp::time::Duration timeout) {
+    auto res = co_await arc::timeout(timeout, this->poll());
+
+    if (res.isErr()) {
+        co_return Ok(false); // timed out
+    } else {
+        auto inner = res.unwrap();
+        if (inner.isErr()) {
+            co_return Err(inner.unwrapErr());
+        } else {
+            co_return Ok(true);
+        }
     }
-
-    // block until a message is available
-    while (!GEODE_UNWRAP(this->processIncomingData()));
-
-    auto msg = GEODE_UNWRAP(this->receiveMessage());
-
-    return Ok(std::move(msg));
 }
 
 uint64_t BaseTransport::getKeepaliveTimestamp() const {
@@ -108,41 +64,23 @@ uint64_t BaseTransport::getKeepaliveTimestamp() const {
     ).count();
 }
 
-bool BaseTransport::messageAvailable() {
-    return !m_recvMsgQueue.empty();
-}
-
 Duration BaseTransport::untilTimerExpiry() const {
     return Duration::infinite();
 }
 
-TransportResult<> BaseTransport::handleTimerExpiry() {
+arc::Future<TransportResult<>> BaseTransport::handleTimerExpiry() {
     if (m_unackedKeepalives >= 3) {
-        return Err(TransportError::TimedOut);
+        co_return Err(TransportError::TimedOut);
     }
 
-    return Ok();
+    co_return Ok();
 }
 
-TransportResult<> BaseTransport::_pushPreFinalDataMessage(QunetMessageMeta&& meta) {
-    return this->pushPreFinalDataMessage(std::move(meta));
+arc::Future<TransportResult<>> BaseTransport::close() {
+    co_return this->closeSync();
 }
 
-void BaseTransport::_pushFinalControlMessage(QunetMessage&& msg) {
-    if (msg.is<KeepaliveResponseMessage>()) {
-        auto ts = msg.as<KeepaliveResponseMessage>().timestamp;
-        auto now = this->getKeepaliveTimestamp();
-
-        if (now > ts) {
-            auto passed = Duration::fromNanos(now - ts);
-            this->updateLatency(passed);
-        }
-    }
-
-    m_recvMsgQueue.push(std::move(msg));
-}
-
-TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta) {
+TransportResult<QunetMessage> BaseTransport::decodePreFinalDataMessage(QunetMessageMeta&& meta) {
     // handle compression...
 
     std::vector<uint8_t> data;
@@ -181,16 +119,21 @@ TransportResult<> BaseTransport::pushPreFinalDataMessage(QunetMessageMeta&& meta
         }
     }
 
-    // zero-sized data messages are special, they can be used for reliable ACKs, but are not shown to the user
-    if (data.empty()) {
-        return Ok();
-    }
-
-    m_recvMsgQueue.push(DataMessage {
+    return Ok(DataMessage {
         .data = std::move(data),
     });
+}
 
-    return Ok();
+void BaseTransport::onIncomingMessage(const QunetMessage& msg) {
+    if (msg.is<KeepaliveResponseMessage>()) {
+        auto ts = msg.as<KeepaliveResponseMessage>().timestamp;
+        auto now = this->getKeepaliveTimestamp();
+
+        if (now > ts) {
+            auto passed = Duration::fromNanos(now - ts);
+            this->updateLatency(passed);
+        }
+    }
 }
 
 Duration BaseTransport::getLatency() const {

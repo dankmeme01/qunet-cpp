@@ -2,10 +2,12 @@
 
 #include "socket/Socket.hpp"
 #include "socket/transport/tls/ClientTlsContext.hpp"
-#include "util/Poll.hpp"
 #include "util/compat.hpp"
 #include "Pinger.hpp"
 
+#include <arc/task/CancellationToken.hpp>
+#include <arc/sync/Mutex.hpp>
+#include <arc/sync/mpsc.hpp>
 #include <asp/sync/Channel.hpp>
 #include <asp/sync/Notify.hpp>
 #include <asp/thread/Thread.hpp>
@@ -13,10 +15,14 @@
 
 namespace qn {
 
+
 struct ServerClosedError {
     std::string reason;
 
     std::string_view message() const;
+
+    bool operator==(const ServerClosedError& other) const = default;
+    bool operator!=(const ServerClosedError& other) const = default;
 };
 
 class ConnectionError {
@@ -29,10 +35,16 @@ public:
         NotConnected,
         AlreadyConnected,
         AlreadyClosing,
-        DnsResolutionFailed,
         AllAddressesFailed,
         ProtocolDisabled,
         NoConnectionTypeFound,
+        NoAddresses,
+        InternalError,
+        TlsInitFailed,
+        /// dns resolution did not succeed due to a resolver failure
+        DnsResolutionFailed,
+        /// dns resolution succeeded but the domain was not found
+        DomainNotFound,
     } Code;
 
     constexpr inline ConnectionError(Code code) : m_err(code) {}
@@ -92,14 +104,67 @@ struct ConnectionOptions {
     std::optional<asp::time::Duration> activeKeepaliveInterval;
 };
 
+struct ConnectionSettings {
+    std::string m_srvPrefix = "_qunet";
+    ConnectionType m_preferredConnType = ConnectionType::Tcp;
+    ConnectionOptions m_connOptions{};
+    bool m_preferIpv6 = true;
+    bool m_ipv4Enabled = true;
+    bool m_ipv6Enabled = true;
+    bool m_tlsCertVerification = true;
+    asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
+};
+
+struct ConnectionCallbacks {
+    move_only_function<void(ConnectionState)> m_connStateCallback;
+    move_only_function<void(std::vector<uint8_t>)> m_dataCallback;
+    move_only_function<void()> m_stateResetCallback;
+};
+
+struct WorkerThreadState;
+
+struct ConnectionData {
+    std::optional<qsox::SocketAddress> m_address;
+    ConnectionType m_connType{ConnectionType::Unknown};
+
+    uint16_t m_reconnectAttempt = 0;
+    bool m_tryStatelessReconnect = false;
+};
+
+struct ChannelMsg {
+    QunetMessage message;
+    bool reliable = false;
+    bool uncompressed = false;
+};
+
+struct WorkerThreadState {
+    arc::mpsc::Receiver<std::string> connectChan;
+    arc::mpsc::Receiver<ChannelMsg> msgChan;
+};
+
 // Connection is a class that is a manager for connecting to a specific endpoint.
 // It handles DNS resolution, happy eyeballs (choosing ipv4 or ipv6),
 // choosing the best transport (TCP, UDP, QUIC, ...), and reconnection.
 // It is completely asynchronous and uses threads internally.
 class Connection {
 public:
-    Connection();
+    static arc::Future<std::shared_ptr<Connection>> create();
+    /// Do not use this. Use create() instead.
+    Connection(
+        arc::Runtime* runtime,
+        arc::mpsc::Sender<std::string> connectChan,
+        arc::mpsc::Sender<ChannelMsg> msgChan,
+        WorkerThreadState wts
+    );
     ~Connection();
+
+    Connection(const Connection&) = delete;
+    Connection& operator=(const Connection&) = delete;
+    Connection(Connection&&) = delete;
+    Connection& operator=(Connection&&) = delete;
+
+    // Destroys the connection, terminating the worker task.
+    void destroy();
 
     // Connect to an IP address or a domain name. This function supports many different protocols.
     // If a domain name is provided without a port number, _qunet.<proto>.<domain> SRV record is fetched (`_qunet` part can be configured),
@@ -126,18 +191,25 @@ public:
     // - quic://example.com:1234 - fetches an A/AAAA record and uses the specified port to connect using QUIC.
     ConnectionResult<> connect(std::string_view destination);
 
-    // Cancel the current connection attempt. The actual cancellation might take some time, and this function does not block.
-    // Cancellation is complete when `connecting()` returns false.
-    void cancelConnection();
+    /// Like `connect`, but will wait for the connection to be established, or fail.
+    /// This will override some callbacks, so if you use custom callbacks, don't use this.
+    arc::Future<ConnectionResult<>> connectWait(std::string_view destination);
 
-    // Disconnect from the server. Errors if not connected, or if already disconnecting.
-    ConnectionResult<> disconnect();
+    // Disconnect from the server, or aborts the current connection attempt.
+    // Does nothing if disconnected.
+    void disconnect();
 
     // Set the callback that is called when the connection state changes.
     void setConnectionStateCallback(move_only_function<void(ConnectionState)> callback);
 
     // Set the callback that is called when a data message is received.
     void setDataCallback(move_only_function<void(std::vector<uint8_t>)> callback);
+
+    // Set the callback that is called when a stateless reconnect occurs.
+    // A stateless reconnect is what typically occurs when the server is restarted, the client attempts to reconnect
+    // but the server no longer has any state and prior knowledge of the client.
+    // Thus, an entirely new connection has to be made, and with it, some connection state has to be reset.
+    void setStateResetCallback(move_only_function<void()> callback);
 
     // Set the SRV query name prefix, by default it is `_qunet`.
     void setSrvPrefix(std::string_view pfx);
@@ -184,15 +256,18 @@ public:
     // Returns the average latency of the connection, zero if not connected or if there's not enough ping data.
     asp::time::Duration getLatency() const;
 
+    // Get the current connection state.
     ConnectionState state() const;
 
     // Returns the last error that occurred during the connection process.
     ConnectionError lastError() const;
 
-    // Sends a keepalive message to the server. Does nothing if not connected.
-    void sendKeepalive();
-    // Sends a data message to the server. Does nothing if not connected.
-    void sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false);
+    // Sends a keepalive message to the server. Returns true on success,
+    // false if not connected or message buffer is full.
+    bool sendKeepalive();
+    // Sends a data message to the server. Returns true on success,
+    // false if not connected or message buffer is full.
+    bool sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false);
 
     /// Get a snapshot of various message data. If `period` is nonzero, will only include stats for that time period.
     /// If `period` is zero (default), will include all-time stats.
@@ -202,110 +277,52 @@ public:
     StatWholeSnapshot statSnapshotFull() const;
 
 private:
-    struct ChannelMsg {
-        QunetMessage message;
-        bool reliable = false;
-        bool uncompressed = false;
-    };
+    arc::Runtime* m_runtime;
+    std::optional<arc::TaskHandle<void>> m_workerTask;
+    WorkerThreadState m_wts;
+    std::atomic<ConnectionState> m_connState{ConnectionState::Disconnected};
+    arc::CancellationToken m_cancel;
 
-    // vvv settings vvv
-    std::string m_srvPrefix = "_qunet";
-    ConnectionType m_preferredConnType = ConnectionType::Tcp;
-    ConnectionOptions m_connOptions{};
-    bool m_preferIpv6 = true;
-    bool m_ipv4Enabled = true;
-    bool m_ipv6Enabled = true;
-    bool m_tlsCertVerification = true;
-    asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
-    move_only_function<void(ConnectionState)> m_connStateCallback;
-    move_only_function<void(std::vector<uint8_t>)> m_dataCallback;
+    arc::mpsc::Sender<std::string> m_connectChan;
+    arc::mpsc::Sender<ChannelMsg> m_msgChan;
 
-    // vvv long lived fields vvv
+    asp::Mutex<ConnectionSettings> m_settings;
+    asp::SpinLock<ConnectionCallbacks> m_callbacks;
+    asp::SpinLock<ConnectionData> m_data;
+    asp::SpinLock<ConnectionError> m_lastError{ConnectionError::Success};
+    std::optional<Socket> m_socket;
 #ifdef QUNET_TLS_SUPPORT
     std::optional<ClientTlsContext> m_tlsContext;
 #endif
 
-    // vvv semi-public fields vvv
-    ConnectionState m_connState = ConnectionState::Disconnected;
-    ConnectionError m_lastError = ConnectionError::Success;
-    asp::AtomicBool m_cancelling = false;
+    arc::Notify m_disconnectNotify;
+    std::atomic<bool> m_disconnectReq{false};
 
-    // vvv these fields are temporary fields for async dns resolution vvv
-    asp::time::SystemTime m_startedResolvingIpAt;
-    asp::AtomicBool m_resolvingIp = false;
-    bool m_waitingForA = false;
-    bool m_waitingForAAAA = false;
-    bool m_dnsASuccess = false;
-    bool m_dnsAAAASuccess = false;
-    std::atomic_size_t m_dnsRequests = 0;
-    std::atomic_size_t m_dnsResponses = 0;
-    ConnectionType m_chosenConnType = ConnectionType::Unknown;
-    std::vector<qsox::IpAddress> m_usedIps;
-    uint16_t m_usedPort;
+    void setState(ConnectionState state);
 
-    asp::Mutex<void, true> m_internalMutex; // Guards certain fields above
-    asp::Thread<> m_thread;
+    TransportOptions makeOptions(qsox::SocketAddress addr, ConnectionType type, bool reconnect);
 
-    // vvv notifications, messages for the thread vvv
-    MultiPoller m_poller;
-    asp::Mutex<std::queue<ChannelMsg>> m_msgChannel;
-    PollPipe m_msgPipe;
-    PollPipe m_disconnectPipe;
-    asp::Notify m_connStartedNotify;
-    asp::Notify m_resolvingIpNotify;
-    asp::Notify m_dnsResponseNotify;
-    asp::Notify m_pingArrivedNotify;
+    arc::Future<> workerThreadLoop();
+    arc::Future<ConnectionResult<>> threadConnect(std::string url);
+    arc::Future<ConnectionResult<>> threadConnectIp(qsox::SocketAddress addr, ConnectionType type);
+    arc::Future<ConnectionResult<>> threadConnectDomain(std::string_view hostname, std::optional<uint16_t> port, ConnectionType type);
+    arc::Future<ConnectionResult<>> threadConnectWithIps(std::vector<qsox::SocketAddress> addrs, ConnectionType type, bool preferIpv6);
+    arc::Future<ConnectionResult<>> threadPingCandidates(std::vector<qsox::SocketAddress> addrs);
+    arc::Future<ConnectionResult<>> threadFinalConnect(std::vector<std::pair<qsox::SocketAddress, ConnectionType>> addrs);
+    arc::Future<ConnectionResult<>> threadEstablishConn(qsox::SocketAddress addr, ConnectionType type);
+    arc::Future<ConnectionResult<>> threadConnectSocket(qsox::SocketAddress addr, ConnectionType type, bool reconnect);
 
-    // vvv these are internal fields used by the thread vvv
-    std::optional<asp::time::SystemTime> m_thrStartedPingingAt;
-    asp::time::SystemTime m_thrLastArrivedPing;
-    size_t m_thrArrivedPings = 0;
-    std::vector<std::pair<qsox::SocketAddress, asp::time::Duration>> m_thrPingResults;
-    std::vector<SupportedProtocol> m_thrPingerSupportedProtocols;
-    size_t m_thrConnIpIndex = 0;
-    size_t m_thrConnTypeIndex = 0;
-    std::optional<std::pair<qsox::SocketAddress, ConnectionType>> m_thrSuccessfulPair;
-    size_t m_thrReconnectAttempt = 0;
+    arc::Future<ConnectionResult<>> threadTryReconnect(bool stateless);
 
-    // vvv actual connection fields vvv
-    std::optional<Socket> m_socket;
-    asp::AtomicSizeT m_connCounter = 0; // connection counter that increments with every connection attempt
-    asp::time::SystemTime m_connStartedAt;
-    std::vector<std::pair<ConnectionType, uint16_t>> m_usedConnTypes;
+    arc::Future<> threadCancelConnection();
 
-    ConnectionResult<> connectIp(const qsox::SocketAddress& address, ConnectionType type);
-    ConnectionResult<> connectDomain(std::string_view hostname, std::optional<uint16_t> port, ConnectionType type);
+    void threadHandleIncomingMessage(QunetMessage msg);
 
-    // Does not actually do anything, pushes the task to the thread
-    ConnectionResult<> fetchIpAndConnect(const std::string& hostname, uint16_t port, ConnectionType type);
-
-    void onFatalConnectionError(const ConnectionError& err);
-    void onConnectionError(const ConnectionError& err);
-    void finishCancellation();
-    void clearLastError();
     void resetConnectionState();
-    void sortUsedIps();
+    void onConnectionError(const ConnectionError& err);
+    void onFatalError(const ConnectionError& err);
 
-    void doSend(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
-
-    // Call when DNS resolution is over, we can proceed to either pinging or connecting to the destination
-    void doneResolving();
-
-    void onUnexpectedClosure();
-
-    // vvv thread functions, do not call outside of the thread vvv
-    void thrTryConnectNext();
-    void thrTryConnectWith(const qsox::SocketAddress& addr, ConnectionType type);
-    TransportResult<> thrTryReconnect();
-    TransportResult<Socket> thrConnectSocket(const qsox::SocketAddress& addr, ConnectionType type, bool reconnecting = false);
-    bool thrConnecting();
-    void thrConnected();
-    void thrNewPingResult(const PingResult& result, const qsox::SocketAddress& addr);
-    void thrSortPingResults();
-    void thrSortConnTypes();
-    void thrHandleIncomingMessage(QunetMessage&& message);
-
-    void setConnState(ConnectionState state);
+    bool sendMsgToThread(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
 };
 
 }
