@@ -34,7 +34,8 @@ public:
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
         const ClientTlsContext* tlsContext,
-        const struct ConnectionOptions* connOptions
+        const struct ConnectionOptions* connOptions,
+        const std::string& hostname
     );
 
     arc::Future<TransportResult<>> close();

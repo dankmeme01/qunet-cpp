@@ -38,10 +38,11 @@ Future<TransportResult<QuicTransport>> QuicTransport::connect(
     const qsox::SocketAddress& address,
     const Duration& timeout,
     const ClientTlsContext* tlsContext,
-    const ConnectionOptions* connOptions
+    const ConnectionOptions* connOptions,
+    const std::string& hostname
 ) {
     auto conn = ARC_CO_UNWRAP(co_await QuicConnection::connect(
-        address, timeout, tlsContext, connOptions
+        address, timeout, tlsContext, connOptions, hostname
     ));
 
     QN_DEBUG_ASSERT(conn != nullptr);

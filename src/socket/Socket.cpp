@@ -281,7 +281,8 @@ Future<TransportResult<std::shared_ptr<BaseTransport>>> Socket::createTransport(
                 options.address,
                 options.timeout,
                 options.tlsContext,
-                options.connOptions
+                options.connOptions,
+                options.hostname
             ));
             auto ptr = std::make_shared<QuicTransport>(std::move(transport));
             co_return Ok(std::static_pointer_cast<BaseTransport>(ptr));

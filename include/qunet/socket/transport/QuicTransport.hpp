@@ -23,7 +23,8 @@ public:
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
         const ClientTlsContext* tlsContext = nullptr,
-        const struct ConnectionOptions* connOptions = nullptr
+        const struct ConnectionOptions* connOptions = nullptr,
+        const std::string& hostname = ""
     );
 
     arc::Future<TransportResult<>> close() override;

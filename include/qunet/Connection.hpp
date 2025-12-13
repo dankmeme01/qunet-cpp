@@ -140,6 +140,7 @@ struct ChannelMsg {
 struct WorkerThreadState {
     arc::mpsc::Receiver<std::string> connectChan;
     arc::mpsc::Receiver<ChannelMsg> msgChan;
+    std::string connectHostname;
 };
 
 // Connection is a class that is a manager for connecting to a specific endpoint.

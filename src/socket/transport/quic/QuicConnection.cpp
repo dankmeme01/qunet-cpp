@@ -191,7 +191,8 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     const qsox::SocketAddress& address,
     const Duration& timeout,
     const ClientTlsContext* tlsContext,
-    const ConnectionOptions* connOptions
+    const ConnectionOptions* connOptions,
+    const std::string& hostname
 ) {
     QN_ASSERT(tlsContext != nullptr && "TLS context must not be null");
     auto debugOptions = connOptions ? &connOptions->debug : nullptr;
@@ -352,7 +353,7 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
 
     // Create the TLS session
     ret->m_tls = ARC_CO_UNWRAP(ClientTlsSession::create(
-        *tlsContext, address, ret.get(), "localhost" // TODO: use actual server name
+        *tlsContext, address, ret.get(), hostname
     ));
 
     ngtcp2_conn_set_tls_native_handle(ret->m_conn, ret->m_tls->nativeHandle());

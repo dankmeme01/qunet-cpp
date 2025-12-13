@@ -20,6 +20,7 @@ struct TransportOptions {
     qsox::SocketAddress address;
     ConnectionType type;
     asp::time::Duration timeout;
+    std::string hostname;
     const struct ConnectionOptions* connOptions = nullptr;
 #ifdef QUNET_TLS_SUPPORT
     const ClientTlsContext* tlsContext = nullptr;

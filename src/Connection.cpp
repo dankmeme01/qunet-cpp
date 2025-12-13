@@ -512,6 +512,7 @@ Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
 
 Future<ConnectionResult<>> Connection::threadConnectIp(qsox::SocketAddress addr, ConnectionType type) {
     bool preferIpv6 = m_settings.lock()->m_preferIpv6;
+    m_wts.connectHostname.clear();
 
     return this->threadConnectWithIps(
         std::vector<SocketAddress>{addr},
@@ -625,6 +626,8 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
     if (addrs.empty()) {
         co_return Err(ConnectionError::DomainNotFound);
     }
+
+    m_wts.connectHostname = hostname;
 
     co_return co_await this->threadConnectWithIps(
         std::move(addrs),
@@ -852,10 +855,12 @@ Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, C
 
 TransportOptions Connection::makeOptions(SocketAddress addr, ConnectionType type, bool reconnect) {
     auto settings = m_settings.lock();
+
     return TransportOptions {
         .address = addr,
         .type = type,
         .timeout = settings->m_connTimeout,
+        .hostname = m_wts.connectHostname,
         .connOptions = &settings->m_connOptions,
 #ifdef QUNET_TLS_SUPPORT
         .tlsContext = m_tlsContext ? &*m_tlsContext : nullptr,
