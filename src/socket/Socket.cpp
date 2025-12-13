@@ -7,6 +7,7 @@
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Log.hpp>
 #include <qunet/Connection.hpp>
+#include <qunet/util/hash.hpp>
 
 #include <fmt/ranges.h>
 #include <asp/time/Instant.hpp>
@@ -67,7 +68,7 @@ arc::Future<TransportResult<Socket>> Socket::connect(
     std::array<uint8_t, 16> qdbHash = {};
     if (socket.m_usedQdb) {
         qdbHash = socket.m_usedQdb->getHash();
-        log::debug("Using qunet database with hash {:x}", fmt::join(qdbHash, ""));
+        log::debug("Using qunet database with hash {}", qn::hexEncode(qdbHash.data(), 16));
     }
 
     auto hmsg = HandshakeStartMessage {
@@ -159,6 +160,8 @@ Future<TransportResult<>> Socket::onHandshakeSuccess(const HandshakeFinishMessag
 
         // save the qdb
         if (m_qdbFolder) {
+            log::debug("Saving Qunet database to {:?}", *m_qdbFolder);
+
             auto res = co_await arc::spawnBlocking<geode::Result<>>([&] {
                 return qn::saveQdb(qdbData, *m_qdbFolder, m_remoteAddress);
             });

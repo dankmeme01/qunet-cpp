@@ -3,6 +3,20 @@
 
 namespace qn {
 
+std::string hexEncode(const uint8_t* data, size_t size) {
+    std::string str;
+    str.reserve(size * 2);
+
+    constexpr char hexChars[] = "0123456789abcdef";
+
+    for (size_t i = 0; i < size; ++i) {
+        str.push_back(hexChars[(data[i] >> 4) & 0x0F]);
+        str.push_back(hexChars[data[i] & 0x0F]);
+    }
+
+    return str;
+}
+
 Hash<32> blake3Hash(const uint8_t* data, size_t size) {
     return blake3Hash(std::span(data, size));
 }
