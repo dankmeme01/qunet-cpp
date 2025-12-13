@@ -216,6 +216,14 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
         ptr->m_workerRunning.store(false, std::memory_order::release);
     }());
 
+    // this will be set to false at the very end
+    bool terminateTask = true;
+    auto _tdtor = scopeDtor([ret, &terminateTask] {
+        if (terminateTask) {
+            (void) ret->closeSync();
+        }
+    });
+
     // set debug options
     if (debugOptions) {
         if (debugOptions->verboseSsl) {
@@ -359,6 +367,7 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     log::info("QUIC: connection is ready now!");
     ret->m_connected.store(true, std::memory_order::release);
     ret->m_connectedNotify.notifyOne();
+    terminateTask = false;
 
     co_return Ok(std::move(ret));
 }

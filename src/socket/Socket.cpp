@@ -24,6 +24,7 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
     auto transport = ARC_CO_UNWRAP(co_await Socket::createTransport(options));
 
     if (startedAt.elapsed() > options.timeout) {
+        (void) co_await transport->close();
         co_return Err(TransportError::ConnectionTimedOut);
     }
 
@@ -34,6 +35,7 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
 
     auto handshakeTimeout = options.timeout - startedAt.elapsed();
     if (handshakeTimeout.millis() <= 0) {
+        (void) co_await transport->close();
         co_return Err(TransportError::ConnectionTimedOut);
     }
 
@@ -42,6 +44,14 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
 
 arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& options) {
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
+
+    // this will be set to false at the very end if successful
+    bool closeSocket = true;
+    auto _dtor = scopeDtor([&] {
+        if (closeSocket) {
+            (void) socket.closeSync();
+        }
+    });
 
     auto hmsg = HandshakeStartMessage {
         .majorVersion = MAJOR_VERSION,
@@ -72,11 +82,20 @@ arc::Future<TransportResult<Socket>> Socket::connect(const TransportOptions& opt
         co_return Err(TransportError::UnexpectedMessage);
     }
 
+    closeSocket = false;
     co_return Ok(std::move(socket));
 }
 
 Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& options, Socket& prev) {
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
+
+    // this will be set to false at the very end if successful
+    bool closeSocket = true;
+    auto _dtor = scopeDtor([&] {
+        if (closeSocket) {
+            (void) socket.closeSync();
+        }
+    });
 
     auto tres = co_await arc::timeout(
         timeout,
@@ -97,6 +116,7 @@ Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& option
         co_return Err(TransportError::UnexpectedMessage);
     }
 
+    closeSocket = false;
     co_return Ok(std::move(socket));
 }
 
