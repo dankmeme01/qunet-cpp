@@ -429,6 +429,12 @@ static bool isFatalError(const ConnectionError& err) {
 
     if (err.isTransportError()) {
         auto& terr = err.asTransportError();
+        if (std::holds_alternative<qsox::Error>(terr.m_kind)) {
+            auto err = std::get<qsox::Error>(terr.m_kind);
+            // pretty much all of them are fatal
+            return true;
+        }
+
         return (
             terr == TransportError::ConnectionTimedOut
             || terr == TransportError::TooUnreliable
