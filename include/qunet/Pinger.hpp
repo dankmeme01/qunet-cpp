@@ -57,7 +57,6 @@ private:
 
     std::optional<arc::TaskHandle<void>> m_workerTask;
     std::optional<arc::mpsc::Sender<std::pair<qsox::SocketAddress, Callback>>> m_pingTx;
-    std::optional<arc::UdpSocket> m_socket;
 
     std::vector<OutgoingPing> m_outgoingPings;
     uint32_t m_nextPingId = 0;
@@ -66,7 +65,7 @@ private:
 
     arc::Future<> workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>>);
 
-    arc::Future<> thrDoPing(const qsox::SocketAddress& address, Callback callback);
+    arc::Future<> thrDoPing(arc::UdpSocket& socket, const qsox::SocketAddress& address, Callback callback);
     ByteReader::Result<PingResult> thrParsePingResponse(const uint8_t* data, size_t size);
     void thrDispatchResult(PingResult& result, const qsox::SocketAddress& address);
     void thrRemoveTimedOutPings();

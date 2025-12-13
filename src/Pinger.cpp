@@ -43,7 +43,7 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
         co_return;
     }
 
-    m_socket = std::move(res).unwrap();
+    auto socket = std::move(res).unwrap();
 
     while (true) {
         qsox::SocketAddress src = qsox::SocketAddress::any();
@@ -60,17 +60,17 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
             // wait for a new ping request
             arc::selectee(
                 rx.recv(),
-                [this](auto res) -> arc::Future<> {
+                [this, &socket](auto res) -> arc::Future<> {
                     if (!res) co_return; // channel closed
 
                     auto [address, callback] = std::move(res).unwrap();
-                    co_await this->thrDoPing(address, std::move(callback));
+                    co_await this->thrDoPing(socket, address, std::move(callback));
                 }
             ),
 
             // wait to receive a ping response
             arc::selectee(
-                m_socket->recvFrom(response, sizeof(response), src),
+                socket.recvFrom(response, sizeof(response), src),
                 [&](auto res) {
                     if (!res) {
                         log::warn("Failed to receive ping response: {}", res.unwrapErr().message());
@@ -181,7 +181,7 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
     return Ok();
 }
 
-Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
+Future<> Pinger::thrDoPing(arc::UdpSocket& socket, const qsox::SocketAddress& address, Callback callback) {
     uint32_t pingId = ++m_nextPingId;
 
     HeapByteWriter writer;
@@ -189,7 +189,7 @@ Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback
     writer.writeU32(pingId);
     writer.writeU8(this->isCached(address) ? 1 : 0); // flags
 
-    auto res = co_await m_socket->sendTo(writer.written().data(), writer.written().size(), address);
+    auto res = co_await socket.sendTo(writer.written().data(), writer.written().size(), address);
     if (!res) {
         log::error("Failed to send ping to {}: {}", address.toString(), res.unwrapErr().message());
         co_return;
