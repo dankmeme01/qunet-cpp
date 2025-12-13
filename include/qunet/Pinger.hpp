@@ -3,12 +3,10 @@
 #include <qunet/buffers/ByteReader.hpp>
 #include <qunet/util/compat.hpp>
 
-#include <qsox/UdpSocket.hpp>
-#include <asp/thread/Thread.hpp>
-#include <asp/sync/Channel.hpp>
-#include <asp/sync/Mutex.hpp>
-#include <asp/sync/Notify.hpp>
-#include <asp/time/Duration.hpp>
+#include <arc/sync/mpsc.hpp>
+#include <arc/sync/Mutex.hpp>
+#include <arc/net/UdpSocket.hpp>
+#include <asp/time/Instant.hpp>
 
 namespace qn {
 
@@ -39,7 +37,7 @@ public:
 
     void ping(const qsox::SocketAddress& address, Callback callback);
 
-    /// Pings a url rather than an address. This is slightly more limited, it will not resolve SRV records but will resolve A/AAAA records.
+    /// Pings a url rather than an address. This is slightly more limited, it will not resolve SRV records but will resolve an A record.
     /// The callback may never be invoked if DNS resolution fails, but timeouts will still be handled.
     geode::Result<> pingUrl(const std::string& url, Callback callback);
 
@@ -47,7 +45,7 @@ private:
     Pinger();
 
     struct OutgoingPing {
-        asp::time::SystemTime sentAt;
+        asp::time::Instant sentAt;
         Callback callback;
         uint32_t pingId;
     };
@@ -57,21 +55,21 @@ private:
         std::vector<SupportedProtocol> protocols;
     };
 
-    asp::Thread<> m_pingThread, m_recvThread;
-    asp::Channel<std::pair<qsox::SocketAddress, Callback>> m_channel;
+    std::optional<arc::TaskHandle<void>> m_workerTask;
+    std::optional<arc::mpsc::Sender<std::pair<qsox::SocketAddress, Callback>>> m_pingTx;
+    std::optional<arc::UdpSocket> m_socket;
 
-    std::optional<qsox::UdpSocket> m_socket;
-    asp::Notify m_socketNotify;
-
-    asp::Mutex<std::vector<OutgoingPing>> m_outgoingPings;
+    std::vector<OutgoingPing> m_outgoingPings;
     uint32_t m_nextPingId = 0;
 
     asp::Mutex<std::unordered_map<qsox::SocketAddress, CachedPing>> m_cache;
-    asp::Mutex<std::unordered_map<std::string, qsox::IpAddress>> m_dnsCache;
 
-    void thrDoPing(const qsox::SocketAddress& address, Callback callback);
+    arc::Future<> workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>>);
+
+    arc::Future<> thrDoPing(const qsox::SocketAddress& address, Callback callback);
     ByteReader::Result<PingResult> thrParsePingResponse(const uint8_t* data, size_t size);
     void thrDispatchResult(PingResult& result, const qsox::SocketAddress& address);
+    void thrRemoveTimedOutPings();
 
     bool isCached(const qsox::SocketAddress& address);
 

@@ -658,7 +658,6 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
         auto& addr = addrs[i];
         log::debug("Sending ping to {}", addr.toString());
 
-        // TODO: refactor Pinger to be async/await, for now use callbacks
         Pinger::get().ping(addr, [tx, i](const PingResult& result) mutable {
             (void) tx.trySend({i, result});
         });
