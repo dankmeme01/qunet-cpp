@@ -21,7 +21,7 @@ Pinger::Pinger() {
         throw std::runtime_error("Pinger must be created within an arc runtime");
     }
 
-    auto [tx, rx] = arc::mpsc::channel<std::pair<qsox::SocketAddress, Callback>>(1024);
+    auto [tx, rx] = arc::mpsc::channel<std::pair<qsox::SocketAddress, Callback>>(128);
     m_pingTx = std::move(tx);
 
     m_workerTask = rt->spawn(this->workerLoop(std::move(rx)));
@@ -122,7 +122,7 @@ void Pinger::thrRemoveTimedOutPings() {
 }
 
 void Pinger::ping(const qsox::SocketAddress& address, Callback callback) {
-    (void) m_pingTx->send(std::make_pair(address, std::move(callback)));
+    (void) m_pingTx->trySend(std::make_pair(address, std::move(callback)));
 }
 
 geode::Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
