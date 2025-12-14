@@ -25,6 +25,17 @@ struct ServerClosedError {
     bool operator!=(const ServerClosedError& other) const = default;
 };
 
+class ConnectionError;
+
+struct AllAddressesFailed {
+    std::vector<std::tuple<qsox::SocketAddress, ConnectionType, ConnectionError>> addresses;
+
+    std::string_view message() const;
+
+    bool operator==(const AllAddressesFailed& other) const;
+    bool operator!=(const AllAddressesFailed& other) const;
+};
+
 class ConnectionError {
 public:
     typedef enum {
@@ -35,7 +46,6 @@ public:
         NotConnected,
         AlreadyConnected,
         AlreadyClosing,
-        AllAddressesFailed,
         ProtocolDisabled,
         NoConnectionTypeFound,
         NoAddresses,
@@ -50,13 +60,16 @@ public:
     constexpr inline ConnectionError(Code code) : m_err(code) {}
     inline ConnectionError(TransportError err) : m_err(std::move(err)) {}
     inline ConnectionError(ServerClosedError err) : m_err(std::move(err)) {}
+    inline ConnectionError(AllAddressesFailed err) : m_err(std::move(err)) {}
 
     bool isOtherError() const;
     bool isTransportError() const;
     bool isServerClosedError() const;
+    bool isAllAddressesFailed() const;
 
     const TransportError& asTransportError() const;
     const ServerClosedError& asServerClosedError() const;
+    const AllAddressesFailed& asAllAddressesFailed() const;
     Code asOtherError() const;
 
     bool operator==(const ConnectionError& other) const = default;
@@ -71,7 +84,7 @@ public:
     std::string message() const;
 
 private:
-    std::variant<Code, TransportError, ServerClosedError> m_err;
+    std::variant<Code, TransportError, AllAddressesFailed, ServerClosedError> m_err;
 };
 
 template <typename T = void>

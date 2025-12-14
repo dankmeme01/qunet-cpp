@@ -80,6 +80,10 @@ bool ConnectionError::isServerClosedError() const {
     return std::holds_alternative<ServerClosedError>(m_err);
 }
 
+bool ConnectionError::isAllAddressesFailed() const {
+    return std::holds_alternative<AllAddressesFailed>(m_err);
+}
+
 const TransportError& ConnectionError::asTransportError() const {
     return std::get<TransportError>(m_err);
 }
@@ -90,6 +94,10 @@ const ServerClosedError& ConnectionError::asServerClosedError() const {
 
 ConnectionError::Code ConnectionError::asOtherError() const {
     return std::get<Code>(m_err);
+}
+
+const AllAddressesFailed& ConnectionError::asAllAddressesFailed() const {
+    return std::get<AllAddressesFailed>(m_err);
 }
 
 bool ConnectionError::operator==(Code code) const {
@@ -120,11 +128,20 @@ std::string_view ServerClosedError::message() const {
     return reason.empty() ? "Server closed the connection" : std::string_view{reason};
 }
 
+std::string_view AllAddressesFailed::message() const {
+    return "Failed to connect to all resolved addresses";
+}
+
+bool AllAddressesFailed::operator==(const AllAddressesFailed& other) const = default;
+bool AllAddressesFailed::operator!=(const AllAddressesFailed& other) const = default;
+
 std::string ConnectionError::message() const {
     if (this->isTransportError()) {
         return this->asTransportError().message();
     } else if (this->isServerClosedError()) {
         return std::string{this->asServerClosedError().message()};
+    } else if (this->isAllAddressesFailed()) {
+        return std::string{this->asAllAddressesFailed().message()};
     } else switch (this->asOtherError()) {
         case Code::Success: return "Success";
         case Code::InvalidProtocol: return "Invalid protocol specified";
@@ -133,7 +150,6 @@ std::string ConnectionError::message() const {
         case Code::NotConnected: return "Not connected to a server";
         case Code::AlreadyConnected: return "Already connected to a server";
         case Code::AlreadyClosing: return "Connection is already closing";
-        case Code::AllAddressesFailed: return "Failed to connect to all possible addresses";
         case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
         case Code::NoAddresses: return "No addresses were given, cannot connect";
@@ -315,6 +331,7 @@ Future<> Connection::workerThreadLoop() {
                     m_socket->receiveMessage(),
                     [&](auto res) -> arc::Future<> {
                         if (!res) {
+                            log::debug("Error receiving message");
                             this->onConnectionError(res.unwrapErr());
                             co_return;
                         }
@@ -369,6 +386,8 @@ Future<> Connection::workerThreadLoop() {
                     self->m_data.lock()->m_tryStatelessReconnect = true;
                     co_return;
                 }
+
+                log::warn("Reconnect attempt failed: {}", err.message());
 
                 // failed, sleep for a bit and try again
                 co_await arc::sleep(timeout);
@@ -432,7 +451,7 @@ static bool isFatalError(const ConnectionError& err) {
         if (std::holds_alternative<qsox::Error>(terr.m_kind)) {
             auto err = std::get<qsox::Error>(terr.m_kind);
             // pretty much all of them are fatal
-            return true;
+            return err != qsox::Error::Success;
         }
 
         return (
@@ -772,6 +791,7 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
 }
 
 Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<SocketAddress, ConnectionType>> addrs) {
+    ARC_ASSERT(!addrs.empty());
     this->setState(ConnectionState::Connecting);
 
     auto preferred = m_settings.lock()->m_preferredConnType;
@@ -801,11 +821,14 @@ Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<
 
     bool connected = false;
 
+    std::vector<std::tuple<SocketAddress, ConnectionType, ConnectionError>> errors;
+
     for (auto& [addr, type] : addrs) {
         auto res = co_await this->threadEstablishConn(addr, type);
 
         if (!res) {
             log::info("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), res.unwrapErr().message());
+            errors.push_back({ addr, type, std::move(res).unwrapErr() });
             continue;
         }
 
@@ -826,7 +849,9 @@ Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<
         for (auto& [addr, type] : addrs) {
             log::warn(" - {} ({})", addr.toString(), connTypeToString(type));
         }
-        co_return Err(ConnectionError::AllAddressesFailed);
+
+        ARC_ASSERT(!errors.empty());
+        co_return Err(AllAddressesFailed{ std::move(errors) });
     }
 
     // connected!
