@@ -71,17 +71,23 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
             // wait to receive a ping response
             arc::selectee(
                 socket.recvFrom(response, sizeof(response), src),
-                [&](auto res) {
+                [&](auto res) -> arc::Future<> {
                     if (!res) {
-                        log::warn("Failed to receive ping response: {}", res.unwrapErr().message());
-                        return;
+                        auto err = res.unwrapErr();
+
+                        // windows kinda decides to spam connection reset error whenever a send fails due to icmp error
+                        if (err != qsox::Error::ConnectionReset) {
+                            log::warn("Failed to receive ping response: {}", err.message());
+                        }
+
+                        co_return;
                     }
 
                     size_t bytes = res.unwrap();
                     auto pres = this->thrParsePingResponse(response, bytes);
                     if (!pres) {
                         log::warn("Failed to parse ping response: {}", pres.unwrapErr().message());
-                        return;
+                        co_return;
                     }
 
                     auto result = std::move(pres).unwrap();

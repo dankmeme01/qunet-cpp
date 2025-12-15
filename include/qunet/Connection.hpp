@@ -297,6 +297,9 @@ public:
     /// Like `statSnapshot` but includes all-time stats plus extra fields
     StatWholeSnapshot statSnapshotFull() const;
 
+    /// Simulates a fatal connection error, causing a reconnect attempt.
+    void simulateConnectionDrop();
+
 private:
     arc::Runtime* m_runtime;
     std::optional<arc::TaskHandle<void>> m_workerTask;
@@ -316,6 +319,7 @@ private:
     std::optional<ClientTlsContext> m_tlsContext;
 #endif
 
+    arc::Notify m_taskWakeNotify;
     arc::Notify m_disconnectNotify;
     std::atomic<bool> m_disconnectReq{false};
 

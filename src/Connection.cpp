@@ -339,7 +339,10 @@ Future<> Connection::workerThreadLoop() {
                         auto msg = std::move(res).unwrap();
                         this->threadHandleIncomingMessage(std::move(msg));
                     }
-                )
+                ),
+
+                // Allow to periodically wake the task, in case connection state changed
+                arc::selectee(m_taskWakeNotify.notified())
             );
         } break;
 
@@ -1125,6 +1128,11 @@ StatWholeSnapshot Connection::statSnapshotFull() const {
     }
 
     return {};
+}
+
+void Connection::simulateConnectionDrop() {
+    this->onFatalError(ConnectionError::InternalError);
+    m_taskWakeNotify.notifyOne();
 }
 
 bool Connection::sendMsgToThread(QunetMessage&& message, bool reliable, bool uncompressed) {
