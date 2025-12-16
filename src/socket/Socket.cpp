@@ -104,11 +104,6 @@ arc::Future<TransportResult<Socket>> Socket::connect(
 }
 
 Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& options, Socket& prev) {
-    // ensure the previous socket is fully disconnected
-    if (auto err = (co_await prev.close()).err()) {
-        log::warn("Failed to close previous socket for reconnect: {}", err->message());
-    }
-
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
 
     // this will be set to false at the very end if successful
