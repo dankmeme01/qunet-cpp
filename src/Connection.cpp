@@ -132,8 +132,13 @@ std::string_view AllAddressesFailed::message() const {
     return "Failed to connect to all resolved addresses";
 }
 
-bool AllAddressesFailed::operator==(const AllAddressesFailed& other) const = default;
-bool AllAddressesFailed::operator!=(const AllAddressesFailed& other) const = default;
+bool AllAddressesFailed::operator==(const AllAddressesFailed& other) const {
+    return this->addresses == other.addresses;
+}
+
+bool AllAddressesFailed::operator!=(const AllAddressesFailed& other) const {
+    return !(*this == other);
+}
 
 std::string ConnectionError::message() const {
     if (this->isTransportError()) {
