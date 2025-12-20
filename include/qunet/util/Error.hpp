@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional> // bug in geode result
 #include <Geode/Result.hpp>
 #include <cassert>
 #include <string_view>
