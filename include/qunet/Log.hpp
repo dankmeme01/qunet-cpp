@@ -36,4 +36,14 @@ void error(fmt::format_string<Args...> fmt, Args&&... args) {
     getLogFunction()(Level::Error, fmt::format(fmt, std::forward<Args>(args)...));
 }
 
+inline std::string_view levelToString(Level level) {
+    switch (level) {
+        case Level::Debug: return "DEBUG";
+        case Level::Info: return "INFO";
+        case Level::Warning: return "WARNING";
+        case Level::Error: return "ERROR";
+    }
+    return "UNKNOWN";
+}
+
 }
