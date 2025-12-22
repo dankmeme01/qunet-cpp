@@ -8,6 +8,8 @@ namespace qn {
 
 class TcpTransport : public BaseTransport {
 public:
+    using BaseTransport::sendMessage;
+
     ~TcpTransport() override;
     TcpTransport(TcpTransport&&) = default;
     TcpTransport& operator=(TcpTransport&&) = default;
@@ -21,7 +23,7 @@ public:
     // TCP shutdown is already synchronous, so no need for async close
     TransportResult<> closeSync() override;
     bool isClosed() const override;
-    arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
+    arc::Future<TransportResult<>> sendMessage(QunetMessage data, SentMessageContext& ctx) override;
     arc::Future<TransportResult<>> poll() override;
     arc::Future<TransportResult<QunetMessage>> receiveMessage() override;
 

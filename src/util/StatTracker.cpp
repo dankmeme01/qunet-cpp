@@ -212,6 +212,10 @@ StatWholeSnapshot StatTracker::snapshotFull() const {
     return snap;
 }
 
+void StatTracker::onStartedConnection() {
+    m_startedAt = Instant::now();
+}
+
 void StatTracker::onConnected() {
     m_connectedAt = Instant::now();
 }

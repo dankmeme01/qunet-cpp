@@ -45,7 +45,7 @@ bool TcpTransport::isClosed() const {
     return m_closed;
 }
 
-Future<TransportResult<>> TcpTransport::sendMessage(QunetMessage message, bool reliable) {
+Future<TransportResult<>> TcpTransport::sendMessage(QunetMessage message, SentMessageContext& ctx) {
     this->updateLastActivity();
 
     if (message.is<KeepaliveMessage>()) {
@@ -53,7 +53,7 @@ Future<TransportResult<>> TcpTransport::sendMessage(QunetMessage message, bool r
         this->updateLastKeepalive();
     }
 
-    return streamcommon::sendMessage(std::move(message), m_socket, *this);
+    return streamcommon::sendMessage(std::move(message), m_socket, *this, ctx);
 }
 
 Future<TransportResult<>> TcpTransport::poll() {
@@ -76,7 +76,7 @@ Future<TransportResult<>> TcpTransport::handleTimerExpiry() {
         co_return Err(TransportError::TimedOut);
     }
 
-    co_return co_await this->sendMessage(KeepaliveMessage{}, false);
+    co_return co_await this->sendMessage(KeepaliveMessage{});
 }
 
 Duration TcpTransport::untilKeepalive() const {

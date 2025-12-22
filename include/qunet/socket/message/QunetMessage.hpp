@@ -93,6 +93,7 @@ public:
     MessageEncodeResult encodeDataHeader(HeapByteWriter& writer, uint64_t connectionId, bool omitHeaders) const;
 
     std::string_view typeStr() const;
+    uint8_t headerByte() const;
 
     static geode::Result<QunetMessage, MessageDecodeError> decodeWithMeta(QunetMessageMeta&& meta);
 

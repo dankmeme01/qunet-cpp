@@ -30,7 +30,7 @@ public:
     arc::Future<TransportResult<>> close() override;
     TransportResult<> closeSync() override;
     bool isClosed() const override;
-    arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
+    arc::Future<TransportResult<>> sendMessage(QunetMessage data, SentMessageContext& ctx) override;
     arc::Future<TransportResult<>> poll() override;
     arc::Future<TransportResult<QunetMessage>> receiveMessage() override;
 

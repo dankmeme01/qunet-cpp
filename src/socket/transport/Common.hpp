@@ -5,7 +5,6 @@
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/Log.hpp>
-#include <queue>
 #include <arc/future/Future.hpp>
 #include <arc/util/Result.hpp>
 
@@ -13,7 +12,7 @@
 
 namespace qn::streamcommon {
 
-inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport) {
+inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport, SentMessageContext& ctx) {
     HeapByteWriter writer;
 
     bool hasLength = !(message.is<HandshakeStartMessage>() || message.is<ClientReconnectMessage>());
@@ -45,7 +44,6 @@ inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& s
         auto data = writer.written();
         ARC_CO_UNWRAP(co_await socket.sendAll(data.data(), data.size()));
 
-        transport._tracker().onUpMessage(data[0], data.size());
         transport._tracker().onUpPacket(data.size());
 
         co_return Ok();
@@ -65,7 +63,6 @@ inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& s
     auto data = writer.written();
     ARC_CO_UNWRAP(co_await socket.sendAll(data.data(), data.size()));
 
-    transport._tracker().onUpMessage(data[0], msg.data.size());
     transport._tracker().onUpPacket(data.size());
 
     co_return Ok();

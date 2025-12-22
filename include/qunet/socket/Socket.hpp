@@ -28,6 +28,13 @@ struct TransportOptions {
     bool reconnecting = false;
 };
 
+struct OutgoingMessage {
+    QunetMessage message;
+    bool reliable = false;
+    bool uncompressed = false;
+    std::string tag;
+};
+
 class Socket {
 public:
     // Attempts to connect to the specified address using the given connection type.
@@ -55,7 +62,7 @@ public:
 
     /// Send a message over the transport. Note: if it's a Data message, reliability and compression headers are ignored.
     /// The `reliable` argument is used to make the message reliable, and compression is applied automatically if needed, unless `uncompressed` is set to true.
-    arc::Future<TransportResult<>> sendMessage(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
+    arc::Future<TransportResult<>> sendMessage(OutgoingMessage message);
     arc::Future<TransportResult<QunetMessage>> receiveMessage();
 
     /// Returns the average latency of the connection.

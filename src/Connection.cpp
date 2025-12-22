@@ -171,7 +171,7 @@ std::string ConnectionError::message() const {
 
 Future<std::shared_ptr<Connection>> Connection::create() {
     auto [cTx, cRx] = arc::mpsc::channel<std::string>(std::nullopt);
-    auto [mTx, mRx] = arc::mpsc::channel<ChannelMsg>(128);
+    auto [mTx, mRx] = arc::mpsc::channel<OutgoingMessage>(128);
 
     WorkerThreadState wts{
         .connectChan = std::move(cRx),
@@ -206,7 +206,7 @@ Future<std::shared_ptr<Connection>> Connection::create() {
 Connection::Connection(
     arc::Runtime* runtime,
     mpsc::Sender<std::string> connectChan,
-    mpsc::Sender<ChannelMsg> msgChan,
+    mpsc::Sender<OutgoingMessage> msgChan,
     WorkerThreadState wts
 )
     : m_connectChan(std::move(connectChan)),
@@ -300,11 +300,7 @@ Future<> Connection::workerThreadLoop() {
                         if (!recvRes) co_return; // channel closed?
 
                         auto msg = std::move(recvRes).unwrap();
-                        auto res = co_await m_socket->sendMessage(
-                            std::move(msg.message),
-                            msg.reliable,
-                            msg.uncompressed
-                        );
+                        auto res = co_await m_socket->sendMessage(std::move(msg));
 
                         if (!res) {
                             this->onConnectionError(res.unwrapErr());
@@ -420,7 +416,9 @@ Future<> Connection::workerThreadLoop() {
             if (!m_socket) co_return;
 
             // send close message
-            (void) m_socket->sendMessage(ClientCloseMessage{});
+            (void) co_await m_socket->sendMessage(OutgoingMessage{
+                .message = ClientCloseMessage{},
+            });
 
             auto res = co_await m_socket->close();
             if (!res) {
@@ -1115,8 +1113,8 @@ bool Connection::sendKeepalive() {
     return this->sendMsgToThread(KeepaliveMessage{});
 }
 
-bool Connection::sendData(std::vector<uint8_t> data, bool reliable, bool uncompressed) {
-    return this->sendMsgToThread(DataMessage{ std::move(data) }, reliable, uncompressed);
+bool Connection::sendData(std::vector<uint8_t> data, bool reliable, bool uncompressed, std::string tag) {
+    return this->sendMsgToThread(DataMessage{ std::move(data) }, reliable, uncompressed, std::move(tag));
 }
 
 StatSnapshot Connection::statSnapshot(Duration period) const {
@@ -1140,15 +1138,16 @@ void Connection::simulateConnectionDrop() {
     m_taskWakeNotify.notifyOne();
 }
 
-bool Connection::sendMsgToThread(QunetMessage&& message, bool reliable, bool uncompressed) {
+bool Connection::sendMsgToThread(QunetMessage&& message, bool reliable, bool uncompressed, std::string tag) {
     if (!this->connected()) {
         return false;
     }
 
-    return m_msgChan.trySend(ChannelMsg{
+    return m_msgChan.trySend(OutgoingMessage{
         .message = std::move(message),
         .reliable = reliable,
-        .uncompressed = uncompressed
+        .uncompressed = uncompressed,
+        .tag = std::move(tag)
     }).isOk();
 }
 

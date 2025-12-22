@@ -50,8 +50,8 @@ Future<TransportResult<QuicTransport>> QuicTransport::connect(
     co_return Ok(QuicTransport(std::move(conn)));
 }
 
-Future<TransportResult<>> QuicTransport::sendMessage(QunetMessage message, bool reliable) {
-    return streamcommon::sendMessage(std::move(message), *m_conn, *this);
+Future<TransportResult<>> QuicTransport::sendMessage(QunetMessage message, SentMessageContext& ctx) {
+    return streamcommon::sendMessage(std::move(message), *m_conn, *this, ctx);
 }
 
 Future<TransportResult<>> QuicTransport::poll() {

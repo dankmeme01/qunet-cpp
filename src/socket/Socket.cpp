@@ -21,6 +21,7 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
     auto startedAt = Instant::now();
 
     StatTracker tracker;
+    tracker.onStartedConnection();
     tracker.setEnabled(options.connOptions->debug.recordStats);
 
     auto transport = ARC_CO_UNWRAP(co_await Socket::createTransport(options));
@@ -202,14 +203,15 @@ bool Socket::isClosed() const {
     return m_transport->isClosed();
 }
 
-Future<TransportResult<>> Socket::sendMessage(QunetMessage&& message, bool reliable, bool uncompressed) {
+Future<TransportResult<>> Socket::sendMessage(OutgoingMessage outgoing) {
     // determine if the message needs to be compressed
     CompressionType ctype = CompressionType::None;
+    auto& message = outgoing.message;
 
     if (message.is<DataMessage>()) {
         auto& msg = message.as<DataMessage>();
 
-        if (!uncompressed) {
+        if (!outgoing.uncompressed) {
             uint32_t uncSize = msg.data.size();
             ctype = this->shouldCompress(uncSize);
         }
@@ -227,9 +229,35 @@ Future<TransportResult<>> Socket::sendMessage(QunetMessage&& message, bool relia
         }
     }
 
-    log::debug("Socket: sending message: {} (reliable: {}, compressed: {})", message.typeStr(), reliable, ctype != CompressionType::None);
+    log::debug(
+        "Socket: sending message: {} (tag: {}) (reliable: {}, compressed: {})",
+        message.typeStr(), outgoing.tag, outgoing.reliable, ctype != CompressionType::None
+    );
 
-    co_return co_await m_transport->sendMessage(std::move(message), reliable);
+    SentMessageContext ctx;
+    ctx.reliable = outgoing.reliable;
+    ctx.tag = std::move(outgoing.tag);
+    auto headerByte = message.headerByte();
+
+    if (message.is<DataMessage>()) {
+        auto& msg = message.as<DataMessage>();
+        if (msg.compHeader) {
+            ctx.originalSize = msg.compHeader->uncompressedSize;
+            ctx.compressedSize = msg.data.size();
+        } else {
+            ctx.originalSize = msg.data.size();
+        }
+    } else {
+        ctx.originalSize = 1; // this does not include udp connection id
+    }
+
+    auto res = co_await m_transport->sendMessage(std::move(message), ctx);
+
+    if (res) {
+        m_transport->logOutgoingMessage(headerByte, ctx);
+    }
+
+    co_return res;
 }
 
 CompressionType Socket::shouldCompress(size_t size) const {

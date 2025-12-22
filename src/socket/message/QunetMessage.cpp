@@ -15,30 +15,7 @@ MessageEncodeResult QunetMessage::encodeControlHeader(
     HeapByteWriter& writer,
     uint64_t connectionId
 ) const {
-#define FOR_MSG(t, v) if (this->is<t>()) { writer.writeU8(v); } else
-
-    // Write the header byte
-    // FOR_MSG(PingMessage, MSG_PING)
-    // FOR_MSG(PongMessage, MSG_PONG)
-    FOR_MSG(KeepaliveMessage, MSG_KEEPALIVE)
-    FOR_MSG(KeepaliveResponseMessage, MSG_KEEPALIVE_RESPONSE)
-    FOR_MSG(HandshakeStartMessage, MSG_HANDSHAKE_START)
-    FOR_MSG(HandshakeFinishMessage, MSG_HANDSHAKE_FINISH)
-    FOR_MSG(HandshakeFailureMessage, MSG_HANDSHAKE_FAILURE)
-    FOR_MSG(ClientCloseMessage, MSG_CLIENT_CLOSE)
-    FOR_MSG(ServerCloseMessage, MSG_SERVER_CLOSE)
-    FOR_MSG(ClientReconnectMessage, MSG_CLIENT_RECONNECT)
-    FOR_MSG(ConnectionErrorMessage, MSG_CONNECTION_ERROR)
-    // FOR_MSG(QdbChunkRequestMessage, MSG_QDB_CHUNK_REQUEST)
-    // FOR_MSG(QdbChunkResponseMessage, MSG_QDB_CHUNK_RESPONSE)
-    // FOR_MSG(ReconnectSuccessMessage, MSG_RECONNECT_SUCCESS)
-    // FOR_MSG(ReconnectFailureMessage, MSG_RECONNECT_FAILURE)
-    // FOR_MSG(QdbgToggleMessage, MSG_QDBG_TOGGLE)
-    // FOR_MSG(QdbgReportMessage, MSG_QDBG_REPORT)
-    /* else */ {
-        QN_ASSERT(false && "unsupported message in encodeHeader");
-    }
-#undef FOR_MSG
+    writer.writeU8(this->headerByte());
 
     if (connectionId != 0) {
         // write the connection ID (udp)
@@ -129,6 +106,32 @@ std::string_view QunetMessage::typeStr() const {
     FOR_MSG(DataMessage)
     /* else */ {
         return "UnknownMessageType";
+    }
+#undef FOR_MSG
+}
+
+uint8_t QunetMessage::headerByte() const {
+#define FOR_MSG(t, v) if (this->is<t>()) { return v; } else
+    FOR_MSG(DataMessage, MSG_DATA)
+    // FOR_MSG(PingMessage, MSG_PING)
+    // FOR_MSG(PongMessage, MSG_PONG)
+    FOR_MSG(KeepaliveMessage, MSG_KEEPALIVE)
+    FOR_MSG(KeepaliveResponseMessage, MSG_KEEPALIVE_RESPONSE)
+    FOR_MSG(HandshakeStartMessage, MSG_HANDSHAKE_START)
+    FOR_MSG(HandshakeFinishMessage, MSG_HANDSHAKE_FINISH)
+    FOR_MSG(HandshakeFailureMessage, MSG_HANDSHAKE_FAILURE)
+    FOR_MSG(ClientCloseMessage, MSG_CLIENT_CLOSE)
+    FOR_MSG(ServerCloseMessage, MSG_SERVER_CLOSE)
+    FOR_MSG(ClientReconnectMessage, MSG_CLIENT_RECONNECT)
+    FOR_MSG(ConnectionErrorMessage, MSG_CONNECTION_ERROR)
+    // FOR_MSG(QdbChunkRequestMessage, MSG_QDB_CHUNK_REQUEST)
+    // FOR_MSG(QdbChunkResponseMessage, MSG_QDB_CHUNK_RESPONSE)
+    // FOR_MSG(ReconnectSuccessMessage, MSG_RECONNECT_SUCCESS)
+    // FOR_MSG(ReconnectFailureMessage, MSG_RECONNECT_FAILURE)
+    // FOR_MSG(QdbgToggleMessage, MSG_QDBG_TOGGLE)
+    // FOR_MSG(QdbgReportMessage, MSG_QDBG_REPORT)
+    /* else */ {
+        QN_ASSERT(false && "unsupported message in headerByte");
     }
 #undef FOR_MSG
 }

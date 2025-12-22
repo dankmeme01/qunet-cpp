@@ -145,15 +145,9 @@ struct ConnectionData {
     bool m_tryStatelessReconnect = false;
 };
 
-struct ChannelMsg {
-    QunetMessage message;
-    bool reliable = false;
-    bool uncompressed = false;
-};
-
 struct WorkerThreadState {
     arc::mpsc::Receiver<std::string> connectChan;
-    arc::mpsc::Receiver<ChannelMsg> msgChan;
+    arc::mpsc::Receiver<OutgoingMessage> msgChan;
     std::string connectHostname;
 };
 
@@ -168,7 +162,7 @@ public:
     Connection(
         arc::Runtime* runtime,
         arc::mpsc::Sender<std::string> connectChan,
-        arc::mpsc::Sender<ChannelMsg> msgChan,
+        arc::mpsc::Sender<OutgoingMessage> msgChan,
         WorkerThreadState wts
     );
     ~Connection();
@@ -288,7 +282,7 @@ public:
     bool sendKeepalive();
     // Sends a data message to the server. Returns true on success,
     // false if not connected or message buffer is full.
-    bool sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false);
+    bool sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false, std::string tag = "");
 
     /// Get a snapshot of various message data. If `period` is nonzero, will only include stats for that time period.
     /// If `period` is zero (default), will include all-time stats.
@@ -308,7 +302,7 @@ private:
     arc::CancellationToken m_cancel;
 
     arc::mpsc::Sender<std::string> m_connectChan;
-    arc::mpsc::Sender<ChannelMsg> m_msgChan;
+    arc::mpsc::Sender<OutgoingMessage> m_msgChan;
 
     asp::Mutex<ConnectionSettings> m_settings;
     asp::SpinLock<ConnectionCallbacks> m_callbacks;
@@ -347,7 +341,7 @@ private:
     void onConnectionError(const ConnectionError& err);
     void onFatalError(const ConnectionError& err);
 
-    bool sendMsgToThread(QunetMessage&& message, bool reliable = true, bool uncompressed = false);
+    bool sendMsgToThread(QunetMessage&& message, bool reliable = true, bool uncompressed = false, std::string tag = "");
 };
 
 }

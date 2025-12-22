@@ -5,6 +5,7 @@
 #include <chrono>
 
 using namespace asp::time;
+using namespace arc;
 
 namespace qn {
 
@@ -29,21 +30,31 @@ TransportResult<> BaseTransport::initCompressors(const QunetDatabase* qdb) {
     return Ok();
 }
 
-arc::Future<TransportResult<QunetMessage>> BaseTransport::performHandshake(
+Future<TransportResult<>> BaseTransport::sendMessage(QunetMessage data, bool reliable) {
+    SentMessageContext ctx{};
+    ctx.reliable = reliable;
+    auto res = co_await this->sendMessage(std::move(data), ctx);
+    if (res) {
+        this->logOutgoingMessage(data.headerByte(), ctx);
+    }
+    co_return res;
+}
+
+Future<TransportResult<QunetMessage>> BaseTransport::performHandshake(
     HandshakeStartMessage handshakeStart
 ) {
-    ARC_CO_UNWRAP(co_await this->sendMessage(std::move(handshakeStart), false));
+    ARC_CO_UNWRAP(co_await this->sendMessage(std::move(handshakeStart)));
     co_return co_await this->receiveMessage();
 }
 
-arc::Future<TransportResult<QunetMessage>> BaseTransport::performReconnect(
+Future<TransportResult<QunetMessage>> BaseTransport::performReconnect(
     uint64_t connectionId
 ) {
-    ARC_CO_UNWRAP(co_await this->sendMessage(ClientReconnectMessage{ connectionId }, false));
+    ARC_CO_UNWRAP(co_await this->sendMessage(ClientReconnectMessage{ connectionId }));
     co_return co_await this->receiveMessage();
 }
 
-arc::Future<TransportResult<bool>> BaseTransport::pollTimeout(asp::time::Duration timeout) {
+Future<TransportResult<bool>> BaseTransport::pollTimeout(asp::time::Duration timeout) {
     auto res = co_await arc::timeout(timeout, this->poll());
 
     if (res.isErr()) {
@@ -172,6 +183,10 @@ Duration BaseTransport::sinceLastKeepalive() const {
     }
 
     return m_lastKeepalive->elapsed();
+}
+
+void BaseTransport::logOutgoingMessage(uint8_t hbyte, const SentMessageContext& ctx) {
+    m_tracker.onUpMessage(hbyte, ctx.originalSize, ctx.compressedSize, {}, ctx.relHeader);
 }
 
 }

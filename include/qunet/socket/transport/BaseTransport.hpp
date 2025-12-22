@@ -13,9 +13,18 @@
 #include <asp/time/Duration.hpp>
 #include <asp/time/Instant.hpp>
 #include <stdint.h>
-#include <queue>
 
 namespace qn {
+
+struct SentMessageContext {
+    bool reliable = false;
+    std::optional<ReliabilityHeader> relHeader;
+
+    size_t originalSize = 0;
+    std::optional<size_t> compressedSize;
+
+    std::string tag;
+};
 
 class BaseTransport {
 public:
@@ -24,7 +33,8 @@ public:
     BaseTransport& operator=(BaseTransport&&) = default;
 
     virtual ~BaseTransport() = default;
-    virtual arc::Future<TransportResult<>> sendMessage(QunetMessage message, bool reliable) = 0;
+    virtual arc::Future<TransportResult<>> sendMessage(QunetMessage message, SentMessageContext& ctx) = 0;
+    virtual arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable = true);
 
     /// Sends the qunet hadnshake to the server and waits for a response.
     /// The default implementation should only be used in reliable and ordered transports,
@@ -102,6 +112,8 @@ protected:
 
     /// Call this whenever an incoming message is received, for statistics
     void onIncomingMessage(const QunetMessage& msg);
+
+    void logOutgoingMessage(uint8_t headerByte, const SentMessageContext& ctx);
 };
 
 }

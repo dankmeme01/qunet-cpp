@@ -79,6 +79,7 @@ public:
     /// Like `snapshot` but includes all-time stats plus extra fields
     StatWholeSnapshot snapshotFull() const;
 
+    void onStartedConnection();
     void onConnected();
 
     void onUpPacket(size_t bytes);

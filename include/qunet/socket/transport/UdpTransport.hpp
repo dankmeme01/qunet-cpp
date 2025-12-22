@@ -9,6 +9,8 @@ namespace qn {
 
 class UdpTransport : public BaseTransport {
 public:
+    using BaseTransport::sendMessage;
+
     ~UdpTransport() override;
     UdpTransport(UdpTransport&&) = default;
     UdpTransport& operator=(UdpTransport&&) = default;
@@ -24,7 +26,7 @@ public:
 
     TransportResult<> closeSync() override;
     bool isClosed() const override;
-    arc::Future<TransportResult<>> sendMessage(QunetMessage data, bool reliable) override;
+    arc::Future<TransportResult<>> sendMessage(QunetMessage data, SentMessageContext& ctx) override;
     arc::Future<TransportResult<>> poll() override;
     arc::Future<TransportResult<QunetMessage>> receiveMessage() override;
 
@@ -47,7 +49,7 @@ private:
 
     // Performs fragmentation (if needed) and sends the message.
     // Reliability and compression headers should already be set in the message, if they are needed.
-    arc::Future<TransportResult<>> doSendUnfragmentedData(QunetMessage& message, bool retransmission = false);
+    arc::Future<TransportResult<>> doSendUnfragmentedData(QunetMessage& message, SentMessageContext& ctx, bool retransmission = false);
 
     bool shouldLosePacket();
     asp::time::Duration untilKeepalive() const;

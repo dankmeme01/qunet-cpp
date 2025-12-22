@@ -57,6 +57,7 @@ Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
     auto startedAt = Instant::now();
 
     ARC_CO_UNWRAP(co_await this->sendMessage(handshakeStart, false));
+
     auto lastSentHandshake = Instant::now();
     size_t sentAttempts = 1;
 
@@ -177,7 +178,7 @@ Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
     co_return Ok(std::move(outMessage));
 }
 
-arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, bool reliable) {
+arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, SentMessageContext& ctx) {
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
         if (message.is<KeepaliveMessage>()) {
@@ -195,7 +196,6 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, b
 
         this->updateLastActivity();
 
-        m_tracker.onUpMessage(data[0], data.size());
         m_tracker.onUpPacket(data.size());
 
         co_return Ok();
@@ -210,7 +210,7 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, b
     relHdr.messageId = 0;
     m_relStore.setOutgoingAcks(relHdr);
 
-    if (reliable) {
+    if (ctx.reliable) {
         relHdr.messageId = m_relStore.nextMessageId();
     }
 
@@ -221,20 +221,17 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, b
         msg.relHeader.reset();
     }
 
-    co_return co_await this->doSendUnfragmentedData(message, false);
+    co_return co_await this->doSendUnfragmentedData(message, ctx, false);
 }
 
-arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage& message, bool retransmission) {
+arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage& message, SentMessageContext& ctx, bool retransmission) {
     auto& msg = message.as<DataMessage>();
     HeapByteWriter writer;
 
-    if (msg.compHeader) {
-        m_tracker.onUpMessage(MSG_DATA, msg.compHeader->uncompressedSize, msg.data.size(), {}, msg.relHeader);
-    } else {
-        m_tracker.onUpMessage(MSG_DATA, msg.data.size(), std::nullopt, {}, msg.relHeader);
-    }
-
     bool isReliable = msg.relHeader.has_value() && msg.relHeader->messageId != 0 && !retransmission;
+
+    ctx.relHeader = msg.relHeader;
+    ctx.reliable = isReliable;
 
     size_t relHdrSize = msg.relHeader.has_value() ? 4 + msg.relHeader->ackCount * 2 : 0; // 2 for message ID + 2 for ack count, 2 for each ACK
     size_t compHdrSize = msg.compHeader.has_value() ? 4 : 0;
@@ -456,7 +453,9 @@ Duration UdpTransport::untilKeepalive() const {
 arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
     while (auto msg = m_relStore.maybeRetransmit()) {
         // if we have a message to retransmit, send it
-        ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(*msg, true));
+        SentMessageContext ctx{};
+        ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(*msg, ctx, true));
+        this->logOutgoingMessage(msg->headerByte(), ctx);
     }
 
     // if we have not sent any data messages recently that we could tag acks onto,
@@ -474,7 +473,9 @@ arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
             .relHeader = std::move(relHdr),
         }};
 
-        ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(msg, false));
+        SentMessageContext ctx{};
+        ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(msg, ctx, false));
+        this->logOutgoingMessage(msg.headerByte(), ctx);
     }
 
     // if we have sent 3 keepalives with no response, reconnect
