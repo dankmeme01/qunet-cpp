@@ -49,6 +49,9 @@ Resolver::Resolver() {
         return;
     }
 
+    m_systemDnsServers = ares_get_servers_csv((ares_channel_t*)m_channel);
+    log::debug("(Resolver) System DNS servers: {}", m_systemDnsServers);
+
     // prefill cache with localhost
     m_aCache.lock()->emplace("localhost", DNSRecordA{{qsox::Ipv4Address::LOCALHOST}});
     m_aaaaCache.lock()->emplace("localhost", DNSRecordAAAA{{qsox::Ipv6Address::LOCALHOST}});
@@ -256,6 +259,14 @@ void Resolver::reloadServers() {
         }
         servers += fmt::format("[{}]", addrOpt->toString());
     }
+
+    // add the system server as the last resort
+    // this is important, because for example if a VPN is enabled, it might block any custom DNS servers
+    if (!servers.empty()) {
+        servers += ",";
+    }
+    servers += m_systemDnsServers;
+    log::debug("(Resolver) setting DNS servers to: {}", servers);
 
     ares_set_servers_csv((ares_channel_t*)m_channel, servers.c_str());
 }

@@ -80,6 +80,7 @@ private:
     void* m_channel = nullptr; // ares_channel_t
     std::optional<qsox::IpAddress> m_primaryNs, m_secondaryNs;
     DNSTransport m_transport = DNSTransport::Udp;
+    std::string m_systemDnsServers;
     asp::Mutex<std::unordered_map<std::string, DNSRecordA>> m_aCache;
     asp::Mutex<std::unordered_map<std::string, DNSRecordAAAA>> m_aaaaCache;
     asp::Mutex<std::unordered_map<std::string, DNSRecordSRV>> m_srvCache;
