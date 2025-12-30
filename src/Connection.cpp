@@ -241,6 +241,8 @@ void Connection::destroy() {
 }
 
 Future<> Connection::workerThreadLoop() {
+    ARC_FRAME();
+
     switch (this->state()) {
         case ConnectionState::Disconnected: {
             // wait for connect request
@@ -504,6 +506,8 @@ void Connection::onFatalError(const ConnectionError& err) {
 }
 
 Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
+    ARC_FRAME();
+
     UrlParser parser{url};
     auto parseRes = parser.result();
 
@@ -553,6 +557,8 @@ static Future<ConnectionResult<>> fetchIps(
     bool ipv4,
     bool ipv6
 ) {
+    ARC_FRAME();
+
     auto& resolver = Resolver::get();
 
     auto fut1 = [&](this auto self) -> Future<ResolverResult<>> {
@@ -797,6 +803,7 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
 }
 
 Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<SocketAddress, ConnectionType>> addrs) {
+    ARC_FRAME();
     ARC_ASSERT(!addrs.empty());
     this->setState(ConnectionState::Connecting);
 
@@ -865,6 +872,8 @@ Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<
 }
 
 Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, ConnectionType type) {
+    ARC_FRAME();
+
     log::debug("Trying to connect to {} ({})", addr.toString(), connTypeToString(type));
 
     // if this connection requires TLS, check if we have a TLS context
@@ -901,6 +910,8 @@ TransportOptions Connection::makeOptions(SocketAddress addr, ConnectionType type
 }
 
 Future<ConnectionResult<>> Connection::threadConnectSocket(SocketAddress addr, ConnectionType type, bool reconnect) {
+    ARC_FRAME();
+
     TransportOptions opts = makeOptions(addr, type, reconnect);
     auto qdbDir = m_settings.lock()->m_qdbFolder;
 
@@ -913,6 +924,8 @@ Future<ConnectionResult<>> Connection::threadConnectSocket(SocketAddress addr, C
 }
 
 Future<ConnectionResult<>> Connection::threadTryReconnect(bool stateless) {
+    ARC_FRAME();
+
     auto data = m_data.lock();
     auto addr = data->m_address;
     auto type = data->m_connType;
@@ -995,6 +1008,8 @@ ConnectionResult<> Connection::connect(std::string_view destination) {
 }
 
 Future<ConnectionResult<>> Connection::connectWait(std::string_view destination) {
+    ARC_FRAME();
+
     // set up a connection state callback
     arc::Notify notify;
 

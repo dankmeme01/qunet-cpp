@@ -31,6 +31,8 @@ TransportResult<> BaseTransport::initCompressors(const QunetDatabase* qdb) {
 }
 
 Future<TransportResult<>> BaseTransport::sendMessage(QunetMessage data, bool reliable) {
+    ARC_FRAME();
+
     SentMessageContext ctx{};
     ctx.reliable = reliable;
     auto res = co_await this->sendMessage(std::move(data), ctx);
@@ -55,6 +57,7 @@ Future<TransportResult<QunetMessage>> BaseTransport::performReconnect(
 }
 
 Future<TransportResult<bool>> BaseTransport::pollTimeout(asp::time::Duration timeout) {
+    ARC_FRAME();
     auto res = co_await arc::timeout(timeout, this->poll());
 
     if (res.isErr()) {

@@ -18,6 +18,8 @@ using namespace asp::time;
 namespace qn {
 
 Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const TransportOptions& options) {
+    ARC_FRAME();
+
     auto startedAt = Instant::now();
 
     StatTracker tracker;
@@ -49,6 +51,8 @@ arc::Future<TransportResult<Socket>> Socket::connect(
     const TransportOptions& options,
     std::optional<std::filesystem::path> qdbFolder
 ) {
+    ARC_FRAME();
+
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
 
     if (qdbFolder) {
@@ -105,6 +109,8 @@ arc::Future<TransportResult<Socket>> Socket::connect(
 }
 
 Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& options, Socket& prev) {
+    ARC_FRAME();
+
     auto [socket, timeout] = ARC_CO_UNWRAP(co_await createSocket(options));
 
     // this will be set to false at the very end if successful
@@ -139,6 +145,8 @@ Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& option
 }
 
 Future<TransportResult<>> Socket::onHandshakeSuccess(const HandshakeFinishMessage& msg) {
+    ARC_FRAME();
+
     log::debug("Handshake finished, connection ID: {}, qdb size: {}", msg.connectionId, msg.qdbData ? msg.qdbData->uncompressedSize : 0);
     m_transport->setConnectionId(msg.connectionId);
 
@@ -204,6 +212,8 @@ bool Socket::isClosed() const {
 }
 
 Future<TransportResult<>> Socket::sendMessage(OutgoingMessage outgoing) {
+    ARC_FRAME();
+
     // determine if the message needs to be compressed
     CompressionType ctype = CompressionType::None;
     auto& message = outgoing.message;
@@ -297,6 +307,7 @@ CompressorResult<> Socket::doCompressLz4(DataMessage& message) const {
 }
 
 Future<TransportResult<QunetMessage>> Socket::receiveMessage() {
+    ARC_FRAME();
     auto msg = ARC_CO_UNWRAP(co_await m_transport->receiveMessage());
     m_transport->onIncomingMessage(msg);
     co_return Ok(std::move(msg));

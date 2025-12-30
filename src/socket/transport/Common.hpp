@@ -13,6 +13,8 @@
 namespace qn::streamcommon {
 
 inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport, SentMessageContext& ctx) {
+    ARC_FRAME();
+
     HeapByteWriter writer;
 
     bool hasLength = !(message.is<HandshakeStartMessage>() || message.is<ClientReconnectMessage>());
@@ -166,6 +168,8 @@ inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
     size_t messageSizeLimit,
     size_t& unackedKeepalives
 ) {
+    ARC_FRAME();
+
     auto waitForData = [&](this auto self) -> arc::Future<TransportResult<>> {
         auto wnd = buffer.writeWindow();
         if (wnd.size() < 2048) {

@@ -54,6 +54,7 @@ bool UdpTransport::isClosed() const {
 Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
     HandshakeStartMessage handshakeStart
 ) {
+    ARC_FRAME();
     auto startedAt = Instant::now();
 
     ARC_CO_UNWRAP(co_await this->sendMessage(handshakeStart, false));
@@ -179,6 +180,8 @@ Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
 }
 
 arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, SentMessageContext& ctx) {
+    ARC_FRAME();
+
     // non-data messages cannot be compressed, fragmented or reliable, so steps are simple here
     if (!message.is<DataMessage>()) {
         if (message.is<KeepaliveMessage>()) {
@@ -225,6 +228,8 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, S
 }
 
 arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage& message, SentMessageContext& ctx, bool retransmission) {
+    ARC_FRAME();
+
     auto& msg = message.as<DataMessage>();
     HeapByteWriter writer;
 
@@ -328,6 +333,8 @@ Future<TransportResult<QunetMessage>> UdpTransport::receiveMessage() {
 }
 
 Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessageInner() {
+    ARC_FRAME();
+
     // first, check if we have any messages sent before connection was established
     if (!m_oobMessages.empty()) {
         auto msg = std::move(m_oobMessages.front());
@@ -451,6 +458,8 @@ Duration UdpTransport::untilKeepalive() const {
 }
 
 arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
+    ARC_FRAME();
+
     while (auto msg = m_relStore.maybeRetransmit()) {
         // if we have a message to retransmit, send it
         SentMessageContext ctx{};

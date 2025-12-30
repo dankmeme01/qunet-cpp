@@ -33,7 +33,7 @@ endif()
 # add deps
 set(ARC_DEBUG ${QUNET_DEBUG})
 CPMAddPackage("gh:dankmeme01/asp2#c467325b")
-CPMAddPackage("gh:dankmeme01/arc#fa777de")
+CPMAddPackage("gh:dankmeme01/arc@1.1.2")
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 CPMAddPackage("gh:zhihaoy/nontype_functional#8ec2e09")
 

@@ -18,7 +18,7 @@ template <auto Fn, typename R, typename Res = ResolverResult<R>>
 static Future<Res> wrapSync(Resolver* self, const std::string& name) {
     auto [tx, rx] = mpsc::channel<Res>(1);
     auto res = (self->*Fn)(name, [tx = std::move(tx)](Res record) mutable {
-        QN_ASSERT(tx.trySend(std::move(record)));
+        (void) tx.trySend(std::move(record));
     });
 
     if (!res) {
