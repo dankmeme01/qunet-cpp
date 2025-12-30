@@ -68,7 +68,8 @@ if (QUNET_ADVANCED_DNS)
     CPMAddPackage(
         NAME c-ares
         GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
-        GIT_TAG "main" # TODO: use stable version when a 1.34.6 or 1.35 is out
+        GIT_TAG "89f91c0" # TODO: use stable version when a 1.34.6 or 1.35 is out
+                          # the commit right after 89f91c0 also broke the local dns server getter
         OPTIONS "CARES_STATIC ON"
                 "CARES_SHARED OFF"
                 "CARES_INSTALL OFF"
