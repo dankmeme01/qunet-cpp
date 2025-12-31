@@ -728,6 +728,10 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
                 }
 
                 auto [i, result] = std::move(res).unwrap();
+                if (result.timedOut || result.protocols.empty()) {
+                    return;
+                }
+                
                 pingResults.push_back({ addrs[i], result.responseTime });
 
                 // add supported protocols
@@ -799,7 +803,7 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
         }
     }
 
-    co_return co_await this->threadFinalConnect(finalAddrs);
+    co_return co_await this->threadFinalConnect(std::move(finalAddrs));
 }
 
 Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<SocketAddress, ConnectionType>> addrs) {
