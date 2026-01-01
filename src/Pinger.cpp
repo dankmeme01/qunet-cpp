@@ -202,7 +202,7 @@ Future<> Pinger::thrDoPing(arc::UdpSocket& socket, const qsox::SocketAddress& ad
         if (err.isOsError() && err.osCode() == EPERM) {
             // try to recreate the socket once
             log::warn("Ping send failed with EPERM, recreating socket to fix potential issue");
-            auto newSocketRes = UdpSocket::bindAny();
+            auto newSocketRes = co_await UdpSocket::bindAny();
             if (!newSocketRes) {
                 log::error("Failed to recreate UDP socket: {}", newSocketRes.unwrapErr().message());
             } else {
