@@ -21,6 +21,7 @@ struct PingResult {
     std::vector<SupportedProtocol> protocols;
     std::vector<uint8_t> extraData;
     bool timedOut = false;
+    bool errored = false;
 };
 
 class Pinger {

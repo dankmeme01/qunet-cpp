@@ -11,7 +11,7 @@
 using namespace arc;
 using namespace asp::time;
 
-constexpr Duration PING_TIMEOUT = Duration::fromMillis(2000);
+constexpr Duration PING_TIMEOUT = Duration::fromMillis(1500);
 
 namespace qn {
 
@@ -115,7 +115,6 @@ void Pinger::thrRemoveTimedOutPings() {
         if (now.durationSince(ping.sentAt) > PING_TIMEOUT) {
             PingResult result {
                 .pingId = ping.pingId,
-                .responseTime = Duration::fromMillis(0), // no response time
                 .timedOut = true,
             };
             ping.callback(result);
@@ -198,6 +197,10 @@ Future<> Pinger::thrDoPing(arc::UdpSocket& socket, const qsox::SocketAddress& ad
     auto res = co_await socket.sendTo(writer.written().data(), writer.written().size(), address);
     if (!res) {
         log::error("Failed to send ping to {}: {}", address.toString(), res.unwrapErr().message());
+        callback(PingResult{
+            .pingId = pingId,
+            .errored = true,
+        });
         co_return;
     }
 

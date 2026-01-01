@@ -731,10 +731,10 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
                 anyResults++;
 
                 auto [i, result] = std::move(res).unwrap();
-                if (result.timedOut || result.protocols.empty()) {
+                if (result.timedOut || result.errored || result.protocols.empty()) {
                     return;
                 }
-                
+
                 pingResults.push_back({ addrs[i], result.responseTime });
 
                 // add supported protocols
