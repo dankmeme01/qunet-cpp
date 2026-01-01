@@ -195,12 +195,31 @@ Future<> Pinger::thrDoPing(arc::UdpSocket& socket, const qsox::SocketAddress& ad
     writer.writeU8(this->isCached(address) ? 1 : 0); // flags
 
     auto res = co_await socket.sendTo(writer.written().data(), writer.written().size(), address);
+
+#ifdef __APPLE__
+    if (!res) {
+        auto err = res.unwrapErr();
+        if (err.isOsError() && err.osCode() == EPERM) {
+            // try to recreate the socket once
+            log::warn("Ping send failed with EPERM, recreating socket to fix potential issue");
+            auto newSocketRes = UdpSocket::bindAny();
+            if (!newSocketRes) {
+                log::error("Failed to recreate UDP socket: {}", newSocketRes.unwrapErr().message());
+            } else {
+                socket = std::move(newSocketRes).unwrap();
+                res = co_await socket.sendTo(writer.written().data(), writer.written().size(), address);
+            }
+        }
+    }
+#endif
+
     if (!res) {
         log::error("Failed to send ping to {}: {}", address.toString(), res.unwrapErr().message());
         callback(PingResult{
             .pingId = pingId,
             .errored = true,
         });
+
         co_return;
     }
 
