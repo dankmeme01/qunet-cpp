@@ -37,15 +37,17 @@ Pinger& Pinger::get() {
 }
 
 Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>> rx) {
-    auto res = co_await UdpSocket::bindAny();
-    if (!res) {
-        log::error("Failed to bind pinger UDP socket: {}", res.unwrapErr().message());
-        co_return;
-    }
-
-    auto socket = std::move(res).unwrap();
-
     while (true) {
+        if (!m_socket) {
+            // keep trying to recreate it
+            co_await this->recreateSocket();
+
+            if (!m_socket) {
+                co_await arc::sleep(Duration::fromSecs(5));
+                continue;
+            }
+        }
+
         qsox::SocketAddress src = qsox::SocketAddress::any();
         uint8_t response[256];
 
@@ -60,25 +62,30 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
             // wait for a new ping request
             arc::selectee(
                 rx.recv(),
-                [this, &socket](auto res) -> arc::Future<> {
+                [this](auto res) -> arc::Future<> {
                     if (!res) co_return; // channel closed
 
                     auto [address, callback] = std::move(res).unwrap();
-                    co_await this->thrDoPing(socket, address, std::move(callback));
+                    co_await this->thrDoPing(address, std::move(callback));
                 }
             ),
 
             // wait to receive a ping response
             arc::selectee(
-                socket.recvFrom(response, sizeof(response), src),
+                m_socket->recvFrom(response, sizeof(response), src),
                 [&](auto res) -> arc::Future<> {
                     if (!res) {
                         auto err = res.unwrapErr();
 
                         // windows kinda decides to spam connection reset error whenever a send fails due to icmp error
-                        if (err != qsox::Error::ConnectionReset) {
-                            log::warn("Failed to receive ping response: {}", err.message());
+                        if (err == qsox::Error::ConnectionReset) {
+                            co_return;
                         }
+
+                        log::warn("Failed to receive ping response: {}", err.message());
+                        
+                        // recreate the socket
+                        m_socket.reset();
 
                         co_return;
                     }
@@ -105,6 +112,16 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
             )
         );
     }
+}
+
+Future<> Pinger::recreateSocket() {
+    auto res = co_await arc::UdpSocket::bindAny();
+    if (!res) {
+        log::error("Failed to create UDP socket for pinger: {}", res.unwrapErr().message());
+        co_return;
+    }
+
+    m_socket = std::move(res).unwrap();
 }
 
 void Pinger::thrRemoveTimedOutPings() {
@@ -186,7 +203,7 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
     return Ok();
 }
 
-Future<> Pinger::thrDoPing(arc::UdpSocket& socket, const qsox::SocketAddress& address, Callback callback) {
+Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
     uint32_t pingId = ++m_nextPingId;
 
     HeapByteWriter writer;
@@ -194,24 +211,7 @@ Future<> Pinger::thrDoPing(arc::UdpSocket& socket, const qsox::SocketAddress& ad
     writer.writeU32(pingId);
     writer.writeU8(this->isCached(address) ? 1 : 0); // flags
 
-    auto res = co_await socket.sendTo(writer.written().data(), writer.written().size(), address);
-
-#ifdef __APPLE__
-    if (!res) {
-        auto err = res.unwrapErr();
-        if (err.isOsError() && err.osCode() == EPERM) {
-            // try to recreate the socket once
-            log::warn("Ping send failed with EPERM, recreating socket to fix potential issue");
-            auto newSocketRes = co_await UdpSocket::bindAny();
-            if (!newSocketRes) {
-                log::error("Failed to recreate UDP socket: {}", newSocketRes.unwrapErr().message());
-            } else {
-                socket = std::move(newSocketRes).unwrap();
-                res = co_await socket.sendTo(writer.written().data(), writer.written().size(), address);
-            }
-        }
-    }
-#endif
+    auto res = co_await m_socket->sendTo(writer.written().data(), writer.written().size(), address);
 
     if (!res) {
         log::error("Failed to send ping to {}: {}", address.toString(), res.unwrapErr().message());
