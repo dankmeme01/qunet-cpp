@@ -706,9 +706,10 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
     std::vector<std::pair<SocketAddress, Duration>> pingResults;
     std::vector<SupportedProtocol> protocols;
     std::vector<std::pair<SocketAddress, ConnectionType>> finalAddrs;
+    size_t anyResults = 0;
 
     bool waiting = true;
-    while (pingResults.size() < addrs.size() && waiting) {
+    while (anyResults < addrs.size() && waiting) {
         auto now = Instant::now();
         // if any arrived already, terminate soon; otherwise wait longer
         auto deadline = startedAt + (pingResults.size() > 0 ? Duration::fromMillis(50) : Duration::fromSecs(5));
@@ -726,6 +727,8 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
                     waiting = false;
                     return;
                 }
+
+                anyResults++;
 
                 auto [i, result] = std::move(res).unwrap();
                 if (result.timedOut || result.protocols.empty()) {
