@@ -32,8 +32,9 @@ Pinger::~Pinger() {
 }
 
 Pinger& Pinger::get() {
-    static Pinger instance;
-    return instance;
+    // leak the instance to avoid hangs in the dtor
+    static auto instance = new Pinger{};
+    return *instance;
 }
 
 Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>> rx) {
@@ -83,7 +84,7 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
                         }
 
                         log::warn("Failed to receive ping response: {}", err.message());
-                        
+
                         // recreate the socket
                         m_socket.reset();
 
