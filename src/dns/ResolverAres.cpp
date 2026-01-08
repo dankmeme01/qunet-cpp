@@ -49,7 +49,10 @@ Resolver::Resolver() {
         return;
     }
 
-    m_systemDnsServers = ares_get_servers_csv((ares_channel_t*)m_channel);
+    auto csv = ares_get_servers_csv((ares_channel_t*)m_channel);
+    m_systemDnsServers = csv ? csv : "";
+    ares_free_string(csv);
+
     log::debug("(Resolver) System DNS servers: {}", m_systemDnsServers);
 
     // prefill cache with localhost
