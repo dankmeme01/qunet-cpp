@@ -12,6 +12,7 @@ std::string_view messageForConnectionError(int code) {
         case 6: return "Protocol violation: client sent a stream message that exceeds the maximum allowed length";
         case 7: return "Internal server error";
         case 8: return "Server is shutting down";
+        case 9: return "Rate limit exceeded, client sent too many messages in a short period";
         default: return "";
     }
 }
