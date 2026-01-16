@@ -27,6 +27,8 @@ TransportResult<> BaseTransport::initCompressors(const QunetDatabase* qdb) {
         GEODE_UNWRAP(m_zstdDecompressor.init());
     }
 
+    // lz4 does not need any initialization
+
     return Ok();
 }
 
@@ -115,15 +117,20 @@ TransportResult<QunetMessage> BaseTransport::decodePreFinalDataMessage(QunetMess
         auto ty = meta.compressionHeader->type;
 
         switch (ty) {
-            case CompressionType::Zstd: {
+            case CompressionType::Zstd:
+            case CompressionType::ZstdNoDict: {
                 GEODE_UNWRAP(m_zstdDecompressor.decompress(
                     meta.data.data(), meta.data.size(),
-                    data.data(), uncSize
+                    data.data(), uncSize,
+                    ty == CompressionType::ZstdNoDict
                 ));
             } break;
 
             case CompressionType::Lz4: {
-                return Err(TransportError::NotImplemented);
+                GEODE_UNWRAP(m_lz4Decompressor.decompress(
+                    meta.data.data(), meta.data.size(),
+                    data.data(), uncSize
+                ));
             } break;
 
             default: {

@@ -19,6 +19,7 @@ std::string_view DecompressorError::message() const {
         case AlreadyInitialized: return "Decompressor already initialized";
         case InvalidDictionary: return "Invalid dictionary for decompressor";
         case DecompressionFailed: return "Decompression failed";
+        case SizeMismatch: return "Decompressed size does not match expected size";
     }
 
     qn::unreachable();

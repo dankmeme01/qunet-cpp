@@ -9,6 +9,7 @@ QN_MAKE_ERROR_STRUCT(DecompressorError,
     AlreadyInitialized,
     InvalidDictionary,
     DecompressionFailed,
+    SizeMismatch,
 );
 
 template <typename T = void>

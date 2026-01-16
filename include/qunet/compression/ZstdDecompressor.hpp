@@ -25,7 +25,8 @@ public:
     /// `dstSize` will be set to the size of the decompressed data.
     DecompressorResult<> decompress(
         const void* src, size_t srcSize,
-        void* dst, size_t& dstSize
+        void* dst, size_t& dstSize,
+        bool noDict = false
     );
 
 private:

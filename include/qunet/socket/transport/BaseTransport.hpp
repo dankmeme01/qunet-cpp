@@ -4,6 +4,8 @@
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/compression/ZstdDecompressor.hpp>
 #include <qunet/compression/ZstdCompressor.hpp>
+#include <qunet/compression/Lz4Compressor.hpp>
+#include <qunet/compression/Lz4Decompressor.hpp>
 #include <qunet/database/QunetDatabase.hpp>
 #include <qunet/util/StatTracker.hpp>
 
@@ -91,6 +93,8 @@ protected:
     // compressors
     ZstdCompressor m_zstdCompressor;
     ZstdDecompressor m_zstdDecompressor;
+    Lz4Compressor m_lz4Compressor;
+    Lz4Decompressor m_lz4Decompressor;
 
     uint64_t m_lastRttMicros = 0;
     std::optional<asp::time::Instant> m_lastActivity;

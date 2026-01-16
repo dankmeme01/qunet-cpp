@@ -55,7 +55,8 @@ DecompressorResult<> ZstdDecompressor::initWithDictionary(const void* data, size
 
 DecompressorResult<> ZstdDecompressor::decompress(
     const void* src, size_t srcSize,
-    void* dst, size_t& dstSize
+    void* dst, size_t& dstSize,
+    bool noDict
 ) {
     if (!m_ctx) {
         return Err(DecompressorError::NotInitialized);
@@ -63,7 +64,7 @@ DecompressorResult<> ZstdDecompressor::decompress(
 
     size_t dsize = 0;
 
-    if (m_dict) {
+    if (m_dict && !noDict) {
         dsize = ZSTD_decompress_usingDDict(m_ctx, dst, dstSize, src, srcSize, m_dict);
     } else {
         dsize = ZSTD_decompressDCtx(m_ctx, dst, dstSize, src, srcSize);
@@ -74,6 +75,11 @@ DecompressorResult<> ZstdDecompressor::decompress(
         auto msg = ZSTD_getErrorName(ec);
         log::warn("ZstdDecompressor: Decompression failed: {} ({})", msg, (int) ec);
         return Err(DecompressorError::DecompressionFailed);
+    }
+
+    if (dstSize != dsize) {
+        log::warn("ZstdDecompressor: Decompressed size mismatch: expected {}, got {}", dstSize, dsize);
+        return Err(DecompressorError::SizeMismatch);
     }
 
     dstSize = dsize;

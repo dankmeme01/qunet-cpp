@@ -4,12 +4,24 @@
 #include <stddef.h>
 #include <optional>
 #include <vector>
+#include <fmt/format.h>
 
 enum class CompressionType {
     None = 0,
     Zstd = 1,
-    Lz4 = 2,
+    ZstdNoDict = 2,
+    Lz4 = 3,
 };
+
+inline auto format_as(const CompressionType& ct) -> std::string_view {
+    switch (ct) {
+        case CompressionType::None: return "None";
+        case CompressionType::Zstd: return "Zstd";
+        case CompressionType::ZstdNoDict: return "Zstd (no dict)";
+        case CompressionType::Lz4: return "Lz4";
+        default: return "Unknown";
+    }
+}
 
 struct CompressionHeader {
     CompressionType type;

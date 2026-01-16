@@ -57,7 +57,8 @@ CompressorResult<> ZstdCompressor::initWithDictionary(const void* data, size_t s
 
 CompressorResult<> ZstdCompressor::compress(
     const void* src, size_t srcSize,
-    void* dst, size_t& dstSize
+    void* dst, size_t& dstSize,
+    bool noDict
 ) {
     if (!m_ctx) {
         return Err(CompressorError::NotInitialized);
@@ -65,7 +66,7 @@ CompressorResult<> ZstdCompressor::compress(
 
     size_t dsize = 0;
 
-    if (m_dict) {
+    if (m_dict && !noDict) {
         dsize = ZSTD_compress_usingCDict(m_ctx, dst, dstSize, src, srcSize, m_dict);
     } else {
         dsize = ZSTD_compressCCtx(m_ctx, dst, dstSize, src, srcSize, m_level);

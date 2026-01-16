@@ -93,8 +93,8 @@ private:
     arc::Future<TransportResult<>> onHandshakeSuccess(const HandshakeFinishMessage& msg);
     TransportResult<> onReconnectSuccess(Socket& older);
 
-    CompressionType shouldCompress(size_t size) const;
-    CompressorResult<> doCompressZstd(DataMessage& message) const;
+    CompressionType shouldCompress(std::span<const uint8_t> data) const;
+    CompressorResult<> doCompressZstd(DataMessage& message, bool useDict = true) const;
     CompressorResult<> doCompressLz4(DataMessage& message) const;
 };
 

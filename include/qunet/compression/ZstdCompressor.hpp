@@ -25,7 +25,8 @@ public:
     /// `dstSize` will be set to the size of the compressed data.
     CompressorResult<> compress(
         const void* src, size_t srcSize,
-        void* dst, size_t& dstSize
+        void* dst, size_t& dstSize,
+        bool noDict = false
     );
 
     /// Returns the maximum size of the compressed data for a given source size.

@@ -195,6 +195,8 @@ TransportResult<> Socket::onReconnectSuccess(Socket& older) {
     m_transport->setMessageSizeLimit(older.m_transport->m_messageSizeLimit);
     m_transport->m_zstdCompressor = std::move(older.m_transport->m_zstdCompressor);
     m_transport->m_zstdDecompressor = std::move(older.m_transport->m_zstdDecompressor);
+    m_transport->m_lz4Compressor = std::move(older.m_transport->m_lz4Compressor);
+    m_transport->m_lz4Decompressor = std::move(older.m_transport->m_lz4Decompressor);
 
     return Ok();
 }
@@ -222,17 +224,20 @@ Future<TransportResult<>> Socket::sendMessage(OutgoingMessage outgoing) {
         auto& msg = message.as<DataMessage>();
 
         if (!outgoing.uncompressed) {
-            uint32_t uncSize = msg.data.size();
-            ctype = this->shouldCompress(uncSize);
+            ctype = this->shouldCompress(msg.data);
         }
 
         switch (ctype) {
             case CompressionType::Zstd: {
-                ARC_CO_UNWRAP(this->doCompressZstd(msg));
+                ARC_CO_UNWRAP(this->doCompressZstd(msg, true));
+            } break;
+
+            case CompressionType::ZstdNoDict: {
+                ARC_CO_UNWRAP(this->doCompressZstd(msg, false));
             } break;
 
             case CompressionType::Lz4: {
-                co_return Err(TransportError::NotImplemented);
+                ARC_CO_UNWRAP(this->doCompressLz4(msg));
             } break;
 
             default: break;
@@ -270,40 +275,99 @@ Future<TransportResult<>> Socket::sendMessage(OutgoingMessage outgoing) {
     co_return res;
 }
 
-CompressionType Socket::shouldCompress(size_t size) const {
-    if (size > 1024) {
-        return CompressionType::Zstd;
-    } else {
+// similar to adaptive compression in qunet
+CompressionType Socket::shouldCompress(std::span<const uint8_t> data) const {
+    if (data.size() < 128) {
         return CompressionType::None;
     }
+
+    // try compressing with lz4
+    std::unique_ptr<uint8_t[]> heapPtr;
+    uint8_t stackArr[4096];
+    size_t destCap = Lz4Compressor::compressBound(data.size());
+    uint8_t* ptr;
+
+    if (destCap <= sizeof(stackArr)) {
+        ptr = stackArr;
+    } else {
+        heapPtr = std::make_unique<uint8_t[]>(destCap);
+        ptr = heapPtr.get();
+    }
+
+    size_t compSize = destCap;
+    m_transport->m_lz4Compressor.compress(data.data(), data.size(), ptr, compSize).unwrap();
+
+    // if lz4 is ineffective, don't compress until a certain point
+    if (compSize >= data.size() && data.size() < 1024) {
+        return CompressionType::None;
+    }
+
+    // use zstd for larger packets
+    if (data.size() >= 512) {
+        return CompressionType::Zstd;
+    }
+
+    // use zstd if the packet is slightly compressible
+    if (compSize + compSize / 16 < data.size()) {
+        return CompressionType::Zstd;
+    }
+
+    // use lz4 otherwise
+    return CompressionType::Lz4;
 }
 
-CompressorResult<> Socket::doCompressZstd(DataMessage& message) const {
+static CompressorResult<> doCompress(auto& compressor, CompressionType type, DataMessage& message) {
     uint32_t uncSize = message.data.size();
 
-    size_t outSize = m_transport->m_zstdCompressor.compressBound(uncSize);
+    size_t outSize = compressor.compressBound(uncSize);
     std::vector<uint8_t> compressedData(outSize);
 
-    GEODE_UNWRAP(m_transport->m_zstdCompressor.compress(
-        message.data.data(), uncSize,
-        compressedData.data(), outSize
-    ));
+    if constexpr (std::is_same_v<std::decay_t<decltype(compressor)>, ZstdCompressor>) {
+        GEODE_UNWRAP(compressor.compress(
+            message.data.data(), uncSize,
+            compressedData.data(), outSize,
+            type == CompressionType::ZstdNoDict
+        ));
+    } else {
+        GEODE_UNWRAP(compressor.compress(
+            message.data.data(), uncSize,
+            compressedData.data(), outSize
+        ));
+    }
+
+    log::debug("Compressed outgoing message ({}): {} -> {} bytes", type, uncSize, outSize);
+
+    // if compression did not help, leave the message uncompressed
+    if (outSize >= uncSize) {
+        log::debug("Compression did not reduce size, leaving message uncompressed");
+        return Ok();
+    }
 
     compressedData.resize(outSize);
     message.data = std::move(compressedData);
 
     message.compHeader = CompressionHeader {
-        .type = CompressionType::Zstd,
+        .type = type,
         .uncompressedSize = uncSize
     };
-
-    log::debug("Zstd compressed outgoing message: {} -> {} bytes", uncSize, outSize);
 
     return Ok();
 }
 
+CompressorResult<> Socket::doCompressZstd(DataMessage& message, bool useDict) const {
+    return doCompress(
+        m_transport->m_zstdCompressor,
+        useDict ? CompressionType::Zstd : CompressionType::ZstdNoDict,
+        message
+    );
+}
+
 CompressorResult<> Socket::doCompressLz4(DataMessage& message) const {
-    return Err(CompressorError::NotInitialized);
+    return doCompress(
+        m_transport->m_lz4Compressor,
+        CompressionType::Lz4,
+        message
+    );
 }
 
 Future<TransportResult<QunetMessage>> Socket::receiveMessage() {
