@@ -97,7 +97,7 @@ arc::Future<TransportResult<Socket>> Socket::connect(
         ARC_CO_UNWRAP(co_await socket.onHandshakeSuccess(hf));
     } else if (msg.is<HandshakeFailureMessage>()) {
         auto& hf = msg.as<HandshakeFailureMessage>();
-        log::warn("Handshake failed: {}", hf);
+        log::warn("Handshake failed: {}", hf.message());
 
         co_return Err(TransportError::HandshakeFailure(std::string(hf.message())));
     } else {

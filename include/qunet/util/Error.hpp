@@ -21,7 +21,8 @@
         std::string_view message() const; \
     private: \
         Code m_code; \
-    }
+    }; \
+    inline auto format_as(const name& err) { return err.message(); }
 
 namespace qn {
 
