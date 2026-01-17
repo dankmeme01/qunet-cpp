@@ -194,6 +194,7 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     const ConnectionOptions* connOptions,
     const std::string& hostname
 ) {
+    ARC_FRAME();
     QN_ASSERT(tlsContext != nullptr && "TLS context must not be null");
     auto debugOptions = connOptions ? &connOptions->debug : nullptr;
 
@@ -374,6 +375,8 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
 }
 
 Future<> QuicConnection::workerLoop() {
+    ARC_FRAME();
+
     while (!m_connected.load(std::memory_order::acquire)) {
         co_await m_connectedNotify.notified();
     }
@@ -398,6 +401,8 @@ Future<> QuicConnection::workerLoop() {
 }
 
 Future<TransportResult<>> QuicConnection::workerHandleWrites() {
+    ARC_FRAME();
+
     bool congestion = false;
 
     auto mapErr = [&](auto&& res) -> TransportResult<> {
@@ -437,6 +442,8 @@ Future<TransportResult<>> QuicConnection::workerHandleWrites() {
 }
 
 Future<QuicResult<int64_t>> QuicConnection::openStream() {
+    ARC_FRAME();
+
     int64_t id = -1;
 
     QuicError err = this->withLockedConn([&] {
@@ -456,12 +463,15 @@ Future<QuicResult<int64_t>> QuicConnection::openStream() {
 }
 
 Future<TransportResult<>> QuicConnection::closeStream(int64_t id) {
+    ARC_FRAME();
     auto stream = ARC_CO_UNWRAP(co_await this->getStream(id));
     stream->close();
     co_return Ok();
 }
 
 Future<TransportResult<>> QuicConnection::performHandshake() {
+    ARC_FRAME();
+
     ngtcp2_path_storage_zero(&m_networkPath);
 
     while (ngtcp2_conn_get_handshake_completed(m_conn) == 0) {
@@ -484,13 +494,13 @@ Future<TransportResult<>> QuicConnection::performHandshake() {
     co_return Ok();
 }
 
-TransportResult<size_t> QuicConnection::wrapWritePacket(uint8_t* buf, size_t size, bool handshake) {
+TransportResult<size_t> QuicConnection::wrapWritePacket(uint8_t* buf, size_t size, std::string_view which) {
     auto guard = m_connLock.lock();
-    auto written = ngtcp2_conn_write_pkt(m_conn, handshake ? &m_networkPath.path : nullptr, nullptr, buf, size, timestamp());
+    auto written = ngtcp2_conn_write_pkt(m_conn, &m_networkPath.path, nullptr, buf, size, timestamp());
 
     if (written < 0) {
         QuicError err(written);
-        log::warn("QUIC: failed to write{} packet: {}", handshake ? " handshake" : "", err.message());
+        log::warn("QUIC: failed to write{}{} packet: {}", which.empty() ? "" : " ", which, err.message());
         return Err(err);
     }
 
@@ -498,9 +508,10 @@ TransportResult<size_t> QuicConnection::wrapWritePacket(uint8_t* buf, size_t siz
 }
 
 Future<TransportResult<>> QuicConnection::sendHandshakePacket() {
+    ARC_FRAME();
     uint8_t buf[1500];
 
-    size_t written = ARC_CO_UNWRAP(this->wrapWritePacket(buf, sizeof(buf), true));
+    size_t written = ARC_CO_UNWRAP(this->wrapWritePacket(buf, sizeof(buf), "handshake"));
     QN_ASSERT(written != 0);
 
     log::debug("QUIC: sending handshake packet");
@@ -509,9 +520,10 @@ Future<TransportResult<>> QuicConnection::sendHandshakePacket() {
 }
 
 Future<TransportResult<>> QuicConnection::sendNonStreamPacket() {
+    ARC_FRAME();
     uint8_t buf[1500];
 
-    size_t written = ARC_CO_UNWRAP(this->wrapWritePacket(buf, sizeof(buf), false));
+    size_t written = ARC_CO_UNWRAP(this->wrapWritePacket(buf, sizeof(buf), "non-stream"));
 
     if (written != 0) {
         ARC_CO_UNWRAP(co_await this->sendPacket(buf, written));

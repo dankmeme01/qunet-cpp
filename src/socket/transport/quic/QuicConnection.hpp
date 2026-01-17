@@ -126,7 +126,7 @@ private:
     arc::Future<TransportResult<>> sendPacket(const uint8_t* buf, size_t size);
     /// This should only be called from the worker thread after an established connection
     arc::Future<TransportResult<>> receivePacket();
-    TransportResult<size_t> wrapWritePacket(uint8_t* buf, size_t size, bool handshake);
+    TransportResult<size_t> wrapWritePacket(uint8_t* buf, size_t size, std::string_view which = "");
 
     bool shouldLosePacket() const;
 
