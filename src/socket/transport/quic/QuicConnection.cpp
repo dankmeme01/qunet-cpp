@@ -464,9 +464,9 @@ Future<TransportResult<>> QuicConnection::closeStream(int64_t id) {
 Future<TransportResult<>> QuicConnection::performHandshake() {
     ngtcp2_path_storage_zero(&m_networkPath);
 
-    ARC_CO_UNWRAP(co_await this->sendHandshakePacket());
-
     while (ngtcp2_conn_get_handshake_completed(m_conn) == 0) {
+        ARC_CO_UNWRAP(co_await this->sendHandshakePacket());
+
         auto tres = co_await arc::timeoutAt(
             m_connectDeadline,
             this->receivePacket()
@@ -521,6 +521,8 @@ Future<TransportResult<>> QuicConnection::sendNonStreamPacket() {
 }
 
 Future<TransportResult<>> QuicConnection::sendClosePacket() {
+    ARC_FRAME();
+
     uint8_t buf[1500];
     ngtcp2_pkt_info pi{};
 
@@ -546,6 +548,9 @@ Future<TransportResult<>> QuicConnection::sendClosePacket() {
 
     if (written < 0) {
         co_return Err(QuicError(written));
+    } else if (written == 0) {
+        log::debug("QUIC: no close packet to send");
+        co_return Ok();
     }
 
     QN_ASSERT(written > 0 && "close packet is 0 bytes");
@@ -555,6 +560,7 @@ Future<TransportResult<>> QuicConnection::sendClosePacket() {
 }
 
 Future<TransportResult<>> QuicConnection::sendPacket(const uint8_t* buf, size_t size) {
+    ARC_FRAME();
     log::debug("QUIC: sending packet, size: {}", size);
 
     if (!this->shouldLosePacket()) {
@@ -572,6 +578,7 @@ Future<TransportResult<>> QuicConnection::sendPacket(const uint8_t* buf, size_t 
 }
 
 Future<TransportResult<>> QuicConnection::sendStreamData(QuicStream& stream, bool fin) {
+    ARC_FRAME();
     auto [wrp, lock] = stream.peekUnsentData();
     if (wrp.size() == 0 && !fin) {
         co_return Ok();
@@ -640,6 +647,7 @@ Future<TransportResult<>> QuicConnection::sendStreamData(QuicStream& stream, boo
 }
 
 Future<TransportResult<>> QuicConnection::receivePacket() {
+    ARC_FRAME();
     uint8_t outBuf[1500];
 
     size_t bytes = ARC_CO_UNWRAP(co_await m_socket->recv(outBuf, sizeof(outBuf)));
@@ -663,6 +671,7 @@ Future<TransportResult<>> QuicConnection::receivePacket() {
 }
 
 Future<TransportResult<>> QuicConnection::close() {
+    ARC_FRAME();
     if (m_closed) {
         co_return Ok();
     }
