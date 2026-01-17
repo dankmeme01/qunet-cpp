@@ -18,6 +18,8 @@ This library is available in Rust: [dankmeme01/qunet](https://github.com/dankmem
 * Statistics tracking (bytes/messages sent, compression ratios, etc.)
 * Highly confgiruable, including being able to disable some features at compile time, e.g. QUIC or advanced DNS resolver.
 
+Currently, this library does not include server functionality. For making a Qunet server that you can connect to, use the [Rust library](https://github.com/dankmeme01/qunet)
+
 ## Usage
 
 This section is incomplete as there's a ton to describe here :)
