@@ -24,8 +24,6 @@ struct PingerHolder {
 
     PingerHolder() : instance() {}
     ~PingerHolder() {
-        log::warn("Cleaning up: {}", isCleanupUnsafe());
-
         if (!isCleanupUnsafe()) {
             instance.drop();
         }
