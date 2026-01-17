@@ -96,6 +96,7 @@ struct TransportError {
 
     std::string message() const;
 };
+inline auto format_as(const TransportError& err) { return err.message(); }
 
 template <typename T = void>
 using TransportResult = geode::Result<T, TransportError>;

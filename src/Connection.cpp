@@ -393,7 +393,7 @@ Future<> Connection::workerThreadLoop() {
                     co_return;
                 }
 
-                log::warn("Reconnect attempt failed: {}", err.message());
+                log::warn("Reconnect attempt failed: {}", err);
 
                 // failed, sleep for a bit and try again
                 co_await arc::sleep(timeout);
@@ -424,7 +424,7 @@ Future<> Connection::workerThreadLoop() {
 
             auto res = co_await m_socket->close();
             if (!res) {
-                log::warn("Failed to close socket: {}", res.unwrapErr().message());
+                log::warn("Failed to close socket: {}", res.unwrapErr());
                 this->onFatalError(res.unwrapErr());
                 co_return;
             }
@@ -485,12 +485,12 @@ void Connection::onConnectionError(const ConnectionError& err) {
         return;
     }
 
-    log::warn("Connection error: {}", err.message());
+    log::warn("Connection error: {}", err);
     m_lastError.lock() = err;
 }
 
 void Connection::onFatalError(const ConnectionError& err) {
-    log::error("Fatal connection error: {}", err.message());
+    log::error("Fatal connection error: {}", err);
     m_lastError.lock() = err;
 
     auto state = this->state();
@@ -641,7 +641,7 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
             if (err == ResolverError::NoData || err == ResolverError::UnknownHost) {
                 log::debug("No SRV record found for {}, trying A/AAAA records", srvName);
             } else {
-                log::warn("Failed to resolve SRV record for {}: {}", srvName, err.message());
+                log::warn("Failed to resolve SRV record for {}: {}", srvName, err);
             }
 
             ARC_CO_UNWRAP(co_await fetchIps(
@@ -847,7 +847,7 @@ Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<
         auto res = co_await this->threadEstablishConn(addr, type);
 
         if (!res) {
-            log::info("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), res.unwrapErr().message());
+            log::info("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(type), res.unwrapErr());
             errors.push_back({ addr, type, std::move(res).unwrapErr() });
             continue;
         }
@@ -889,7 +889,7 @@ Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, C
         bool certVerification = m_settings.lock()->m_tlsCertVerification;
         auto tlsres = ClientTlsContext::create(!certVerification);
         if (!tlsres) {
-            log::warn("Failed to create TLS context: {}", tlsres.unwrapErr().message());
+            log::warn("Failed to create TLS context: {}", tlsres.unwrapErr());
             co_return Err(ConnectionError::TlsInitFailed);
         }
 

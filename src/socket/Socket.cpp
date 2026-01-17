@@ -97,7 +97,7 @@ arc::Future<TransportResult<Socket>> Socket::connect(
         ARC_CO_UNWRAP(co_await socket.onHandshakeSuccess(hf));
     } else if (msg.is<HandshakeFailureMessage>()) {
         auto& hf = msg.as<HandshakeFailureMessage>();
-        log::warn("Handshake failed: {}", hf.message());
+        log::warn("Handshake failed: {}", hf);
 
         co_return Err(TransportError::HandshakeFailure(std::string(hf.message())));
     } else {
@@ -161,7 +161,7 @@ Future<TransportResult<>> Socket::onHandshakeSuccess(const HandshakeFinishMessag
         ARC_CO_UNWRAP(dec.decompress(msg.qdbData->chunkData.data(), msg.qdbData->chunkData.size(), qdbData.data(), realSize));
 
         auto qdb = ARC_CO_UNWRAP(QunetDatabase::decode(qdbData).mapErr([&](const DatabaseDecodeError& err) {
-            log::warn("Failed to decode Qunet database: {}", err.message());
+            log::warn("Failed to decode Qunet database: {}", err);
             return TransportError::InvalidQunetDatabase;
         }));
 

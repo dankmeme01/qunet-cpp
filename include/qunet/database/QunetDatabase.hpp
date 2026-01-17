@@ -38,6 +38,7 @@ struct DatabaseDecodeError {
 
     std::string_view message() const;
 };
+inline auto format_as(const DatabaseDecodeError& err) { return err.message(); }
 
 constexpr uint16_t QUNET_DATABASE_VERSION = 1;
 

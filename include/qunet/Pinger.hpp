@@ -6,6 +6,7 @@
 #include <arc/sync/mpsc.hpp>
 #include <arc/sync/Mutex.hpp>
 #include <arc/net/UdpSocket.hpp>
+#include <arc/util/ManuallyDrop.hpp>
 #include <asp/time/Instant.hpp>
 
 namespace qn {
@@ -43,6 +44,8 @@ public:
     geode::Result<> pingUrl(const std::string& url, Callback callback);
 
 private:
+    friend struct PingerHolder;
+    friend struct arc::ManuallyDrop<Pinger>;
     Pinger();
 
     struct OutgoingPing {

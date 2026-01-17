@@ -384,7 +384,7 @@ Future<> QuicConnection::workerLoop() {
     while (true) {
         auto res = co_await this->workerHandleWrites();
         if (!res) {
-            log::error("QUIC: fatal error when sending data: {}", res.unwrapErr().message());
+            log::error("QUIC: fatal error when sending data: {}", res.unwrapErr());
             break;
         }
 
@@ -393,7 +393,7 @@ Future<> QuicConnection::workerLoop() {
 
             arc::selectee(this->receivePacket(), [](TransportResult<> res) {
                 if (!res) {
-                    log::warn("QUIC: error receiving packet: {}", res.unwrapErr().message());
+                    log::warn("QUIC: error receiving packet: {}", res.unwrapErr());
                 }
             })
         );
@@ -500,7 +500,7 @@ TransportResult<size_t> QuicConnection::wrapWritePacket(uint8_t* buf, size_t siz
 
     if (written < 0) {
         QuicError err(written);
-        log::warn("QUIC: failed to write{}{} packet: {}", which.empty() ? "" : " ", which, err.message());
+        log::warn("QUIC: failed to write{}{} packet: {}", which.empty() ? "" : " ", which, err);
         return Err(err);
     }
 
@@ -638,7 +638,7 @@ Future<TransportResult<>> QuicConnection::sendStreamData(QuicStream& stream, boo
 
     if (written < 0) {
         QuicError err(written);
-        log::warn("QUIC stream {}: failed to write stream data: {}", stream.m_streamId, err.message());
+        log::warn("QUIC stream {}: failed to write stream data: {}", stream.m_streamId, err);
         co_return Err(err);
     } else if (written == 0) {
         log::debug("QUIC stream {}: failed to write stream data due to congestion/flow control", stream.m_streamId);
@@ -673,10 +673,10 @@ Future<TransportResult<>> QuicConnection::receivePacket() {
 
     if (res.ok()) co_return Ok();
 
-    log::warn("QUIC: failed to read the packet: {}", res.message());
+    log::warn("QUIC: failed to read the packet: {}", res);
     if (res.code == NGTCP2_ERR_CRYPTO) {
         auto tlsErr = m_tls->lastError();
-        log::warn("QUIC: last TLS error: {}", tlsErr.message());
+        log::warn("QUIC: last TLS error: {}", tlsErr);
         co_return Err(tlsErr);
     }
     co_return Err(res);

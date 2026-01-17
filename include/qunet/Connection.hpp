@@ -15,7 +15,6 @@
 
 namespace qn {
 
-
 struct ServerClosedError {
     std::string reason;
 
@@ -24,6 +23,7 @@ struct ServerClosedError {
     bool operator==(const ServerClosedError& other) const = default;
     bool operator!=(const ServerClosedError& other) const = default;
 };
+inline auto format_as(const ServerClosedError& err) { return err.message(); }
 
 class ConnectionError;
 
@@ -35,6 +35,7 @@ struct AllAddressesFailed {
     bool operator==(const AllAddressesFailed& other) const;
     bool operator!=(const AllAddressesFailed& other) const;
 };
+inline auto format_as(const AllAddressesFailed& err) { return err.message(); }
 
 class ConnectionError {
 public:
@@ -86,6 +87,7 @@ public:
 private:
     std::variant<Code, TransportError, AllAddressesFailed, ServerClosedError> m_err;
 };
+inline auto format_as(const ConnectionError& err) { return err.message(); }
 
 template <typename T = void>
 using ConnectionResult = geode::Result<T, ConnectionError>;

@@ -3,6 +3,7 @@
 #include <qunet/Log.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
+#include <qunet/util/shutdown.hpp>
 #include "UrlParser.hpp"
 
 #include <arc/future/Select.hpp>
@@ -14,6 +15,24 @@ using namespace asp::time;
 constexpr Duration PING_TIMEOUT = Duration::fromMillis(1500);
 
 namespace qn {
+
+struct PingerHolder {
+    static Pinger& get() {
+        static PingerHolder holder;
+        return holder.instance.get();
+    }
+
+    PingerHolder() : instance() {}
+    ~PingerHolder() {
+        log::warn("Cleaning up: {}", isCleanupUnsafe());
+
+        if (!isCleanupUnsafe()) {
+            instance.drop();
+        }
+    }
+private:
+    ManuallyDrop<Pinger> instance;
+};
 
 Pinger::Pinger() {
     auto rt = arc::Runtime::current();
@@ -32,9 +51,7 @@ Pinger::~Pinger() {
 }
 
 Pinger& Pinger::get() {
-    // leak the instance to avoid hangs in the dtor
-    static auto instance = new Pinger{};
-    return *instance;
+    return PingerHolder::get();
 }
 
 Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>> rx) {
@@ -83,7 +100,7 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
                             co_return;
                         }
 
-                        log::warn("Failed to receive ping response: {}", err.message());
+                        log::warn("Failed to receive ping response: {}", err);
 
                         // recreate the socket
                         m_socket.reset();
@@ -94,7 +111,7 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
                     size_t bytes = res.unwrap();
                     auto pres = this->thrParsePingResponse(response, bytes);
                     if (!pres) {
-                        log::warn("Failed to parse ping response: {}", pres.unwrapErr().message());
+                        log::warn("Failed to parse ping response: {}", pres.unwrapErr());
                         co_return;
                     }
 
@@ -118,7 +135,7 @@ Future<> Pinger::workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, C
 Future<> Pinger::recreateSocket() {
     auto res = co_await arc::UdpSocket::bindAny();
     if (!res) {
-        log::error("Failed to create UDP socket for pinger: {}", res.unwrapErr().message());
+        log::error("Failed to create UDP socket for pinger: {}", res.unwrapErr());
         co_return;
     }
 
@@ -185,7 +202,7 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
         callback = std::move(callback)
     ](ResolverResult<DNSRecordA> record) mutable {
         if (!record) {
-            log::warn("Failed to resolve A record for '{}': {}", domain, record.unwrapErr().message());
+            log::warn("Failed to resolve A record for '{}': {}", domain, record.unwrapErr());
             return;
         }
 
@@ -198,7 +215,7 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
     });
 
     if (!res) {
-        return Err(fmt::format("Failed to query A record for '{}': {}", domain, res.unwrapErr().message()));
+        return Err(fmt::format("Failed to query A record for '{}': {}", domain, res.unwrapErr()));
     }
 
     return Ok();
@@ -215,7 +232,7 @@ Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback
     auto res = co_await m_socket->sendTo(writer.written().data(), writer.written().size(), address);
 
     if (!res) {
-        log::error("Failed to send ping to {}: {}", address.toString(), res.unwrapErr().message());
+        log::error("Failed to send ping to {}: {}", address.toString(), res.unwrapErr());
         callback(PingResult{
             .pingId = pingId,
             .errored = true,
