@@ -926,17 +926,13 @@ std::shared_ptr<TlsContext> Connection::getTlsForConnection(ConnectionType type)
 TlsResult<> Connection::initTlsContext(ConnectionType type) {
     if (type == ConnectionType::Quic) {
 #ifdef QUNET_QUIC_SUPPORT
-        QuicTlsOptions opts{};
-        opts.insecure = !m_settings.lock()->m_tlsCertVerification;
-        m_quicTlsContext = GEODE_UNWRAP(QuicTlsContext::create(opts));
+        if (!m_quicTlsContext) m_quicTlsContext = GEODE_UNWRAP(QuicTlsContext::create());
 #else
         log::error("QUIC support is not enabled, cannot initialize QUIC TLS context!");
         QN_ASSERT(false && "QUIC support not enabled");
 #endif
     } else {
-        TcpTlsOptions opts{};
-        opts.insecure = !m_settings.lock()->m_tlsCertVerification;
-        m_tcpTlsContext = GEODE_UNWRAP(TcpTlsContext::create(opts));
+        if (!m_tcpTlsContext) m_tcpTlsContext = GEODE_UNWRAP(TcpTlsContext::create());
     }
 
     return Ok();
@@ -1132,11 +1128,6 @@ void Connection::setIpv6Enabled(bool enabled) {
     settings->m_ipv6Enabled = enabled;
 }
 
-void Connection::setTlsCertVerification(bool verify) {
-    auto settings = m_settings.lock();
-    settings->m_tlsCertVerification = verify;
-}
-
 void Connection::setQdbFolder(const std::filesystem::path& folder) {
     auto settings = m_settings.lock();
     settings->m_qdbFolder = folder;
@@ -1201,6 +1192,14 @@ StatWholeSnapshot Connection::statSnapshotFull() const {
 void Connection::simulateConnectionDrop() {
     this->onFatalError(ConnectionError::InternalError);
     m_taskWakeNotify.notifyOne();
+}
+
+void Connection::setTlsContext(std::shared_ptr<TcpTlsContext> context) {
+    m_tcpTlsContext = std::move(context);
+}
+
+void Connection::setQuicTlsContext(std::shared_ptr<QuicTlsContext> context) {
+    m_quicTlsContext = std::move(context);
 }
 
 bool Connection::sendMsgToThread(QunetMessage&& message, bool reliable, bool uncompressed, std::string tag) {

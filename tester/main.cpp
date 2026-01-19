@@ -96,7 +96,6 @@ arc::Future<int> amain(int argc, char** argv) {
 
     auto conn = co_await Connection::create();
     conn->setQdbFolder("./qdb-storage");
-    conn->setTlsCertVerification(false);
     conn->setDebugOptions(ConnectionDebugOptions {
         // .packetLossSimulation = 0.1f,
     });

@@ -675,7 +675,7 @@ Future<TransportResult<>> QuicConnection::receivePacket() {
 
     log::warn("QUIC: failed to read the packet: {}", res);
     if (res.code == NGTCP2_ERR_CRYPTO) {
-        auto tlsErr = lastTlsError();
+        auto tlsErr = m_tls->myLastError(-1);
         log::warn("QUIC: last TLS error: {}", tlsErr);
         co_return Err(tlsErr);
     }

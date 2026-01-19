@@ -127,7 +127,6 @@ struct ConnectionSettings {
     bool m_preferIpv6 = true;
     bool m_ipv4Enabled = true;
     bool m_ipv6Enabled = true;
-    bool m_tlsCertVerification = true;
     asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
     std::optional<std::filesystem::path> m_qdbFolder;
 };
@@ -238,10 +237,6 @@ public:
     // Set whether to enable IPv6 connections. If `false`, only IPv4 connections will be attempted.
     void setIpv6Enabled(bool enabled);
 
-    // Set whether to verify TLS certificates. If `false`, TLS (QUIC) connections will be established without certificate verification.
-    // This will do nothing if a connection is established, otherwise it will invalidate the current TLS context.
-    void setTlsCertVerification(bool verify);
-
     // Set the directory that will be used to save and load QDB files.
     // QDB files are files with compression dictionaries and other metadata,
     // they are already used automatically but caching them may significantly help
@@ -296,6 +291,17 @@ public:
 
     /// Simulates a fatal connection error, causing a reconnect attempt.
     void simulateConnectionDrop();
+
+#ifdef QUNET_TLS_SUPPORT
+    /// Sets the TLS context that will be used for TCP-based TLS connections.
+    /// If never called, a default context will be created upon first connection.
+    void setTlsContext(std::shared_ptr<TcpTlsContext> context);
+# ifdef QUNET_QUIC_SUPPORT
+    /// Sets the TLS context that will be used for QUIC connections.
+    /// If never called, a default context will be created upon first connection.
+    void setQuicTlsContext(std::shared_ptr<QuicTlsContext> context);
+# endif
+#endif
 
 private:
     arc::Runtime* m_runtime;
