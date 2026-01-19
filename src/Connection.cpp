@@ -155,7 +155,8 @@ std::string ConnectionError::message() const {
         case Code::NotConnected: return "Not connected to a server";
         case Code::AlreadyConnected: return "Already connected to a server";
         case Code::AlreadyClosing: return "Connection is already closing";
-        case Code::ProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
+        case Code::IpProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
+        case Code::ConnectionTypeDisabled: return "The requested connection type is disabled, cannot proceed";
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
         case Code::NoAddresses: return "No addresses were given, cannot connect";
         case Code::InternalError: return "An internal error occurred";
@@ -884,7 +885,7 @@ Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, C
     log::debug("Trying to connect to {} ({})", addr.toString(), connTypeToString(type));
 
     if (!this->isSupported(type)) {
-        co_return Err(ConnectionError::ProtocolDisabled);
+        co_return Err(ConnectionError::ConnectionTypeDisabled);
     }
 
     // if this connection requires TLS, check if we have a TLS context
