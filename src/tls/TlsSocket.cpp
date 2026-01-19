@@ -42,7 +42,7 @@ Future<TransportResult<TlsSocket>> TlsSocket::connect(
     ARC_FRAME();
 
     ARC_CO_UNWRAP_INTO(auto stream, qsox::TcpStream::connectNonBlocking(address));
-    ARC_CO_UNWRAP(stream.setNonBlocking(false));
+    ARC_CO_UNWRAP(stream.setNonBlocking(true));
 
     // create a TlsSocket immediately for raii
     auto rio = arc::ctx().runtime()->ioDriver().registerIo(stream.handle(), arc::Interest::ReadWrite);
@@ -215,7 +215,7 @@ std::optional<TransportResult<>> TlsSocket::pollTls(
             return Ok();
         }
 
-        auto err = lastTlsError();
+        auto err = m_tls.myLastError(res);
         if (err == SSL_ERROR_WANT_READ) {
             interest = Interest::Readable;
         } else if (err == SSL_ERROR_WANT_WRITE) {

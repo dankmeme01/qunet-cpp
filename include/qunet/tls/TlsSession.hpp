@@ -14,6 +14,9 @@ struct TlsSessionBase {
     void associateSocket(qsox::SockFd handle);
     void dissociateSocket();
 
+    TlsError myLastError(int rcode = -1) const;
+    TlsResult<> myWrapTls(int rcode) const;
+
     virtual ~TlsSessionBase() = default;
     TlsSessionBase(WOLFSSL* ssl) : m_ssl(ssl) {}
     TlsSessionBase(TlsSessionBase&&) = default;

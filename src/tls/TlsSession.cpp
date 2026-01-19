@@ -22,4 +22,17 @@ void TlsSessionBase::dissociateSocket() {
     wolfSSL_set_fd(this->handle(), -1);
 }
 
+TlsError TlsSessionBase::myLastError(int rcode) const {
+    return TlsError(wolfSSL_get_error(this->handle(), rcode));
+}
+
+TlsResult<> TlsSessionBase::myWrapTls(int rcode) const {
+    auto err = this->myLastError(rcode);
+    if (err.ok()) {
+        return Ok();
+    } else {
+        return Err(err);
+    }
+}
+
 }
