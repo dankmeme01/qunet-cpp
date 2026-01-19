@@ -202,16 +202,11 @@ geode::Result<QunetMessageMeta, MessageDecodeError> QunetMessage::decodeMeta(Byt
     CompressionType compressionType = (CompressionType) ((msgType >> MSG_DATA_BIT_COMPRESSION_1) & 0b11);
 
     switch (compressionType) {
-        case CompressionType::Zstd: {
-            meta.compressionHeader = CompressionHeader {
-                .type = CompressionType::Zstd,
-                .uncompressedSize = MAP_UNWRAP(reader.readU32()),
-            };
-        } break;
-
+        case CompressionType::Zstd:
+        case CompressionType::ZstdNoDict:
         case CompressionType::Lz4: {
             meta.compressionHeader = CompressionHeader {
-                .type = CompressionType::Lz4,
+                .type = compressionType,
                 .uncompressedSize = MAP_UNWRAP(reader.readU32()),
             };
         } break;
