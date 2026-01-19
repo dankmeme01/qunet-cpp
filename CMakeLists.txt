@@ -123,6 +123,14 @@ if (QUNET_TLS_SUPPORT)
 
     get_target_property(WOLFSSL_DEFINITIONS wolfssl COMPILE_DEFINITIONS)
     get_target_property(WOLFSSL_INCLUDE_DIRS wolfssl INCLUDE_DIRECTORIES)
+
+    if (MSVC)
+        target_compile_options(wolfssl PRIVATE /w)
+    else()
+        target_compile_options(wolfssl PRIVATE -w)
+    endif()
+
+    target_link_libraries(qunet PRIVATE wolfssl)
 endif()
 
 if (QUNET_QUIC_SUPPORT)
@@ -151,16 +159,14 @@ if (QUNET_QUIC_SUPPORT)
     endif()
 
     if (MSVC)
-        target_compile_options(wolfssl PRIVATE /w)
         target_compile_options(ngtcp2_static PRIVATE /w)
         target_compile_options(ngtcp2_crypto_wolfssl_static PRIVATE /w)
     else()
-        target_compile_options(wolfssl PRIVATE -w)
         target_compile_options(ngtcp2_static PRIVATE -w)
         target_compile_options(ngtcp2_crypto_wolfssl_static PRIVATE -w)
     endif()
 
-    target_link_libraries(qunet PRIVATE wolfssl ngtcp2_static ngtcp2_crypto_wolfssl_static)
+    target_link_libraries(qunet PRIVATE ngtcp2_static ngtcp2_crypto_wolfssl_static)
 endif()
 
 if (QUNET_BUILD_TESTER)

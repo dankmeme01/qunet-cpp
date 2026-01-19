@@ -917,7 +917,11 @@ bool Connection::isSupported(ConnectionType type) {
 #ifdef QUNET_TLS_SUPPORT
 std::shared_ptr<TlsContext> Connection::getTlsForConnection(ConnectionType type) {
     if (type == ConnectionType::Quic) {
+#ifdef QUNET_QUIC_SUPPORT
         return m_quicTlsContext;
+#else
+        QN_ASSERT(false && "QUIC support is not enabled, cannot get QUIC TLS context!");
+#endif
     } else {
         return m_tcpTlsContext;
     }
@@ -1194,13 +1198,17 @@ void Connection::simulateConnectionDrop() {
     m_taskWakeNotify.notifyOne();
 }
 
+#ifdef QUNET_TLS_SUPPORT
 void Connection::setTlsContext(std::shared_ptr<TcpTlsContext> context) {
     m_tcpTlsContext = std::move(context);
 }
+#endif
 
+#ifdef QUNET_QUIC_SUPPORT
 void Connection::setQuicTlsContext(std::shared_ptr<QuicTlsContext> context) {
     m_quicTlsContext = std::move(context);
 }
+#endif
 
 bool Connection::sendMsgToThread(QunetMessage&& message, bool reliable, bool uncompressed, std::string tag) {
     if (!this->connected()) {
