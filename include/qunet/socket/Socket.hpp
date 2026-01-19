@@ -1,7 +1,7 @@
 #pragma once
 
 #include "transport/BaseTransport.hpp"
-#include "transport/tls/ClientTlsContext.hpp"
+#include <qunet/tls/TlsContext.hpp>
 
 #include <asp/time/Duration.hpp>
 #include <qsox/SocketAddress.hpp>
@@ -23,7 +23,7 @@ struct TransportOptions {
     std::string hostname;
     const struct ConnectionOptions* connOptions = nullptr;
 #ifdef QUNET_TLS_SUPPORT
-    const ClientTlsContext* tlsContext = nullptr;
+    std::shared_ptr<TlsContext> tlsContext;
 #endif
     bool reconnecting = false;
 };

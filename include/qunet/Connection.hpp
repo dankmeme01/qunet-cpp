@@ -1,7 +1,8 @@
 #pragma once
 
+#include <qunet/tls/QuicTlsContext.hpp>
+#include <qunet/tls/TcpTlsContext.hpp>
 #include "socket/Socket.hpp"
-#include "socket/transport/tls/ClientTlsContext.hpp"
 #include "util/compat.hpp"
 #include "Pinger.hpp"
 
@@ -311,8 +312,12 @@ private:
     asp::SpinLock<ConnectionData> m_data;
     asp::SpinLock<ConnectionError> m_lastError{ConnectionError::Success};
     std::optional<Socket> m_socket;
+
 #ifdef QUNET_TLS_SUPPORT
-    std::optional<ClientTlsContext> m_tlsContext;
+    std::shared_ptr<TcpTlsContext> m_tcpTlsContext;
+# ifdef QUNET_QUIC_SUPPORT
+    std::shared_ptr<QuicTlsContext> m_quicTlsContext;
+# endif
 #endif
 
     arc::Notify m_taskWakeNotify;
@@ -322,6 +327,13 @@ private:
     void setState(ConnectionState state);
 
     TransportOptions makeOptions(qsox::SocketAddress addr, ConnectionType type, bool reconnect);
+    bool requiresTls(ConnectionType type);
+    bool isSupported(ConnectionType type);
+
+#ifdef QUNET_TLS_SUPPORT
+    std::shared_ptr<TlsContext> getTlsForConnection(ConnectionType type);
+    TlsResult<> initTlsContext(ConnectionType type);
+#endif
 
     arc::Future<> workerThreadLoop();
     arc::Future<ConnectionResult<>> threadConnect(std::string url);

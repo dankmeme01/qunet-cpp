@@ -190,7 +190,7 @@ ngtcp2_crypto_conn_ref* QuicConnection::connRef() const {
 Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect(
     const qsox::SocketAddress& address,
     const Duration& timeout,
-    const ClientTlsContext* tlsContext,
+    const std::shared_ptr<QuicTlsContext> tlsContext,
     const ConnectionOptions* connOptions,
     const std::string& hostname
 ) {
@@ -353,11 +353,11 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     }
 
     // Create the TLS session
-    ret->m_tls = ARC_CO_UNWRAP(ClientTlsSession::create(
-        *tlsContext, address, ret.get(), hostname
+    ret->m_tls = ARC_CO_UNWRAP(QuicTlsSession::create(
+        tlsContext, address, ret.get(), hostname
     ));
 
-    ngtcp2_conn_set_tls_native_handle(ret->m_conn, ret->m_tls->nativeHandle());
+    ngtcp2_conn_set_tls_native_handle(ret->m_conn, ret->m_tls->handle());
     ngtcp2_conn_set_keep_alive_timeout(ret->m_conn, Duration::fromSecs(30).nanos());
 
     // Start the handshake and wait for it to complete
@@ -675,7 +675,7 @@ Future<TransportResult<>> QuicConnection::receivePacket() {
 
     log::warn("QUIC: failed to read the packet: {}", res);
     if (res.code == NGTCP2_ERR_CRYPTO) {
-        auto tlsErr = m_tls->lastError();
+        auto tlsErr = lastTlsError();
         log::warn("QUIC: last TLS error: {}", tlsErr);
         co_return Err(tlsErr);
     }

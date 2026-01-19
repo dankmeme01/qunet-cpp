@@ -3,7 +3,7 @@
 #ifdef QUNET_QUIC_SUPPORT
 
 #include <qunet/socket/transport/QuicTransport.hpp>
-#include <socket/transport/tls/ClientTlsSession.hpp>
+#include <qunet/tls/QuicTlsSession.hpp>
 #include "QuicStream.hpp"
 
 #include <std23/function_ref.h>
@@ -33,7 +33,7 @@ public:
     static arc::Future<TransportResult<std::shared_ptr<QuicConnection>>> connect(
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
-        const ClientTlsContext* tlsContext,
+        std::shared_ptr<QuicTlsContext> tlsContext,
         const struct ConnectionOptions* connOptions,
         const std::string& hostname
     );
@@ -99,7 +99,7 @@ private:
     ngtcp2_path_storage m_networkPath;
     ngtcp2_tstamp m_connExpiry = UINT64_MAX;
 
-    std::optional<ClientTlsSession> m_tls;
+    std::optional<QuicTlsSession> m_tls;
     std::optional<arc::UdpSocket> m_socket;
     arc::Mutex<std::unordered_map<int64_t, std::shared_ptr<QuicStream>>> m_streams;
     int64_t m_mainStreamId = -1;

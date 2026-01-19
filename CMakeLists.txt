@@ -3,13 +3,30 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 project(qunet VERSION 1.0.0)
 
+option(QUNET_TLS_SUPPORT "Enable TLS support (for DNS over TLS and other), implied ON if QUIC is enabled" OFF)
 option(QUNET_QUIC_SUPPORT "Enable QUIC support" OFF)
 option(QUNET_ADVANCED_DNS "Enable advanced DNS resolver" ON)
 option(QUNET_DEBUG "Enable debug mode" OFF)
 option(QUNET_BUILD_TESTER OFF)
 
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
+if (QUNET_QUIC_SUPPORT)
+    set(QUNET_TLS_SUPPORT ON)
+endif()
+
+file(GLOB SOURCES CONFIGURE_DEPENDS src/*.cpp)
+foreach (SUBDIR buffers compression database dns protocol socket util)
+    file(GLOB_RECURSE tmp CONFIGURE_DEPENDS src/${SUBDIR}/*.cpp)
+    list(APPEND SOURCES ${tmp})
+endforeach()
+
+if (QUNET_TLS_SUPPORT)
+    file(GLOB TLS_SOURCES CONFIGURE_DEPENDS src/tls/*.cpp)
+    list(APPEND SOURCES ${TLS_SOURCES})
+endif()
+
 add_library(qunet STATIC ${SOURCES})
+
+#
 
 target_include_directories(qunet PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(qunet PRIVATE src)
@@ -62,8 +79,6 @@ add_subdirectory(${BLAKE3_SOURCE_DIR}/c blake3)
 target_link_libraries(qunet PRIVATE libzstd_static lz4_static blake3)
 target_link_libraries(qunet PUBLIC qsox asp arc fmt std23::nontype_functional)
 
-set(QUNET_HAS_TLS ${QUNET_QUIC_SUPPORT})
-
 if (QUNET_ADVANCED_DNS)
     CPMAddPackage(
         NAME c-ares
@@ -81,7 +96,7 @@ if (QUNET_ADVANCED_DNS)
     target_link_libraries(qunet PRIVATE c-ares)
 endif()
 
-if (QUNET_HAS_TLS)
+if (QUNET_TLS_SUPPORT)
     target_compile_definitions(qunet PUBLIC QUNET_TLS_SUPPORT=1)
     set(WOLFSSL_DEBUG_OPTIONS "")
 
@@ -96,11 +111,12 @@ if (QUNET_HAS_TLS)
         OPTIONS "WOLFSSL_QUIC ON"
                 "WOLFSSL_HARDEN OFF"
                 "WOLFSSL_OLD_TLS OFF"
-                "WOLFSSL_TLSV12 OFF" # TODO websockets: enable this?
+                "WOLFSSL_TLSV12 OFF"
                 "WOLFSSL_SESSION_TICKET ON"
                 "WOLFSSL_INSTALL OFF"
                 "WOLFSSL_CRYPT_TESTS OFF"
                 "WOLFSSL_EXAMPLES OFF"
+                "WOLFSSL_ALT_CERT_CHAINS ON" # needed for tls, not sure why /shrug
                 "BUILD_SHARED_LIBS OFF"
                 ${WOLFSSL_DEBUG_OPTIONS}
     )

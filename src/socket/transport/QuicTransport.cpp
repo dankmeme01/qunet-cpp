@@ -37,7 +37,7 @@ bool QuicTransport::isClosed() const {
 Future<TransportResult<QuicTransport>> QuicTransport::connect(
     const qsox::SocketAddress& address,
     const Duration& timeout,
-    const ClientTlsContext* tlsContext,
+    std::shared_ptr<QuicTlsContext> tlsContext,
     const ConnectionOptions* connOptions,
     const std::string& hostname
 ) {

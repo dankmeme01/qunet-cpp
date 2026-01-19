@@ -883,22 +883,65 @@ Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, C
 
     log::debug("Trying to connect to {} ({})", addr.toString(), connTypeToString(type));
 
+    if (!this->isSupported(type)) {
+        co_return Err(ConnectionError::ProtocolDisabled);
+    }
+
     // if this connection requires TLS, check if we have a TLS context
-#ifdef QUNET_QUIC_SUPPORT
-    if (type == ConnectionType::Quic && !m_tlsContext) {
-        bool certVerification = m_settings.lock()->m_tlsCertVerification;
-        auto tlsres = ClientTlsContext::create(!certVerification);
-        if (!tlsres) {
-            log::warn("Failed to create TLS context: {}", tlsres.unwrapErr());
+#ifdef QUNET_TLS_SUPPORT
+    if (this->requiresTls(type)) {
+        if (auto err = this->initTlsContext(type).err()) {
+            log::warn("TLS initialization failed: {}", err);
             co_return Err(ConnectionError::TlsInitFailed);
         }
-
-        m_tlsContext = std::move(tlsres).unwrap();
     }
 #endif
 
     co_return co_await this->threadConnectSocket(addr, type, false);
 }
+
+bool Connection::requiresTls(ConnectionType type) {
+    // for now, only QUIC requires TLS
+    return type == ConnectionType::Quic;
+}
+
+bool Connection::isSupported(ConnectionType type) {
+#ifndef QUNET_QUIC_SUPPORT
+    if (type == ConnectionType::Quic) {
+        return false;
+    }
+#endif
+    return true;
+}
+
+#ifdef QUNET_TLS_SUPPORT
+std::shared_ptr<TlsContext> Connection::getTlsForConnection(ConnectionType type) {
+    if (type == ConnectionType::Quic) {
+        return m_quicTlsContext;
+    } else {
+        return m_tcpTlsContext;
+    }
+}
+
+TlsResult<> Connection::initTlsContext(ConnectionType type) {
+    if (type == ConnectionType::Quic) {
+#ifdef QUNET_QUIC_SUPPORT
+        QuicTlsOptions opts{};
+        opts.insecure = !m_settings.lock()->m_tlsCertVerification;
+        m_quicTlsContext = GEODE_UNWRAP(QuicTlsContext::create(opts));
+#else
+        log::error("QUIC support is not enabled, cannot initialize QUIC TLS context!");
+        QN_ASSERT(false && "QUIC support not enabled");
+#endif
+    } else {
+        TcpTlsOptions opts{};
+        opts.insecure = !m_settings.lock()->m_tlsCertVerification;
+        m_tcpTlsContext = GEODE_UNWRAP(TcpTlsContext::create(opts));
+    }
+
+    return Ok();
+}
+#endif
 
 TransportOptions Connection::makeOptions(SocketAddress addr, ConnectionType type, bool reconnect) {
     auto settings = m_settings.lock();
@@ -910,7 +953,7 @@ TransportOptions Connection::makeOptions(SocketAddress addr, ConnectionType type
         .hostname = m_wts.connectHostname,
         .connOptions = &settings->m_connOptions,
 #ifdef QUNET_TLS_SUPPORT
-        .tlsContext = m_tlsContext ? &*m_tlsContext : nullptr,
+        .tlsContext = this->getTlsForConnection(type),
 #endif
         .reconnecting = reconnect,
     };
