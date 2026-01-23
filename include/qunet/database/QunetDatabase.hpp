@@ -44,9 +44,7 @@ constexpr uint16_t QUNET_DATABASE_VERSION = 1;
 
 struct QunetDatabase {
     std::optional<std::vector<uint8_t>> zstdDict;
-    std::optional<std::vector<uint8_t>> lz4Dict;
-    int zstdLevel;
-    int lz4Level;
+    int zstdLevel = 0;
     std::array<uint8_t, 16> hash;
 
     static geode::Result<QunetDatabase, DatabaseDecodeError> decode(const std::vector<uint8_t>& data);

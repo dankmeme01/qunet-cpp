@@ -55,7 +55,6 @@ Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
     HandshakeStartMessage handshakeStart
 ) {
     ARC_FRAME();
-    auto startedAt = Instant::now();
 
     ARC_CO_UNWRAP(co_await this->sendMessage(handshakeStart, false));
 
@@ -194,7 +193,7 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, S
         auto data = writer.written();
 
         if (!this->shouldLosePacket()) {
-            auto cres = ARC_CO_UNWRAP(co_await m_socket.send(data.data(), data.size()));
+            ARC_CO_UNWRAP(co_await m_socket.send(data.data(), data.size()));
         }
 
         this->updateLastActivity();
