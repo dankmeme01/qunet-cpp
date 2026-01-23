@@ -15,8 +15,8 @@ public:
 
     ZstdDecompressor(const ZstdDecompressor&) = delete;
     ZstdDecompressor& operator=(const ZstdDecompressor&) = delete;
-    ZstdDecompressor(ZstdDecompressor&&);
-    ZstdDecompressor& operator=(ZstdDecompressor&&);
+    ZstdDecompressor(ZstdDecompressor&&) noexcept;
+    ZstdDecompressor& operator=(ZstdDecompressor&&) noexcept;
 
     DecompressorResult<> init();
     DecompressorResult<> initWithDictionary(const void* dict, size_t size);

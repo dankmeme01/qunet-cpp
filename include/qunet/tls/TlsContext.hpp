@@ -40,8 +40,8 @@ public:
     virtual ~TlsContext();
     TlsContext(const TlsContext&) = delete;
     TlsContext& operator=(const TlsContext&) = delete;
-    TlsContext(TlsContext&&) = default;
-    TlsContext& operator=(TlsContext&&) = default;
+    TlsContext(TlsContext&&) noexcept = default;
+    TlsContext& operator=(TlsContext&&) noexcept = default;
 
     WOLFSSL_CTX* handle() const;
 

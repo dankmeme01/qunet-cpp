@@ -15,8 +15,8 @@ public:
 
     ZstdCompressor(const ZstdCompressor&) = delete;
     ZstdCompressor& operator=(const ZstdCompressor&) = delete;
-    ZstdCompressor(ZstdCompressor&&);
-    ZstdCompressor& operator=(ZstdCompressor&&);
+    ZstdCompressor(ZstdCompressor&&) noexcept;
+    ZstdCompressor& operator=(ZstdCompressor&&) noexcept;
 
     CompressorResult<> init(int level = 3);
     CompressorResult<> initWithDictionary(const void* dict, size_t size, int level = 3);

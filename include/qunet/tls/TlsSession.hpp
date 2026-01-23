@@ -19,8 +19,8 @@ struct TlsSessionBase {
 
     virtual ~TlsSessionBase() = default;
     TlsSessionBase(WOLFSSL* ssl) : m_ssl(ssl) {}
-    TlsSessionBase(TlsSessionBase&&) = default;
-    TlsSessionBase& operator=(TlsSessionBase&&) = default;
+    TlsSessionBase(TlsSessionBase&&) noexcept = default;
+    TlsSessionBase& operator=(TlsSessionBase&&) noexcept = default;
 };
 
 template <typename Ctx = TlsContext>
@@ -31,8 +31,8 @@ public:
     virtual ~TlsSession() = default;
     TlsSession(const TlsSession&) = delete;
     TlsSession& operator=(const TlsSession&) = delete;
-    TlsSession(TlsSession&&) = default;
-    TlsSession& operator=(TlsSession&&) = default;
+    TlsSession(TlsSession&&) noexcept = default;
+    TlsSession& operator=(TlsSession&&) noexcept = default;
 
 protected:
     std::shared_ptr<Context> m_context;

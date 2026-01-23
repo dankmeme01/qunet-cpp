@@ -44,8 +44,8 @@ public:
     );
     static arc::Future<TransportResult<Socket>> reconnect(const TransportOptions& options, Socket& prev);
 
-    Socket(Socket&&) = default;
-    Socket& operator=(Socket&&) = default;
+    Socket(Socket&&) noexcept = default;
+    Socket& operator=(Socket&&) noexcept = default;
 
     // Closes the transport. This does not send a `ClientClose` message.
     // This may or may not block - see notes in BaseTransport::close.

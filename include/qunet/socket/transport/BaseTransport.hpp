@@ -31,8 +31,8 @@ struct SentMessageContext {
 class BaseTransport {
 public:
     BaseTransport() = default;
-    BaseTransport(BaseTransport&&) = default;
-    BaseTransport& operator=(BaseTransport&&) = default;
+    BaseTransport(BaseTransport&&) noexcept = default;
+    BaseTransport& operator=(BaseTransport&&) noexcept = default;
 
     virtual ~BaseTransport() = default;
     virtual arc::Future<TransportResult<>> sendMessage(QunetMessage message, SentMessageContext& ctx) = 0;

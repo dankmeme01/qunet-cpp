@@ -53,8 +53,6 @@ static size_t roundUpTo16(size_t value) {
 }
 
 geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(ByteReader& reader) {
-    size_t startPos = reader.position();
-
     constexpr uint8_t MAGIC[] = { 0xa3, 0xdb, 0xdb, 0x11 };
     uint8_t magic[sizeof(MAGIC)];
 

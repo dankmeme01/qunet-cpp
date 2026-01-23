@@ -11,8 +11,8 @@ public:
     using BaseTransport::sendMessage;
 
     ~TcpTransport() override;
-    TcpTransport(TcpTransport&&) = default;
-    TcpTransport& operator=(TcpTransport&&) = default;
+    TcpTransport(TcpTransport&&) noexcept = default;
+    TcpTransport& operator=(TcpTransport&&) noexcept = default;
 
     static arc::Future<qsox::NetResult<TcpTransport>> connect(
         const qsox::SocketAddress& address,

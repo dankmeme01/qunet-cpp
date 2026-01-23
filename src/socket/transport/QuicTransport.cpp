@@ -14,9 +14,9 @@ namespace qn {
 
 QuicTransport::QuicTransport(std::shared_ptr<QuicConnection> conn) : m_conn(std::move(conn)), m_recvBuffer(512) {}
 
-QuicTransport::QuicTransport(QuicTransport&&) = default;
+QuicTransport::QuicTransport(QuicTransport&&) noexcept = default;
 
-QuicTransport& QuicTransport::operator=(QuicTransport&&) = default;
+QuicTransport& QuicTransport::operator=(QuicTransport&&) noexcept = default;
 
 QuicTransport::~QuicTransport() {
     if (m_conn) (void) m_conn->closeSync();

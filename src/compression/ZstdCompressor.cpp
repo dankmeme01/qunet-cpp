@@ -12,11 +12,11 @@ ZstdCompressor::~ZstdCompressor() {
     ZSTD_freeCDict(m_dict);
 }
 
-ZstdCompressor::ZstdCompressor(ZstdCompressor&& other) {
+ZstdCompressor::ZstdCompressor(ZstdCompressor&& other) noexcept {
     *this = std::move(other);
 }
 
-ZstdCompressor& ZstdCompressor::operator=(ZstdCompressor&& other) {
+ZstdCompressor& ZstdCompressor::operator=(ZstdCompressor&& other) noexcept {
     if (this != &other) {
         ZSTD_freeCCtx(m_ctx);
         ZSTD_freeCDict(m_dict);

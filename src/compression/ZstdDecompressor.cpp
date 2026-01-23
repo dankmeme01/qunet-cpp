@@ -12,11 +12,11 @@ ZstdDecompressor::~ZstdDecompressor() {
     ZSTD_freeDDict(m_dict);
 }
 
-ZstdDecompressor::ZstdDecompressor(ZstdDecompressor&& other) {
+ZstdDecompressor::ZstdDecompressor(ZstdDecompressor&& other) noexcept {
     *this = std::move(other);
 }
 
-ZstdDecompressor& ZstdDecompressor::operator=(ZstdDecompressor&& other) {
+ZstdDecompressor& ZstdDecompressor::operator=(ZstdDecompressor&& other) noexcept {
     if (this != &other) {
         ZSTD_freeDCtx(m_ctx);
         ZSTD_freeDDict(m_dict);

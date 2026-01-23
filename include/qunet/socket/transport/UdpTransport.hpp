@@ -12,8 +12,8 @@ public:
     using BaseTransport::sendMessage;
 
     ~UdpTransport() override;
-    UdpTransport(UdpTransport&&) = default;
-    UdpTransport& operator=(UdpTransport&&) = default;
+    UdpTransport(UdpTransport&&) noexcept = default;
+    UdpTransport& operator=(UdpTransport&&) noexcept = default;
 
     static arc::Future<qsox::NetResult<UdpTransport>> connect(
         const qsox::SocketAddress& address,

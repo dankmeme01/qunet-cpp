@@ -16,8 +16,8 @@ using QuicResult = geode::Result<T, QuicError>;
 class QuicTransport : public BaseTransport {
 public:
     ~QuicTransport() override;
-    QuicTransport(QuicTransport&&);
-    QuicTransport& operator=(QuicTransport&&);
+    QuicTransport(QuicTransport&&) noexcept;
+    QuicTransport& operator=(QuicTransport&&) noexcept;
 
     static arc::Future<TransportResult<QuicTransport>> connect(
         const qsox::SocketAddress& address,

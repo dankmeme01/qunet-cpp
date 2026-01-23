@@ -66,8 +66,8 @@ public:
 
     StatTracker(const StatTracker&) = delete;
     StatTracker& operator=(const StatTracker&) = delete;
-    StatTracker(StatTracker&&) = default;
-    StatTracker& operator=(StatTracker&&) = default;
+    StatTracker(StatTracker&&) noexcept = default;
+    StatTracker& operator=(StatTracker&&) noexcept = default;
 
     /// Set whether the tracker should be enabled. By default is `true`, but if `false` is passed, tracking functions are no-op.
     void setEnabled(bool enable);
