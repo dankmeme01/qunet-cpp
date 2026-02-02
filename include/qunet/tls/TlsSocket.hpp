@@ -68,10 +68,11 @@ private:
         TcpTlsSession tls
     );
 
-    std::optional<TransportResult<size_t>> pollWrite(const void* data, size_t size, uint64_t& id);
-    std::optional<TransportResult<size_t>> pollRead(void* buf, size_t size, uint64_t& id, bool peek = false);
-    std::optional<TransportResult<>> pollHandshake(uint64_t& id);
+    std::optional<TransportResult<size_t>> pollWrite(arc::Context& cx, const void* data, size_t size, uint64_t& id);
+    std::optional<TransportResult<size_t>> pollRead(arc::Context& cx, void* buf, size_t size, uint64_t& id, bool peek = false);
+    std::optional<TransportResult<>> pollHandshake(arc::Context& cx, uint64_t& id);
     std::optional<TransportResult<>> pollTls(
+        arc::Context& cx,
         uint64_t& id,
         arc::Interest initialInterest,
         std23::function_ref<int()> fn

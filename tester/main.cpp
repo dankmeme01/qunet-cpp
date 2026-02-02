@@ -100,6 +100,11 @@ arc::Future<int> amain(int argc, char** argv) {
         // .packetLossSimulation = 0.1f,
     });
 
+    QuicTlsOptions opts{};
+    opts.insecure = true;
+    auto tls = QuicTlsContext::create(opts).unwrap();
+    conn->setQuicTlsContext(tls);
+
     auto res = co_await conn->connectWait(argv[1]);
     if (!res) {
         std::cerr << "Failed to connect: " << res.unwrapErr().message() << std::endl;

@@ -777,6 +777,8 @@ Future<TransportResult<size_t>> QuicConnection::receive(void* buf, size_t bufSiz
 }
 
 Future<TransportResult<size_t>> QuicConnection::receive(int64_t streamId, void* buf, size_t bufSize) {
+    ARC_FRAME();
+
     if (m_closed) {
         co_return Err(TransportError::Closed);
     }

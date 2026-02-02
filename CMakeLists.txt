@@ -49,10 +49,12 @@ endif()
 
 # add deps
 set(ARC_DEBUG ${QUNET_DEBUG})
-CPMAddPackage("gh:dankmeme01/asp2#31d0657")
-CPMAddPackage("gh:dankmeme01/arc@1.2.6")
-CPMAddPackage("gh:fmtlib/fmt#11.2.0")
-CPMAddPackage("gh:zhihaoy/nontype_functional#8ec2e09")
+if (NOT TARGET asp2)
+    CPMAddPackage("gh:dankmeme01/asp2#e6c74af")
+endif()
+if (NOT TARGET arc)
+    CPMAddPackage("gh:dankmeme01/arc#d68fcd6")
+endif()
 
 # pain and suffering
 

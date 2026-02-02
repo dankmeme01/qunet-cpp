@@ -45,7 +45,7 @@ Future<TransportResult<TlsSocket>> TlsSocket::connect(
     ARC_CO_UNWRAP(stream.setNonBlocking(true));
 
     // create a TlsSocket immediately for raii
-    auto rio = arc::ctx().runtime()->ioDriver().registerIo(stream.handle(), arc::Interest::ReadWrite);
+    auto rio = arc::Runtime::current()->ioDriver().registerIo(stream.handle(), arc::Interest::ReadWrite);
     auto tls = ARC_CO_UNWRAP(TcpTlsSession::create(tlsContext, address, serverName));
 
     TlsSocket out {
@@ -71,8 +71,8 @@ Future<TransportResult<TlsSocket>> TlsSocket::connect(
 }
 
 Future<TransportResult<void>> TlsSocket::handshake() {
-    return this->rioPoll([this](uint64_t& id) {
-        return this->pollHandshake(id);
+    return this->rioPoll([this](arc::Context& cx, uint64_t& id) {
+        return this->pollHandshake(cx, id);
     });
 }
 
@@ -86,8 +86,8 @@ NetResult<void> TlsSocket::setNoDelay(bool noDelay) {
 }
 
 Future<TransportResult<size_t>> TlsSocket::send(const void* data, size_t size) {
-    return this->rioPoll([this, data, size](uint64_t& id) {
-        return this->pollWrite(data, size, id);
+    return this->rioPoll([this, data, size](arc::Context& cx, uint64_t& id) {
+        return this->pollWrite(cx, data, size, id);
     });
 }
 
@@ -99,8 +99,8 @@ Future<TransportResult<void>> TlsSocket::sendAll(const void* datav, size_t size)
 
     TransportResult<void> result = Ok();
     while (remaining > 0) {
-        auto res = co_await arc::pollFunc([&] {
-            return this->pollWrite(data, remaining, id);
+        auto res = co_await arc::pollFunc([&](arc::Context& cx) {
+            return this->pollWrite(cx, data, remaining, id);
         });
 
         if (!res) {
@@ -121,8 +121,8 @@ Future<TransportResult<void>> TlsSocket::sendAll(const void* datav, size_t size)
 }
 
 Future<TransportResult<size_t>> TlsSocket::receive(void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](uint64_t& id) {
-        return this->pollRead(buffer, size, id);
+    return this->rioPoll([this, buffer, size](arc::Context& cx, uint64_t& id) {
+        return this->pollRead(cx, buffer, size, id);
     });
 }
 
@@ -134,8 +134,8 @@ Future<TransportResult<void>> TlsSocket::receiveExact(void* buffer, size_t size)
 
     TransportResult<void> result = Ok();
     while (remaining > 0) {
-        auto res = co_await arc::pollFunc([&] {
-            return this->pollRead(buf, remaining, id);
+        auto res = co_await arc::pollFunc([&](arc::Context& cx) {
+            return this->pollRead(cx, buf, remaining, id);
         });
 
         if (!res) {
@@ -163,10 +163,10 @@ NetResult<qsox::SocketAddress> TlsSocket::remoteAddress() const {
     return m_stream.remoteAddress();
 }
 
-std::optional<TransportResult<size_t>> TlsSocket::pollWrite(const void* data, size_t size, uint64_t& id) {
+std::optional<TransportResult<size_t>> TlsSocket::pollWrite(arc::Context& cx, const void* data, size_t size, uint64_t& id) {
     size_t written = 0;
 
-    return this->pollTls(id, Interest::ReadWrite, [&] {
+    return this->pollTls(cx, id, Interest::ReadWrite, [&] {
         int bytes = wolfSSL_write(m_tls.handle(), data, (int)size);
         if (bytes <= 0) return -1;
         written += (size_t)bytes;
@@ -174,10 +174,10 @@ std::optional<TransportResult<size_t>> TlsSocket::pollWrite(const void* data, si
     }).transform([&](auto&& res) { return res.map([&] { return written; }); });
 }
 
-std::optional<TransportResult<size_t>> TlsSocket::pollRead(void* buf, size_t size, uint64_t& id, bool peek) {
+std::optional<TransportResult<size_t>> TlsSocket::pollRead(arc::Context& cx, void* buf, size_t size, uint64_t& id, bool peek) {
     size_t read = 0;
 
-    return this->pollTls(id, Interest::ReadWrite, [&] {
+    return this->pollTls(cx, id, Interest::ReadWrite, [&] {
         int bytes = wolfSSL_read(m_tls.handle(), buf, (int)size);
         if (bytes <= 0) return -1;
         read += (size_t)bytes;
@@ -185,8 +185,8 @@ std::optional<TransportResult<size_t>> TlsSocket::pollRead(void* buf, size_t siz
     }).transform([&](auto&& res) { return res.map([&] { return read; }); });
 }
 
-std::optional<TransportResult<>> TlsSocket::pollHandshake(uint64_t& id) {
-    return this->pollTls(id, Interest::ReadWrite, [&] {
+std::optional<TransportResult<>> TlsSocket::pollHandshake(arc::Context& cx, uint64_t& id) {
+    return this->pollTls(cx, id, Interest::ReadWrite, [&] {
         return wolfSSL_connect(m_tls.handle());
     });
 }
@@ -194,12 +194,13 @@ std::optional<TransportResult<>> TlsSocket::pollHandshake(uint64_t& id) {
 /// This function is needed because wolfSSL calls can return both WANT_READ or WANT_WRITE,
 /// even if we are strictly wanting one of those at a time. It's silly, but it is what it is.
 std::optional<TransportResult<>> TlsSocket::pollTls(
+    arc::Context& cx,
     uint64_t& id,
     Interest interest,
     std23::function_ref<int()> fn
 ) {
     while (true) {
-        auto ready = m_io.pollReady(interest | Interest::Error, id);
+        auto ready = m_io.pollReady(interest | Interest::Error, cx, id);
         if (ready == 0) {
             return std::nullopt;
         } else if (ready & Interest::Error) {
