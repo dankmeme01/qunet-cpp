@@ -2,8 +2,6 @@
 
 #ifdef QUNET_QUIC_SUPPORT
 
-#define _WINSOCKAPI_ // I hate winsock.h
-
 #include <qunet/socket/transport/QuicTransport.hpp>
 #include <qunet/tls/QuicTlsSession.hpp>
 #include "QuicStream.hpp"

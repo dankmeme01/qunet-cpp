@@ -39,7 +39,7 @@ endif()
 # i absolutely hate microsoft
 if (WIN32)
     target_compile_definitions(qunet PRIVATE _HAS_ITERATOR_DEBUGGING=0)
-    target_compile_definitions(qunet PUBLIC NOMINMAX)
+    target_compile_definitions(qunet PUBLIC NOMINMAX _WINSOCKAPI_)
 endif()
 
 # cpm
