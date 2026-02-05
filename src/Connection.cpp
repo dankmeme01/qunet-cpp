@@ -186,7 +186,7 @@ Future<std::shared_ptr<Connection>> Connection::create() {
         std::move(wts)
     );
 
-    conn->m_workerTask = arc::spawn([](auto conn) -> arc::Future<> {
+    conn->m_workerTask = arc::spawn([conn] -> arc::Future<> {
         bool running = true;
 
         while (running) {
@@ -199,7 +199,8 @@ Future<std::shared_ptr<Connection>> Connection::create() {
                 arc::selectee(conn->workerThreadLoop())
             );
         }
-    }(conn));
+    });
+    conn->m_workerTask->setName("qn::Connection worker");
 
     co_return conn;
 }

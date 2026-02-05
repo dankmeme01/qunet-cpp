@@ -54,7 +54,7 @@ if (NOT TARGET asp2)
     CPMAddPackage("gh:dankmeme01/asp2#f0ed346")
 endif()
 if (NOT TARGET arc)
-    CPMAddPackage("gh:dankmeme01/arc#bb5f580")
+    CPMAddPackage("gh:dankmeme01/arc@1.4.1")
 endif()
 
 # pain and suffering

@@ -42,6 +42,7 @@ Pinger::Pinger() {
     m_pingTx = std::move(tx);
 
     m_workerTask = rt->spawn(this->workerLoop(std::move(rx)));
+    m_workerTask->setName("qn::Pinger worker");
 }
 
 Pinger::~Pinger() {

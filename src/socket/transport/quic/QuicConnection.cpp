@@ -8,9 +8,7 @@
 #include <qunet/util/rng.hpp>
 #include <qunet/Log.hpp>
 
-#include <ngtcp2/ngtcp2.h>
 #include <ngtcp2_path.h>
-#include <ngtcp2/ngtcp2_crypto.h>
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/random.h>
 #include <wolfssl/wolfcrypt/logging.h>
@@ -202,21 +200,22 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     std::shared_ptr<QuicConnection> ret(new QuicConnection(nullptr));
     ret->m_connectDeadline = Instant::now() + timeout;
     ret->m_nextExpiry = Instant::now();
-    ret->m_workerTask = arc::spawn([ptr = ret](this auto self) -> arc::Future<> {
-        ptr->m_workerRunning.store(true, std::memory_order::release);
+    ret->m_workerTask = arc::spawn([self = ret] -> arc::Future<> {
+        self->m_workerRunning.store(true, std::memory_order::release);
 
         // run until cancelled or the worker self terminates
 
         co_await arc::select(
-            arc::selectee(ptr->m_cancel.waitCancelled()),
-            arc::selectee(ptr->workerLoop())
+            arc::selectee(self->m_cancel.waitCancelled()),
+            arc::selectee(self->workerLoop())
         );
 
         // manually close the connection if we terminated on our own terms
-        (void) co_await ptr->close();
+        (void) co_await self->close();
 
-        ptr->m_workerRunning.store(false, std::memory_order::release);
-    }());
+        self->m_workerRunning.store(false, std::memory_order::release);
+    });
+    ret->m_workerTask->setName("qn::QuicConnection worker");
 
     // this will be set to false at the very end
     bool terminateTask = true;
