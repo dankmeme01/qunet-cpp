@@ -43,17 +43,18 @@ if (WIN32)
 endif()
 
 # cpm
-if (NOT CURRENT_CPM_VERSION)
+if (NOT COMMAND CPMAddPackage)
     include(cmake/CPM.cmake)
 endif()
 
 # add deps
-set(ARC_DEBUG ${QUNET_DEBUG})
+set(ARC_FEATURE_DEBUG ${QUNET_DEBUG})
+
 if (NOT TARGET asp2)
-    CPMAddPackage("gh:dankmeme01/asp2#e6c74af")
+    CPMAddPackage("gh:dankmeme01/asp2#f0ed346")
 endif()
 if (NOT TARGET arc)
-    CPMAddPackage("gh:dankmeme01/arc#d68fcd6")
+    CPMAddPackage("gh:dankmeme01/arc#bb5f580")
 endif()
 
 # pain and suffering
