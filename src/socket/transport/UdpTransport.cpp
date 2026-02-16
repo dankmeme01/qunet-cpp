@@ -499,6 +499,12 @@ arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
     co_return Ok();
 }
 
+void UdpTransport::onIncomingMessage(const QunetMessage& msg) {
+    BaseTransport::onIncomingMessage(msg);
+    // Copy transport's RTT into ReliableStore, so that it can calculate retransmission deadlines
+    m_relStore.updateRtt(m_lastRttMicros);
+}
+
 bool UdpTransport::shouldLosePacket() {
     return qn::randomChance(std::clamp(m_lossSim, 0.f, 1.f));
 }

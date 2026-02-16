@@ -114,8 +114,8 @@ protected:
 
     uint64_t getKeepaliveTimestamp() const;
 
-    /// Call this whenever an incoming message is received, for statistics
-    void onIncomingMessage(const QunetMessage& msg);
+    /// Called by Socket whenever an incoming message is received, for statistics
+    virtual void onIncomingMessage(const QunetMessage& msg);
 
     void logOutgoingMessage(uint8_t headerByte, const SentMessageContext& ctx);
 };

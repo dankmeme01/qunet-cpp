@@ -146,9 +146,6 @@ void ReliableStore::ackLocal(uint16_t messageId) {
     // find the message in the local unacked queue
     for (auto it = m_localUnacked.begin(); it != m_localUnacked.end(); it++) {
         if (it->messageId == messageId) {
-            // update average rtt
-            this->updateRtt(it->sentAt.elapsed());
-
             m_localUnacked.erase(it);
             return;
         }
@@ -236,8 +233,8 @@ Duration ReliableStore::untilTimerExpiry() const {
     return expiry;
 }
 
-void ReliableStore::updateRtt(asp::time::Duration rtt) {
-    m_avgRttMicros = exponentialMovingAverage<uint64_t>(m_avgRttMicros, rtt.micros(), 0.35);
+void ReliableStore::updateRtt(uint64_t rttMicros) {
+    m_avgRttMicros = rttMicros;
 }
 
 QunetMessage* ReliableStore::maybeRetransmit() {
@@ -273,7 +270,9 @@ Duration ReliableStore::calcRetransmissionDeadline(size_t nthAttempt) const {
         rtt = Duration::fromMillis(200);
     }
 
-    auto base = std::max(rtt.millis<float>() * 1.6f, 175.f);
+    auto ackDelay = this->calcAckDeadline();
+
+    auto base = std::max(rtt.millis<float>() * 1.6f + ackDelay.millis<float>(), 175.f);
     size_t shift = std::min(nthAttempt, size_t(5));
     return Duration::fromMillis(base * (1u << shift));
 }

@@ -39,6 +39,9 @@ public:
     /// Returns whether there are any unacked remote messages that must be acknowledged as soon as possible.
     bool hasUrgentOutgoingAcks();
 
+    /// Updates the RTT estimate, pass values from BaseTransport into this when it changes
+    void updateRtt(uint64_t rttMicros);
+
 private:
     struct UnackedRemoteMessage {
         uint16_t messageId;
@@ -64,7 +67,6 @@ private:
 
     uint16_t m_nextLocalId = 1;
     std::deque<UnackedLocalMessage> m_localUnacked;
-
     uint64_t m_avgRttMicros = 0;
 
     void processAcks(const ReliabilityHeader& header);
@@ -76,7 +78,6 @@ private:
 
     void maybeRestoreRemote();
 
-    void updateRtt(asp::time::Duration rtt);
     asp::time::Duration calcRetransmissionDeadline(size_t nthAttempt) const;
     asp::time::Duration calcAckDeadline() const;
 
