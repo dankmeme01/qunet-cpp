@@ -9,6 +9,14 @@ using arc::Future, arc::Interest;
 
 namespace qn {
 
+static TransportError mapTlsError(TlsError err) {
+    if (err.code == SSL_ERROR_ZERO_RETURN) {
+        return TransportError(TransportError::Closed);
+    }
+
+    return TransportError(err);
+}
+
 TlsSocket::TlsSocket(
     qsox::TcpStream stream,
     arc::Registration io,
@@ -222,7 +230,7 @@ std::optional<TransportResult<>> TlsSocket::pollTls(
         } else if (err == SSL_ERROR_WANT_WRITE) {
             interest = Interest::Writable;
         } else {
-            return Err(err);
+            return Err(mapTlsError(err));
         }
 
         // clear readiness since we know it's not ready
