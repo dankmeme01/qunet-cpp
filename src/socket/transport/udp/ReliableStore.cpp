@@ -245,7 +245,7 @@ QunetMessage* ReliableStore::maybeRetransmit() {
         auto retransDelay = this->calcRetransmissionDeadline(msg.retransmitAttempts);
 
         if (msg.sentAt.elapsed() >= retransDelay) {
-            log::debug("ReliableStore: retransmitting local message with ID {}", msg.messageId);
+            log::debug("ReliableStore: retransmitting local message with ID {} (after {})", msg.messageId, msg.sentAt.elapsed());
             msg.sentAt = Instant::now();
             return &msg.msg;
         }
@@ -259,7 +259,7 @@ bool ReliableStore::hasUrgentOutgoingAcks() {
 
     for (auto& msg : m_remoteUnacked) {
         if (msg.receivedAt.elapsed() >= ackDelay) {
-            log::debug("ReliableStore: urgent outgoing ACK for message ID {}", msg.messageId);
+            log::debug("ReliableStore: urgent outgoing ACK for message ID {} (after {})", msg.messageId, msg.receivedAt.elapsed());
             return true;
         }
     }
@@ -269,22 +269,17 @@ bool ReliableStore::hasUrgentOutgoingAcks() {
 
 Duration ReliableStore::calcRetransmissionDeadline(size_t nthAttempt) const {
     auto rtt = Duration::fromMicros(m_avgRttMicros);
-
     if (rtt.isZero()) {
-        rtt = Duration::fromMillis(250);
+        rtt = Duration::fromMillis(200);
     }
 
-    auto ackdl = this->calcAckDeadline();
-
-    // this is kinda arbitrary tbh
-    return Duration::fromMicros(
-        static_cast<double>((rtt + ackdl).micros()) * 1.5
-        + static_cast<double>(nthAttempt) * 75'000.0
-    );
+    auto base = std::max(rtt.millis<float>() * 1.6f, 175.f);
+    size_t shift = std::min(nthAttempt, size_t(5));
+    return Duration::fromMillis(base * (1u << shift));
 }
 
 Duration ReliableStore::calcAckDeadline() const {
-    return Duration::fromMillis(100);
+    return Duration::fromMillis(75);
 }
 
 }
