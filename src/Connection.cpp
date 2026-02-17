@@ -504,7 +504,13 @@ void Connection::onFatalError(const ConnectionError& err) {
 
     auto state = this->state();
 
-    if (state == ConnectionState::Connected) {
+    bool shouldReconnect;
+    {
+        auto cbs = m_callbacks.lock();
+        shouldReconnect = cbs->m_shouldReconnectCallback ? cbs->m_shouldReconnectCallback(err) : true;
+    }
+
+    if (state == ConnectionState::Connected && shouldReconnect) {
         // attempt to reconnect
         m_wts.msgChan.drain();
         this->setState(ConnectionState::Reconnecting);
@@ -1114,6 +1120,11 @@ void Connection::setDataCallback(move_only_function<void(std::vector<uint8_t>)> 
 void Connection::setStateResetCallback(move_only_function<void()> callback) {
     auto callbacks = m_callbacks.lock();
     callbacks->m_stateResetCallback = std::move(callback);
+}
+
+void Connection::setShouldReconnectCallback(move_only_function<bool(const ConnectionError&)> callback) {
+    auto callbacks = m_callbacks.lock();
+    callbacks->m_shouldReconnectCallback = std::move(callback);
 }
 
 void Connection::setSrvPrefix(std::string_view pfx) {

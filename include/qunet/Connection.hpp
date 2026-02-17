@@ -136,6 +136,7 @@ struct ConnectionCallbacks {
     move_only_function<void(ConnectionState)> m_connStateCallback;
     move_only_function<void(std::vector<uint8_t>)> m_dataCallback;
     move_only_function<void()> m_stateResetCallback;
+    move_only_function<bool(const ConnectionError&)> m_shouldReconnectCallback;
 };
 
 struct WorkerThreadState;
@@ -222,6 +223,10 @@ public:
     // but the server no longer has any state and prior knowledge of the client.
     // Thus, an entirely new connection has to be made, and with it, some connection state has to be reset.
     void setStateResetCallback(move_only_function<void()> callback);
+
+    // Set the callback that is called when a fatal connection error occurs, and the connection is about to attempt to reconnect.
+    // The callback receives the error that caused the disconnect, and returns whether the connection should attempt to reconnect or not.
+    void setShouldReconnectCallback(move_only_function<bool(const ConnectionError&)> callback);
 
     // Set the SRV query name prefix, by default it is `_qunet`.
     void setSrvPrefix(std::string_view pfx);
