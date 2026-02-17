@@ -372,6 +372,13 @@ Future<> Connection::workerThreadLoop() {
                 co_return;
             }
 
+            // on first attempt, wait a little before trying
+            // if there's some weird bug that causes a disconnect loop, this will prevent us
+            // from trying to reconnect too rapidly
+            if (attempt == 0) {
+                (void) co_await arc::timeout(Duration::fromMillis(500), m_disconnectNotify.notified());
+            }
+
             log::debug("Reconnecting (attempt {})", attempt);
 
             // initially 5 seconds, then jump to 10
@@ -404,14 +411,14 @@ Future<> Connection::workerThreadLoop() {
             // wait until either reconnect completes or a disconnect is requested
             co_await arc::select(
                 arc::selectee(
-                    reconnectFut(this, timeout, tryStateless)
-                ),
-
-                arc::selectee(
                     m_disconnectNotify.notified(),
                     [&] -> arc::Future<> {
                         co_await this->threadCancelConnection();
                     }
+                ),
+
+                arc::selectee(
+                    reconnectFut(this, timeout, tryStateless)
                 )
             );
         } break;
