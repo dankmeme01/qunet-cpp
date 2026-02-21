@@ -27,6 +27,7 @@ Future<NetResult<TcpTransport>> TcpTransport::connect(const SocketAddress& addre
     )).mapErr([](const auto&) { return qsox::Error::TimedOut; }));
 
     auto socket = ARC_CO_UNWRAP(std::move(result));
+    (void) socket.setNoDelay(true);
 
     TcpTransport ret(std::move(socket));
     ret.m_activeKeepaliveInterval = connOptions.activeKeepaliveInterval;
