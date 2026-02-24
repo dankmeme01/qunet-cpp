@@ -60,12 +60,13 @@ struct KeepaliveResponseMessage {
 };
 
 struct HandshakeStartMessage {
-    uint16_t majorVersion;
+    ProtocolVersion protocolVersion;
     uint16_t fragLimit;
     std::array<uint8_t, 16> qdbHash;
 
     MessageEncodeResult encode(auto& writer) const {
-        writer.writeU16(majorVersion);
+        writer.writeU16(protocolVersion.major);
+        writer.writeU16(protocolVersion.minor);
         writer.writeU16(fragLimit);
         writer.writeBytes(qdbHash.data(), qdbHash.size());
         return Ok();

@@ -4,7 +4,22 @@
 
 namespace qn {
 
-constexpr inline uint16_t MAJOR_VERSION = 1;
+struct ProtocolVersion {
+    uint16_t major;
+    uint16_t minor;
+
+    constexpr ProtocolVersion(uint16_t major, uint16_t minor) : major(major), minor(minor) {}
+
+    constexpr bool operator==(const ProtocolVersion& other) const {
+        return major == other.major && minor == other.minor;
+    }
+
+    constexpr bool isCompatibleWith(const ProtocolVersion& other) const {
+        return major == other.major;
+    }
+};
+
+constexpr inline ProtocolVersion PROTOCOL_VERSION{ 1, 0 };
 
 constexpr inline uint8_t MSG_PING = 1;
 constexpr inline uint8_t MSG_PONG = 2;

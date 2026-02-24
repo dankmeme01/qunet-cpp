@@ -77,7 +77,7 @@ arc::Future<TransportResult<Socket>> Socket::connect(
     }
 
     auto hmsg = HandshakeStartMessage {
-        .majorVersion = MAJOR_VERSION,
+        .protocolVersion = PROTOCOL_VERSION,
         .fragLimit = UDP_PACKET_LIMIT,
         .qdbHash = qdbHash,
     };

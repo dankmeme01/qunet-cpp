@@ -25,3 +25,9 @@ Currently, this library does not include server functionality. For making a Qune
 This section is incomplete as there's a ton to describe here :)
 
 See [tester/main.cpp](./tester/main.cpp) for some example usage. Qunet is an Arc-based async library, and thus an Arc runtime is needed to create a connection. Other calls like `sendData()` are not required to be in the context of a runtime, only those that return a `Future` are.
+
+## Roadmap
+
+* WebSockets transport
+* Implement micro-batching of messages - with stream-based transports this is relatively simple, with UDP-based transports this requires a protocol update. We have 3 bits in the header byte that are unused, and we can use one of them to signify inclusion of a "Multi Message" extension which can carry some data such as offset and length of each individual message.
+* ???
