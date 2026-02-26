@@ -1197,6 +1197,10 @@ bool Connection::sendData(std::vector<uint8_t> data, bool reliable, bool uncompr
     return this->sendMsgToThread(DataMessage{ std::move(data) }, reliable, uncompressed, std::move(tag));
 }
 
+void Connection::updateLatency(asp::Duration latency) {
+    if (m_socket) m_socket->updateLatency(latency);
+}
+
 StatSnapshot Connection::statSnapshot(Duration period) const {
     if (m_socket) {
         return m_socket->transport()->_tracker().snapshot(period);

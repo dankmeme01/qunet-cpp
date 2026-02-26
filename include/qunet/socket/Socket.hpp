@@ -75,6 +75,8 @@ public:
     asp::time::Duration untilTimerExpiry() const;
     arc::Future<TransportResult<>> handleTimerExpiry();
 
+    void updateLatency(asp::time::Duration rtt);
+
     std::shared_ptr<BaseTransport> transport() const;
 
 private:

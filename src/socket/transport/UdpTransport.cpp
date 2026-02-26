@@ -499,9 +499,8 @@ arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
     co_return Ok();
 }
 
-void UdpTransport::onIncomingMessage(const QunetMessage& msg) {
-    BaseTransport::onIncomingMessage(msg);
-    // Copy transport's RTT into ReliableStore, so that it can calculate retransmission deadlines
+void UdpTransport::updateLatency(asp::Duration rtt) {
+    BaseTransport::updateLatency(rtt);
     m_relStore.updateRtt(m_lastRttMicros);
 }
 

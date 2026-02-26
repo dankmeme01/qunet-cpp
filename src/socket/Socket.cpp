@@ -389,6 +389,10 @@ Future<TransportResult<>> Socket::handleTimerExpiry() {
     return m_transport->handleTimerExpiry();
 }
 
+void Socket::updateLatency(asp::time::Duration rtt) {
+    m_transport->updateLatency(rtt);
+}
+
 Future<TransportResult<std::shared_ptr<BaseTransport>>> Socket::createTransport(const TransportOptions& options) {
     switch (options.type) {
         case ConnectionType::Udp: {

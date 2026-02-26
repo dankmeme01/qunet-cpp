@@ -32,7 +32,7 @@ public:
 
     asp::time::Duration untilTimerExpiry() const override;
     arc::Future<TransportResult<>> handleTimerExpiry() override;
-    void onIncomingMessage(const QunetMessage& msg) override;
+    void updateLatency(asp::Duration rtt) override;
 
 private:
     friend class MultiPoller;

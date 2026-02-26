@@ -105,7 +105,7 @@ protected:
     /// Call this function with the round-trip time of the latest exchange with the server.
     /// This is used to calculate the average latency, which in turn can be used for other purposes,
     /// for example calculating retransmission timeouts.
-    void updateLatency(asp::time::Duration rtt);
+    virtual void updateLatency(asp::time::Duration rtt);
 
     void updateLastActivity();
     void updateLastKeepalive();

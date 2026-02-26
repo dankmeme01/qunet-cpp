@@ -288,9 +288,14 @@ public:
     // false if not connected or message buffer is full.
     bool sendData(std::vector<uint8_t> data, bool reliable = true, bool uncompressed = false, std::string tag = "");
 
+    /// Updates the latency estimate based on your own RTT measurements.
+    /// This is not necessary to ever call, but if you have your own way of measuring latency,
+    /// you can feed that information to us to improve the latency estimate and the connection performance in general.
+    void updateLatency(asp::Duration latency);
+
     /// Get a snapshot of various message data. If `period` is nonzero, will only include stats for that time period.
     /// If `period` is zero (default), will include all-time stats.
-    StatSnapshot statSnapshot(asp::time::Duration period = {}) const;
+    StatSnapshot statSnapshot(asp::Duration period = {}) const;
 
     /// Like `statSnapshot` but includes all-time stats plus extra fields
     StatWholeSnapshot statSnapshotFull() const;
