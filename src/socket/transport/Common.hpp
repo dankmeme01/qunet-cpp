@@ -165,8 +165,7 @@ inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
     auto&& stream,
     BaseTransport& transport,
     CircularByteBuffer& buffer,
-    size_t messageSizeLimit,
-    size_t& unackedKeepalives
+    size_t messageSizeLimit
 ) {
     ARC_FRAME();
 
@@ -232,11 +231,6 @@ inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
 
             if (meta.type != MSG_DATA) {
                 auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
-
-                if (msg.is<KeepaliveResponseMessage>()) {
-                    unackedKeepalives = 0;
-                }
-
                 transport._tracker().onDownMessage(wrpread.first[0], length);
                 return Ok(std::move(msg));
             }

@@ -51,7 +51,7 @@ Future<TransportResult<>> TcpTransport::sendMessage(QunetMessage message, SentMe
 
     if (message.is<KeepaliveMessage>()) {
         message.as<KeepaliveMessage>().timestamp = this->getKeepaliveTimestamp();
-        this->updateLastKeepalive();
+        this->updateLastSentKeepalive();
     }
 
     return streamcommon::sendMessage(std::move(message), m_socket, *this, ctx);
@@ -64,7 +64,7 @@ Future<TransportResult<>> TcpTransport::poll() {
 
 Future<TransportResult<QunetMessage>> TcpTransport::receiveMessage() {
     return streamcommon::receiveMessage(
-        m_socket, *this, m_recvBuffer, m_messageSizeLimit, m_unackedKeepalives
+        m_socket, *this, m_recvBuffer, m_messageSizeLimit
     );
 }
 
@@ -73,10 +73,7 @@ asp::time::Duration TcpTransport::untilTimerExpiry() const {
 }
 
 Future<TransportResult<>> TcpTransport::handleTimerExpiry() {
-    if (m_unackedKeepalives >= 3) {
-        co_return Err(TransportError::TimedOut);
-    }
-
+    ARC_CO_UNWRAP(co_await BaseTransport::handleTimerExpiry());
     co_return co_await this->sendMessage(KeepaliveMessage{});
 }
 

@@ -154,6 +154,8 @@ void BaseTransport::onIncomingMessage(const QunetMessage& msg) {
             auto passed = Duration::fromNanos(now - ts);
             this->updateLatency(passed);
         }
+
+        m_unackedKeepalives = 0;
     }
 }
 
@@ -174,7 +176,7 @@ void BaseTransport::updateLastActivity() {
     m_lastActivity = Instant::now();
 }
 
-void BaseTransport::updateLastKeepalive() {
+void BaseTransport::updateLastSentKeepalive() {
     m_lastKeepalive = Instant::now();
     m_totalKeepalives++;
     m_unackedKeepalives++;

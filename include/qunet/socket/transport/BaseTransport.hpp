@@ -109,7 +109,7 @@ protected:
     virtual void updateLatency(asp::time::Duration rtt);
 
     void updateLastActivity();
-    void updateLastKeepalive();
+    void updateLastSentKeepalive();
     asp::time::Duration sinceLastActivity() const;
     asp::time::Duration sinceLastKeepalive() const;
 

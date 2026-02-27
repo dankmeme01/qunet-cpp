@@ -185,7 +185,7 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, S
     if (!message.is<DataMessage>()) {
         if (message.is<KeepaliveMessage>()) {
             message.as<KeepaliveMessage>().timestamp = this->getKeepaliveTimestamp();
-            this->updateLastKeepalive();
+            this->updateLastSentKeepalive();
         }
 
         HeapByteWriter writer;
@@ -458,6 +458,7 @@ Duration UdpTransport::untilKeepalive() const {
 
 arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
     ARC_FRAME();
+    ARC_CO_UNWRAP(co_await BaseTransport::handleTimerExpiry());
 
     while (auto msg = m_relStore.maybeRetransmit()) {
         // if we have a message to retransmit, send it
@@ -484,11 +485,6 @@ arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
         SentMessageContext ctx{};
         ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(msg, ctx, false));
         this->logOutgoingMessage(msg.headerByte(), ctx);
-    }
-
-    // if we have sent 3 keepalives with no response, reconnect
-    if (m_unackedKeepalives >= 3) {
-        co_return Err(TransportError::TimedOut);
     }
 
     // if we haven't sent any messages in a while, we should send a keepalive message
