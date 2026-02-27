@@ -100,6 +100,7 @@ protected:
     std::optional<asp::time::Instant> m_lastActivity;
     std::optional<asp::time::Instant> m_lastKeepalive;
     size_t m_totalKeepalives = 0;
+    size_t m_totalRttEstimates = 0;
     size_t m_unackedKeepalives = 0;
 
     /// Call this function with the round-trip time of the latest exchange with the server.

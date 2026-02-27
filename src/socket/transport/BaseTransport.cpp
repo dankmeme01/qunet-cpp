@@ -167,6 +167,7 @@ void BaseTransport::updateLatency(Duration rtt) {
     } else {
         m_lastRttMicros = exponentialMovingAverage<uint64_t>(m_lastRttMicros, rtt.micros(), 0.25);
     }
+    m_totalRttEstimates++;
 }
 
 void BaseTransport::updateLastActivity() {

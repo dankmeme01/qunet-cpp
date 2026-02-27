@@ -94,7 +94,7 @@ Duration TcpTransport::untilKeepalive() const {
         }
     };
 
-    switch (m_totalKeepalives) {
+    switch (m_totalRttEstimates) {
         case 0:
         case 1:
             return orActive(Duration::fromSecs(3));
