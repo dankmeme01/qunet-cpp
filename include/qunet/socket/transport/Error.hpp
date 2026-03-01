@@ -19,6 +19,7 @@ QSOX_MAKE_OPAQUE_ERROR_STRUCT(TlsError, unsigned long);
 struct TransportError {
     typedef enum {
         ConnectionTimedOut,
+        HandshakeTimedOut,
         NotImplemented,
         UnexpectedMessage,
         MessageTooLong,

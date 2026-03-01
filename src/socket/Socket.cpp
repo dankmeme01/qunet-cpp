@@ -87,7 +87,7 @@ arc::Future<TransportResult<Socket>> Socket::connect(
         socket.m_transport->performHandshake(std::move(hmsg))
     );
     if (!tres) {
-        co_return Err(TransportError::ConnectionTimedOut);
+        co_return Err(TransportError::HandshakeTimedOut);
     }
 
     auto msg = ARC_CO_UNWRAP(std::move(tres).unwrap());
@@ -126,7 +126,7 @@ Future<TransportResult<Socket>> Socket::reconnect(const TransportOptions& option
         socket.m_transport->performReconnect(prev.transport()->m_connectionId)
     );
     if (!tres) {
-        co_return Err(TransportError::ConnectionTimedOut);
+        co_return Err(TransportError::HandshakeTimedOut);
     }
 
     auto msg = ARC_CO_UNWRAP(std::move(tres).unwrap());

@@ -11,6 +11,7 @@ std::string_view TransportError::CustomKind::message() const {
     switch (code) {
         case CustomCode::NotImplemented: return "Not implemented";
         case CustomCode::ConnectionTimedOut: return "Connection timed out";
+        case CustomCode::HandshakeTimedOut: return "Qunet handshake timed out";
         case CustomCode::UnexpectedMessage: return "Unexpected message received";
         case CustomCode::MessageTooLong: return "Message too long";
         case CustomCode::ZeroLengthMessage: return "Zero length message received";

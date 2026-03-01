@@ -69,7 +69,6 @@ namespace qn {
 
 bool ConnectionError::isTransportError() const {
     return std::holds_alternative<TransportError>(m_err);
-
 }
 
 bool ConnectionError::isOtherError() const {
@@ -156,7 +155,7 @@ std::string ConnectionError::message() const {
         case Code::AlreadyConnected: return "Already connected to a server";
         case Code::AlreadyClosing: return "Connection is already closing";
         case Code::IpProtocolDisabled: return "The used protocol (IPv4/IPv6) is disabled, or both are disabled, connection cannot proceed";
-        case Code::ConnectionTypeDisabled: return "The requested connection type is disabled, cannot proceed";
+        case Code::ConnectionTypeDisabled: return "The support for the requested connection type is disabled at compile time, cannot proceed";
         case Code::NoConnectionTypeFound: return "Failed to determine a suitable protocol for the connection";
         case Code::NoAddresses: return "No addresses were given, cannot connect";
         case Code::InternalError: return "An internal error occurred";
