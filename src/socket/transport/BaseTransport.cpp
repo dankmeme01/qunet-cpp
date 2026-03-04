@@ -85,7 +85,8 @@ Duration BaseTransport::untilTimerExpiry() const {
 }
 
 arc::Future<TransportResult<>> BaseTransport::handleTimerExpiry() {
-    if (m_unackedKeepalives >= 3) {
+    if (m_unackedKeepalives >= 3 && m_lastKeepalive->elapsed() > Duration::fromMillis(750)) {
+        log::warn("Server did not respond to {} keepalives, terminating connection", m_unackedKeepalives);
         co_return Err(TransportError::TimedOut);
     }
 
@@ -180,6 +181,8 @@ void BaseTransport::updateLastSentKeepalive() {
     m_lastKeepalive = Instant::now();
     m_totalKeepalives++;
     m_unackedKeepalives++;
+
+    log::debug("Sent keepalive number {} (now {} in flight)", m_totalKeepalives, m_unackedKeepalives);
 }
 
 Duration BaseTransport::sinceLastActivity() const {
