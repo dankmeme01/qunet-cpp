@@ -612,6 +612,9 @@ static Future<ConnectionResult<>> fetchIps(
     }
 
     log::debug("Resolved {} addresses for {}", out.size(), hostname);
+    for (auto& sa : out) {
+        log::debug("- {}", sa.toString());
+    }
 
     co_return Ok();
 }
