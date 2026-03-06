@@ -133,7 +133,7 @@ if (QUNET_TLS_SUPPORT)
         target_compile_options(wolfssl PRIVATE -w)
     endif()
 
-    target_link_libraries(qunet PRIVATE wolfssl)
+    target_link_libraries(qunet PUBLIC wolfssl)
 endif()
 
 if (QUNET_QUIC_SUPPORT)

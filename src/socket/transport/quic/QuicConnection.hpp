@@ -113,6 +113,7 @@ private:
     std::optional<arc::TaskHandle<void>> m_workerTask;
     std::atomic<bool> m_connected{false};
     std::atomic<bool> m_workerRunning{false};
+    std::atomic<bool> m_congestion{false};
     arc::CancellationToken m_cancel;
     arc::Notify m_connectedNotify;
     arc::Notify m_workerNotify;

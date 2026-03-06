@@ -13,6 +13,7 @@
 #include <wolfssl/wolfcrypt/random.h>
 #include <wolfssl/wolfcrypt/logging.h>
 #include <arc/time/Timeout.hpp>
+#include <arc/time/Sleep.hpp>
 #include <arc/future/Select.hpp>
 #include <arc/util/Random.hpp>
 #include <asp/time/Instant.hpp>
@@ -394,7 +395,14 @@ Future<> QuicConnection::workerLoop() {
                 if (!res) {
                     log::warn("QUIC: error receiving packet: {}", res.unwrapErr());
                 }
-            })
+            }),
+
+            // if there was congestion, try sending again after a little
+            arc::selectee(
+                arc::sleep(asp::Duration::fromMillis(25)),
+                [] {},
+                m_congestion.load(std::memory_order::relaxed)
+            )
         );
     }
 }
@@ -402,14 +410,14 @@ Future<> QuicConnection::workerLoop() {
 Future<TransportResult<>> QuicConnection::workerHandleWrites() {
     ARC_FRAME();
 
-    bool congestion = false;
+    m_congestion.store(false, std::memory_order::relaxed);
 
     auto mapErr = [&](auto&& res) -> TransportResult<> {
         if (res) return Ok();
 
         auto err = res.unwrapErr();
         if (isCongestionRelatedError(err)) {
-            congestion = true;
+            m_congestion.store(true, std::memory_order::relaxed);
             return Ok(); // not a fatal error
         } else {
             return Err(err);
@@ -424,7 +432,7 @@ Future<TransportResult<>> QuicConnection::workerHandleWrites() {
             if (stream->unflushedBytes() == 0) continue;
 
             auto res = mapErr(co_await this->sendStreamData(*stream));
-            if (res && congestion) {
+            if (res && m_congestion.load(std::memory_order::relaxed)) {
                 break; // stop sending on other streams if congestion occurred
             } else if (!res) {
                 co_return res;
@@ -433,7 +441,7 @@ Future<TransportResult<>> QuicConnection::workerHandleWrites() {
     }
 
     // try to send a non-stream packet
-    if (!congestion) {
+    if (!m_congestion.load(std::memory_order::relaxed)) {
         ARC_CO_UNWRAP(mapErr(co_await this->sendNonStreamPacket()));
     }
 
