@@ -430,6 +430,9 @@ Future<> Connection::workerThreadLoop() {
                 .message = ClientCloseMessage{},
             });
 
+            // artificial delay to let the message fully send
+            co_await arc::sleep(Duration::fromMillis(5));
+
             auto res = co_await m_socket->close();
             if (!res) {
                 log::warn("Failed to close socket: {}", res.unwrapErr());

@@ -104,7 +104,8 @@ private:
     arc::Mutex<std::unordered_map<int64_t, std::shared_ptr<QuicStream>>> m_streams;
     int64_t m_mainStreamId = -1;
     float m_lossSimulation = 0.f;
-    bool m_closed = false;
+    std::atomic<bool> m_closed{false};
+    std::atomic<bool> m_closing{false};
 
     std::atomic<size_t> m_totalBytesSent{0};
     std::atomic<size_t> m_totalBytesReceived{0};

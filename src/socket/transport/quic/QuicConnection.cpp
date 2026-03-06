@@ -738,8 +738,8 @@ Future<TransportResult<bool>> QuicConnection::receivePacket(bool block) {
 
 Future<TransportResult<>> QuicConnection::close() {
     ARC_FRAME();
-    if (m_closed) {
-        co_return Ok();
+    if (m_closing.exchange(true, std::memory_order::acq_rel)) {
+        co_return Ok(); // disallow concurrent close attempts
     }
 
     ARC_CO_UNWRAP(co_await this->sendClosePacket());
@@ -747,11 +747,10 @@ Future<TransportResult<>> QuicConnection::close() {
 }
 
 TransportResult<> QuicConnection::closeSync() {
-    if (m_closed) {
+    if (m_closed.exchange(true, std::memory_order::acquire)) {
         return Ok();
     }
 
-    m_closed = true;
     m_cancel.cancel();
 
     // detach the worker task
