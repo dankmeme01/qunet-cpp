@@ -31,6 +31,8 @@ TlsResult<std::shared_ptr<QuicTlsContext>> QuicTlsContext::create(const QuicTlsO
         return Err(lastTlsError());
     }
 
+    wolfSSL_CTX_set_session_cache_mode(ctx, WOLFSSL_SESS_CACHE_CLIENT);
+
     return Ok(std::move(context));
 }
 
