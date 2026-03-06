@@ -60,17 +60,6 @@ Resolver::Resolver() {
         cache.setTimeToLive(asp::Duration::fromMinutes(5));
         cache.setWorkInterval(asp::Duration::fromMinutes(1));
     };
-
-    // prefill cache with localhost
-    auto a = m_aCache.lock();
-    a->insert("localhost", DNSRecordA{{qsox::Ipv4Address::LOCALHOST}});
-    setupCache(*a);
-    a.unlock();
-
-    auto aaaa = m_aaaaCache.lock();
-    aaaa->insert("localhost", DNSRecordAAAA{{qsox::Ipv6Address::LOCALHOST}});
-    setupCache(*aaaa);
-    aaaa.unlock();
 }
 
 void Resolver::wineWorkaround() {
@@ -288,12 +277,20 @@ void Resolver::reloadServers() {
 }
 
 std::optional<DNSRecordA> Resolver::getCachedA(const std::string& name) {
+    if (name == "localhost") {
+        return DNSRecordA{{qsox::Ipv4Address::LOCALHOST}};
+    }
+
     auto cache = m_aCache.lock();
     auto r = cache->get(name);
     return r ? std::optional<DNSRecordA>{*r} : std::nullopt;
 }
 
 std::optional<DNSRecordAAAA> Resolver::getCachedAAAA(const std::string& name) {
+    if (name == "localhost") {
+        return DNSRecordAAAA{{qsox::Ipv6Address::LOCALHOST}};
+    }
+
     auto cache = m_aaaaCache.lock();
     auto r = cache->get(name);
     return r ? std::optional<DNSRecordAAAA>{*r} : std::nullopt;
