@@ -69,7 +69,8 @@ Duration QuicTransport::untilTimerExpiry() const  {
 }
 
 arc::Future<TransportResult<>> QuicTransport::handleTimerExpiry() {
-    return m_conn->handleTimerExpiry();
+    ARC_CO_UNWRAP(co_await BaseTransport::handleTimerExpiry());
+    co_return co_await m_conn->handleTimerExpiry();
 }
 
 class QuicConnection& QuicTransport::connection() {

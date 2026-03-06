@@ -82,7 +82,7 @@ public:
     ngtcp2_conn* rawHandle() const;
     ngtcp2_crypto_conn_ref* connRef() const;
 
-    asp::time::Duration untilTimerExpiry() const;
+    asp::Duration untilTimerExpiry() const;
     arc::Future<TransportResult<>> handleTimerExpiry();
 
 private:
@@ -114,6 +114,7 @@ private:
     std::atomic<bool> m_connected{false};
     std::atomic<bool> m_workerRunning{false};
     std::atomic<bool> m_congestion{false};
+    std::optional<TransportError> m_fatalError;
     arc::CancellationToken m_cancel;
     arc::Notify m_connectedNotify;
     arc::Notify m_workerNotify;
@@ -136,6 +137,8 @@ private:
 
     arc::Future<> workerLoop();
     arc::Future<TransportResult<>> workerHandleWrites();
+    arc::Future<TransportResult<>> handleExpiry();
+    void updateExpiry();
 
     auto withLockedConn(auto&& func) {
         auto guard = m_connLock.lock();

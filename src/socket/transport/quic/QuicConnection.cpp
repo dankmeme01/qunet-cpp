@@ -381,7 +381,7 @@ Future<> QuicConnection::workerLoop() {
         co_await m_connectedNotify.notified();
     }
 
-    while (true) {
+    while (m_connected.load(std::memory_order::relaxed)) {
         auto res = co_await this->workerHandleWrites();
         if (!res) {
             log::error("QUIC: fatal error when sending data: {}", res.unwrapErr());
@@ -397,6 +397,16 @@ Future<> QuicConnection::workerLoop() {
                 }
             }),
 
+            // wait for next expiry
+            arc::selectee(arc::sleepUntil(m_nextExpiry), [&] -> arc::Future<> {
+                auto res = co_await this->handleExpiry();
+                if (!res) {
+                    log::warn("QUIC: error in handleExpiry: {}", res.unwrapErr());
+                    m_fatalError = std::move(res).unwrapErr();
+                    m_connected.store(false, std::memory_order::relaxed);
+                }
+            }),
+
             // if there was congestion, try sending again after a little
             arc::selectee(
                 arc::sleep(asp::Duration::fromMillis(25)),
@@ -409,6 +419,7 @@ Future<> QuicConnection::workerLoop() {
 
 Future<TransportResult<>> QuicConnection::workerHandleWrites() {
     ARC_FRAME();
+    log::debug("handling writes");
 
     m_congestion.store(false, std::memory_order::relaxed);
 
@@ -484,13 +495,18 @@ Future<TransportResult<>> QuicConnection::performHandshake() {
     while (ngtcp2_conn_get_handshake_completed(m_conn) == 0) {
         ARC_CO_UNWRAP(co_await this->sendHandshakePacket());
 
+        auto deadline = std::min(m_connectDeadline, Instant::now() + asp::Duration::fromMillis(750));
+
         auto tres = co_await arc::timeoutAt(
-            m_connectDeadline,
+            deadline,
             this->receivePacket()
         );
 
         if (!tres) {
-            co_return Err(TransportError::ConnectionTimedOut);
+            if (m_connectDeadline.until().isZero()) {
+                co_return Err(TransportError::ConnectionTimedOut);
+            }
+            continue;
         }
 
         ARC_CO_UNWRAP(std::move(tres).unwrap());
@@ -504,6 +520,7 @@ Future<TransportResult<>> QuicConnection::performHandshake() {
 TransportResult<size_t> QuicConnection::wrapWritePacket(uint8_t* buf, size_t size, std::string_view which) {
     auto guard = m_connLock.lock();
     auto written = ngtcp2_conn_write_pkt(m_conn, &m_networkPath.path, nullptr, buf, size, timestamp());
+    this->updateExpiry();
 
     if (written < 0) {
         QuicError err(written);
@@ -519,7 +536,10 @@ Future<TransportResult<>> QuicConnection::sendHandshakePacket() {
     uint8_t buf[1500];
 
     size_t written = ARC_CO_UNWRAP(this->wrapWritePacket(buf, sizeof(buf), "handshake"));
-    QN_ASSERT(written != 0);
+    if (written == 0) {
+        log::debug("QUIC: not re-sending handshake packet");
+        co_return Ok();
+    }
 
     log::debug("QUIC: sending handshake packet");
 
@@ -642,6 +662,7 @@ Future<TransportResult<>> QuicConnection::sendStreamData(QuicStream& stream, boo
         timestamp()
     );
     connGuard.unlock();
+    this->updateExpiry();
 
     if (written < 0) {
         QuicError err(written);
@@ -839,36 +860,37 @@ void QuicConnection::onAckedData(int64_t streamId, uint64_t offset, size_t len) 
     stream->onAck(offset, len);
 }
 
-Duration QuicConnection::untilTimerExpiry() const {
-    return m_nextExpiry.durationSince(Instant::now());
-}
-
-Future<TransportResult<>> QuicConnection::handleTimerExpiry() {
-    auto now = Instant::now();
-    auto ngtcp2Expiry = Instant::fromRawNanos(ngtcp2_conn_get_expiry(m_conn));
-    auto nextExpiry = Instant::farFuture();
-
+// Note: this function should only be called in the worker task
+Future<TransportResult<>> QuicConnection::handleExpiry() {
     auto guard = m_connLock.lock();
 
     // handle ngtcp2 expiry
-    if (ngtcp2Expiry <= now) {
-        auto code = ngtcp2_conn_handle_expiry(m_conn, now.rawNanos());
-        ngtcp2Expiry = Instant::fromRawNanos(ngtcp2_conn_get_expiry(m_conn));
+    auto now = Instant::now();
+    auto code = ngtcp2_conn_handle_expiry(m_conn, now.rawNanos());
 
-        if (code == NGTCP2_ERR_IDLE_CLOSE) {
-            co_return Err(TransportError::ConnectionTimedOut);
-        }
-
-        nextExpiry = std::min(nextExpiry, ngtcp2Expiry);
+    if (code == NGTCP2_ERR_IDLE_CLOSE) {
+        co_return Err(TransportError::ConnectionTimedOut);
     }
 
-    guard.unlock();
-
-    m_workerNotify.notifyOne();
-
-    m_nextExpiry = nextExpiry;
+    this->updateExpiry();
 
     co_return Ok();
+}
+
+void QuicConnection::updateExpiry() {
+    m_nextExpiry = Instant::fromRawNanos(ngtcp2_conn_get_expiry(m_conn));
+}
+
+Duration QuicConnection::untilTimerExpiry() const {
+    // Poll us every 100ms
+    return Duration::fromMillis(100);
+}
+
+arc::Future<TransportResult<>> QuicConnection::handleTimerExpiry() {
+    if (m_connected.load(std::memory_order::relaxed) || !m_fatalError) {
+        co_return Ok();
+    }
+    co_return Err(std::move(*m_fatalError));
 }
 
 Future<TransportResult<std::shared_ptr<QuicStream>>> QuicConnection::getStream(int64_t streamId) {
