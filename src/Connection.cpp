@@ -713,14 +713,21 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
     auto startedAt = Instant::now();
 
     auto [tx, rx] = mpsc::channel<std::pair<size_t, PingResult>>(8);
+    auto& pinger = Pinger::get();
 
     for (size_t i = 0; i < addrs.size(); i++) {
         auto& addr = addrs[i];
-        log::debug("Sending ping to {}", addr.toString());
+        auto cached = pinger.getCached(addr);
 
-        Pinger::get().ping(addr, [tx, i](const PingResult& result) mutable {
-            (void) tx.trySend({i, result});
-        });
+        if (cached) {
+            log::debug("Using cached ping for {}", addr.toString());
+            (void) tx.trySend({i, std::move(*cached)});
+        } else {
+            log::debug("Sending ping to {}", addr.toString());
+            pinger.ping(addr, [tx, i](const PingResult& result) mutable {
+                (void) tx.trySend({i, result});
+            });
+        }
     }
 
     std::vector<std::pair<SocketAddress, Duration>> pingResults;

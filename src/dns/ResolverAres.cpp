@@ -55,9 +55,22 @@ Resolver::Resolver() {
 
     log::debug("(Resolver) System DNS servers: {}", m_systemDnsServers);
 
+    auto setupCache = [&](auto& cache) {
+        cache.setMaxEntries(128);
+        cache.setTimeToLive(asp::Duration::fromMinutes(5));
+        cache.setWorkInterval(asp::Duration::fromMinutes(1));
+    };
+
     // prefill cache with localhost
-    m_aCache.lock()->emplace("localhost", DNSRecordA{{qsox::Ipv4Address::LOCALHOST}});
-    m_aaaaCache.lock()->emplace("localhost", DNSRecordAAAA{{qsox::Ipv6Address::LOCALHOST}});
+    auto a = m_aCache.lock();
+    a->insert("localhost", DNSRecordA{{qsox::Ipv4Address::LOCALHOST}});
+    setupCache(*a);
+    a.unlock();
+
+    auto aaaa = m_aaaaCache.lock();
+    aaaa->insert("localhost", DNSRecordAAAA{{qsox::Ipv6Address::LOCALHOST}});
+    setupCache(*aaaa);
+    aaaa.unlock();
 }
 
 void Resolver::wineWorkaround() {
@@ -276,20 +289,20 @@ void Resolver::reloadServers() {
 
 std::optional<DNSRecordA> Resolver::getCachedA(const std::string& name) {
     auto cache = m_aCache.lock();
-    auto it = cache->find(name);
-    return it != cache->end() ? std::optional<DNSRecordA>{it->second} : std::nullopt;
+    auto r = cache->get(name);
+    return r ? std::optional<DNSRecordA>{*r} : std::nullopt;
 }
 
 std::optional<DNSRecordAAAA> Resolver::getCachedAAAA(const std::string& name) {
     auto cache = m_aaaaCache.lock();
-    auto it = cache->find(name);
-    return it != cache->end() ? std::optional<DNSRecordAAAA>{it->second} : std::nullopt;
+    auto r = cache->get(name);
+    return r ? std::optional<DNSRecordAAAA>{*r} : std::nullopt;
 }
 
 std::optional<DNSRecordSRV> Resolver::getCachedSRV(const std::string& name) {
     auto cache = m_srvCache.lock();
-    auto it = cache->find(name);
-    return it != cache->end() ? std::optional<DNSRecordSRV>{it->second} : std::nullopt;
+    auto r = cache->get(name);
+    return r ? std::optional<DNSRecordSRV>{*r} : std::nullopt;
 }
 
 template <>
@@ -388,20 +401,17 @@ ResolverResult<DNSRecordSRV> parseQuery(const ares_dns_record_t* result) {
 
 template <>
 void Resolver::cacheRecord(const std::string& name, const DNSRecordA& record) {
-    auto cache = m_aCache.lock();
-    (*cache)[name] = record;
+    m_aCache.lock()->insert(name, record);
 }
 
 template <>
 void Resolver::cacheRecord(const std::string& name, const DNSRecordAAAA& record) {
-    auto cache = m_aaaaCache.lock();
-    (*cache)[name] = record;
+    m_aaaaCache.lock()->insert(name, record);
 }
 
 template <>
 void Resolver::cacheRecord(const std::string& name, const DNSRecordSRV& record) {
-    auto cache = m_srvCache.lock();
-    (*cache)[name] = record;
+    m_srvCache.lock()->insert(name, record);
 }
 
 }

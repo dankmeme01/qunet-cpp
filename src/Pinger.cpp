@@ -32,6 +32,17 @@ private:
     ManuallyDrop<Pinger> instance;
 };
 
+static auto toV6(const qsox::SocketAddress& addr) {
+    if (addr.isV6()) {
+        return addr.toV6();
+    }
+
+    return qsox::SocketAddressV6{
+        qsox::Ipv6Address::fromIpv4Mapped(addr.toV4().address()),
+        addr.port()
+    };
+}
+
 Pinger::Pinger() {
     auto rt = arc::Runtime::current();
     if (!rt) {
@@ -43,6 +54,11 @@ Pinger::Pinger() {
 
     m_workerTask = rt->spawn(this->workerLoop(std::move(rx)));
     m_workerTask->setName("qn::Pinger worker");
+
+    auto cache = m_cache.lock();
+    cache->setMaxEntries(128);
+    cache->setTimeToLive(Duration::fromMinutes(15));
+    cache->setWorkInterval(asp::Duration::fromMinutes(1));
 }
 
 Pinger::~Pinger() {
@@ -281,25 +297,27 @@ ByteReader::Result<PingResult> Pinger::thrParsePingResponse(const uint8_t* data,
 
 void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& address) {
     auto& pings = m_outgoingPings;
+
+    // store ipv6 mapped addresses in cache, since that is what recvFrom may return
+    auto v6 = toV6(address);
     auto cache = m_cache.lock();
+    auto cacheEntry = cache->get(v6);
 
-    auto cacheEntry = cache->find(address);
-
-    if (result.protocols.empty() && cacheEntry != cache->end()) {
+    if (result.protocols.empty() && cacheEntry) {
         // if we have cached protocols, use them
-        result.protocols = cacheEntry->second.protocols;
+        result.protocols = cacheEntry->protocols;
     }
 
-    if (cacheEntry == cache->end()) {
+    if (!cacheEntry) {
         // if we don't have a cache entry, create one
-        cache->emplace(address, CachedPing{
+        cache->insert(v6, CachedPing{
             .responseTime = result.responseTime,
             .protocols = result.protocols,
         });
     } else {
         // update the existing cache entry
-        cacheEntry->second.responseTime = result.responseTime;
-        cacheEntry->second.protocols = result.protocols;
+        cacheEntry->responseTime = result.responseTime;
+        cacheEntry->protocols = result.protocols;
     }
 
     for (size_t i = 0; i < pings.size(); i++) {
@@ -318,7 +336,18 @@ void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& ad
 }
 
 bool Pinger::isCached(const qsox::SocketAddress& address) {
-    return m_cache.lock()->contains(address);
+    return this->getCached(address).has_value();
+}
+
+std::optional<PingResult> Pinger::getCached(const qsox::SocketAddress& address) {
+    auto cache = m_cache.lock();
+    auto entry = cache->get(toV6(address));
+    if (!entry) return std::nullopt;
+
+    PingResult out{};
+    out.responseTime = entry->responseTime;
+    out.protocols = entry->protocols;
+    return out;
 }
 
 }

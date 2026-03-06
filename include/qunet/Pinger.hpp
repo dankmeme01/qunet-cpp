@@ -8,6 +8,7 @@
 #include <arc/net/UdpSocket.hpp>
 #include <arc/util/ManuallyDrop.hpp>
 #include <asp/time/Instant.hpp>
+#include <asp/collections.hpp>
 
 namespace qn {
 
@@ -19,7 +20,7 @@ struct SupportedProtocol {
 struct PingResult {
     uint32_t pingId;
     asp::time::Duration responseTime;
-    std::vector<SupportedProtocol> protocols;
+    asp::SmallVec<SupportedProtocol, 8> protocols;
     std::vector<uint8_t> extraData;
     bool timedOut = false;
     bool errored = false;
@@ -43,6 +44,9 @@ public:
     /// The callback may never be invoked if DNS resolution fails, but timeouts will still be handled.
     geode::Result<> pingUrl(const std::string& url, Callback callback);
 
+    bool isCached(const qsox::SocketAddress& address);
+    std::optional<PingResult> getCached(const qsox::SocketAddress& address);
+
 private:
     friend struct PingerHolder;
     friend struct arc::ManuallyDrop<Pinger>;
@@ -56,7 +60,7 @@ private:
 
     struct CachedPing {
         asp::time::Duration responseTime;
-        std::vector<SupportedProtocol> protocols;
+        asp::SmallVec<SupportedProtocol, 8> protocols;
     };
 
     std::optional<arc::TaskHandle<void>> m_workerTask;
@@ -66,7 +70,7 @@ private:
     std::vector<OutgoingPing> m_outgoingPings;
     uint32_t m_nextPingId = 0;
 
-    asp::Mutex<std::unordered_map<qsox::SocketAddress, CachedPing>> m_cache;
+    asp::Mutex<asp::Cache<qsox::SocketAddressV6, CachedPing>> m_cache;
 
     arc::Future<> workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>>);
 
@@ -75,8 +79,6 @@ private:
     void thrDispatchResult(PingResult& result, const qsox::SocketAddress& address);
     void thrRemoveTimedOutPings();
     arc::Future<> recreateSocket();
-
-    bool isCached(const qsox::SocketAddress& address);
 
     geode::Result<> resolveAndPing(std::string_view domain, uint16_t port, Callback callback);
 };

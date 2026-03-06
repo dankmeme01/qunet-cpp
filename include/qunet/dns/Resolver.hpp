@@ -4,6 +4,7 @@
 #include <qsox/Resolver.hpp> // we don't use qsox resolver, but we use its error type
 #include <arc/future/Future.hpp>
 #include <asp/sync/Mutex.hpp>
+#include <asp/collections/Cache.hpp>
 
 #include <string>
 
@@ -81,9 +82,9 @@ private:
     std::optional<qsox::IpAddress> m_primaryNs, m_secondaryNs;
     DNSTransport m_transport = DNSTransport::Udp;
     std::string m_systemDnsServers;
-    asp::Mutex<std::unordered_map<std::string, DNSRecordA>> m_aCache;
-    asp::Mutex<std::unordered_map<std::string, DNSRecordAAAA>> m_aaaaCache;
-    asp::Mutex<std::unordered_map<std::string, DNSRecordSRV>> m_srvCache;
+    asp::Mutex<asp::Cache<std::string, DNSRecordA>> m_aCache;
+    asp::Mutex<asp::Cache<std::string, DNSRecordAAAA>> m_aaaaCache;
+    asp::Mutex<asp::Cache<std::string, DNSRecordSRV>> m_srvCache;
 
     void reloadServers();
     std::optional<DNSRecordA> getCachedA(const std::string& name);
