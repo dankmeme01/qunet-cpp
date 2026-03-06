@@ -8,6 +8,7 @@
 #include <qunet/tls/TlsSocket.hpp>
 #include <qunet/Log.hpp>
 #include <asp/time.hpp>
+#include <fmt/color.h>
 
 #ifdef QUNET_TLS_SUPPORT
 # include <wolfssl/options.h>
@@ -81,10 +82,10 @@ arc::Future<int> amain(int argc, char** argv) {
     qn::log::setLogFunction([&](qn::log::Level level, const std::string& message) {
         auto timestr = fmt::format("{:.6f}", start.elapsed().seconds<double>());
         switch (level) {
-            case qn::log::Level::Debug: fmt::println("[{}] [DEBUG] {}", timestr, message); break;
-            case qn::log::Level::Info: fmt::println("[{}] [INFO] {}", timestr, message); break;
-            case qn::log::Level::Warning: fmt::println("[{}] [WARN] {}", timestr, message); break;
-            case qn::log::Level::Error: fmt::println("[{}] [ERROR] {}", timestr, message); break;
+            case qn::log::Level::Debug: fmt::println("[{}] [{}] {}", timestr, styled("DEBUG", fg(fmt::color::gray)), message); break;
+            case qn::log::Level::Info: fmt::println("[{}] [{}] {}", timestr, styled("INFO", fg(fmt::color::cyan)), message); break;
+            case qn::log::Level::Warning: fmt::println("[{}] [{}] {}", timestr, styled("WARN", fg(fmt::color::yellow)), message); break;
+            case qn::log::Level::Error: fmt::println("[{}] [{}] {}", timestr, styled("ERROR", fg(fmt::color::indian_red)), message); break;
         }
     });
 
