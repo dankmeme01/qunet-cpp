@@ -79,7 +79,7 @@ size_t QuicStream::write(const uint8_t* data, size_t len) {
     auto sndbuf = m_sendBuffer.lock();
     size_t maxWrite = this->sendCapacity(*sndbuf);
 
-    log::debug(
+    log::trace(
         "QUIC stream {}: writing {} bytes to write buffer (buffer capacity: {}, free space: {})",
         m_streamId, len, sndbuf->capacity(), maxWrite
     );
@@ -105,14 +105,14 @@ size_t QuicStream::read(void* buffer, size_t len) {
 
     recvbuf->read(buffer, toRead);
 
-    log::debug("QUIC stream {}: read {} bytes from receive buffer", m_streamId, toRead);
+    log::trace("QUIC stream {}: read {} bytes from receive buffer", m_streamId, toRead);
     return toRead;
 }
 
 void QuicStream::onReceivedData(const uint8_t* data, size_t len) {
     auto recvbuf = m_recvBuffer.lock();
 
-    log::debug("QUIC stream {}: received {} stream bytes", m_streamId, len);
+    log::trace("QUIC stream {}: received {} stream bytes", m_streamId, len);
 
     size_t spaceUntilMax = MAX_BUFFER_SIZE - recvbuf->size();
 
@@ -138,7 +138,7 @@ void QuicStream::onAck(uint64_t offset, uint64_t ackedBytes) {
     QN_DEBUG_ASSERT(m_ackOffset <= m_streamOffset);
     QN_DEBUG_ASSERT(unacked == m_streamOffset - m_ackOffset);
 
-    log::debug(
+    log::trace(
         "QUIC stream {}: acknowledged {} bytes @ offset {} (unacked: {}, unsent: {})",
         m_streamId, ackedBytes, offset, unacked, sndbuf->size() - unacked
     );

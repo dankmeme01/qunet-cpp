@@ -82,6 +82,9 @@ arc::Future<int> amain(int argc, char** argv) {
     qn::log::setLogFunction([&](qn::log::Level level, const std::string& message) {
         auto timestr = fmt::format("{:.6f}", start.elapsed().seconds<double>());
         switch (level) {
+#ifdef QUNET_DEBUG
+            case qn::log::Level::Trace: fmt::println("[{}] [{}] {}", timestr, styled("TRACE", fg(fmt::color::gray)), message); break;
+#endif
             case qn::log::Level::Debug: fmt::println("[{}] [{}] {}", timestr, styled("DEBUG", fg(fmt::color::gray)), message); break;
             case qn::log::Level::Info: fmt::println("[{}] [{}] {}", timestr, styled("INFO", fg(fmt::color::cyan)), message); break;
             case qn::log::Level::Warning: fmt::println("[{}] [{}] {}", timestr, styled("WARN", fg(fmt::color::yellow)), message); break;

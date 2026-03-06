@@ -8,13 +8,20 @@
 namespace qn::log {
 
 enum class Level {
-    Debug, Info, Warning, Error
+    Trace, Debug, Info, Warning, Error
 };
 
 using LogFunction = move_only_function<void(Level, const std::string&)>;
 
 void setLogFunction(LogFunction func);
 LogFunction& getLogFunction();
+
+template <typename... Args>
+void trace(fmt::format_string<Args...> fmt, Args&&... args) {
+#ifdef QUNET_DEBUG
+    getLogFunction()(Level::Trace, fmt::format(fmt, std::forward<Args>(args)...));
+#endif
+}
 
 template <typename... Args>
 void debug(fmt::format_string<Args...> fmt, Args&&... args) {
@@ -38,12 +45,13 @@ void error(fmt::format_string<Args...> fmt, Args&&... args) {
 
 inline std::string_view levelToString(Level level) {
     switch (level) {
+        case Level::Trace: return "TRACE";
         case Level::Debug: return "DEBUG";
         case Level::Info: return "INFO";
-        case Level::Warning: return "WARNING";
+        case Level::Warning: return "WARN";
         case Level::Error: return "ERROR";
     }
-    return "UNKNOWN";
+    return "";
 }
 
 }

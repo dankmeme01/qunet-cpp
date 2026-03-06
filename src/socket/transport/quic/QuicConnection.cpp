@@ -175,7 +175,6 @@ QuicConnection::QuicConnection(ngtcp2_conn* conn)
 
 QuicConnection::~QuicConnection() {
     ngtcp2_conn_del(m_conn);
-    log::debug("QUIC: connection destroyed");
 }
 
 ngtcp2_conn* QuicConnection::rawHandle() const {
@@ -197,8 +196,13 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     QN_ASSERT(tlsContext != nullptr && "TLS context must not be null");
     auto debugOptions = connOptions ? &connOptions->debug : nullptr;
 
+    // fail early if we cannot connect to the endpoint (e.g. if ipv6 is unsupported)
+    auto socket = ARC_CO_UNWRAP(co_await UdpSocket::bindAny(address.isV6()));
+    ARC_CO_UNWRAP(socket.connect(address));
+
     // create the connection early to make use of raii
     std::shared_ptr<QuicConnection> ret(new QuicConnection(nullptr));
+    ret->m_socket = std::move(socket);
     ret->m_connectDeadline = Instant::now() + timeout;
     ret->m_nextExpiry = Instant::now();
     ret->m_workerTask = arc::spawn([self = ret] -> arc::Future<> {
@@ -242,10 +246,6 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
             ret->m_lossSimulation = debugOptions->packetLossSimulation;
         }
     }
-
-    // create the new udp socket and connect it to the server
-    ret->m_socket = ARC_CO_UNWRAP(co_await UdpSocket::bindAny(address.isV6()));
-    ARC_CO_UNWRAP(ret->m_socket->connect(address));
 
     // initialize quic settings
     ngtcp2_settings settings;
@@ -391,7 +391,7 @@ Future<> QuicConnection::workerLoop() {
         co_await arc::select(
             arc::selectee(m_workerNotify.notified()),
 
-            arc::selectee(this->receivePacket(), [](TransportResult<> res) {
+            arc::selectee(this->receivePacket(), [](TransportResult<bool> res) {
                 if (!res) {
                     log::warn("QUIC: error receiving packet: {}", res.unwrapErr());
                 }
@@ -419,7 +419,6 @@ Future<> QuicConnection::workerLoop() {
 
 Future<TransportResult<>> QuicConnection::workerHandleWrites() {
     ARC_FRAME();
-    log::debug("handling writes");
 
     m_congestion.store(false, std::memory_order::relaxed);
 
@@ -492,14 +491,22 @@ Future<TransportResult<>> QuicConnection::performHandshake() {
 
     ngtcp2_path_storage_zero(&m_networkPath);
 
-    while (ngtcp2_conn_get_handshake_completed(m_conn) == 0) {
-        ARC_CO_UNWRAP(co_await this->sendHandshakePacket());
+    // block when we did not receive any packets or when there is no data pending
+    bool shouldBlock = true;
 
-        auto deadline = std::min(m_connectDeadline, Instant::now() + asp::Duration::fromMillis(750));
+    auto lastSentPacket = Instant{};
+
+    while (ngtcp2_conn_get_handshake_completed(m_conn) == 0) {
+        if (shouldBlock && lastSentPacket.elapsed() > Duration::fromMillis(5)) {
+            ARC_CO_UNWRAP(co_await this->sendHandshakePacket());
+            lastSentPacket = Instant::now();
+        }
+
+        auto deadline = std::min(m_connectDeadline, Instant::now() + Duration::fromMillis(750));
 
         auto tres = co_await arc::timeoutAt(
             deadline,
-            this->receivePacket()
+            this->receivePacket(shouldBlock)
         );
 
         if (!tres) {
@@ -509,7 +516,12 @@ Future<TransportResult<>> QuicConnection::performHandshake() {
             continue;
         }
 
-        ARC_CO_UNWRAP(std::move(tres).unwrap());
+        bool didReceiveData = ARC_CO_UNWRAP(std::move(tres).unwrap());
+        shouldBlock = !didReceiveData;
+
+        if (didReceiveData) {
+            log::debug("QUIC: received handshake response");
+        }
     }
 
     log::debug("QUIC: handshake completed");
@@ -600,7 +612,7 @@ Future<TransportResult<>> QuicConnection::sendClosePacket() {
 
 Future<TransportResult<>> QuicConnection::sendPacket(const uint8_t* buf, size_t size) {
     ARC_FRAME();
-    log::debug("QUIC: sending packet, size: {}", size);
+    log::trace("QUIC: sending packet, size: {}", size);
 
     if (!this->shouldLosePacket()) {
         ARC_CO_UNWRAP(co_await m_socket->send(buf, size));
@@ -686,12 +698,26 @@ Future<TransportResult<>> QuicConnection::sendStreamData(QuicStream& stream, boo
     co_return res;
 }
 
-Future<TransportResult<>> QuicConnection::receivePacket() {
+Future<TransportResult<bool>> QuicConnection::receivePacket(bool block) {
     ARC_FRAME();
     uint8_t outBuf[1500];
 
-    size_t bytes = ARC_CO_UNWRAP(co_await m_socket->recv(outBuf, sizeof(outBuf)));
-    log::debug("QUIC: read {} bytes from the socket", bytes);
+    size_t bytes = 0;
+    if (block) {
+        bytes = ARC_CO_UNWRAP(co_await m_socket->recv(outBuf, sizeof(outBuf)));
+    } else {
+        auto result = m_socket->inner().recv(outBuf, sizeof(outBuf));
+        if (result.isErr()) {
+            auto err = result.unwrapErr();
+            if (err == qsox::Error::WouldBlock) {
+                co_return Ok(false);
+            }
+            co_return Err(err);
+        }
+        bytes = result.unwrap();
+    }
+
+    log::trace("QUIC: read {} bytes from the socket", bytes);
 
     m_totalBytesReceived.fetch_add(bytes, std::memory_order::relaxed);
 
@@ -699,7 +725,7 @@ Future<TransportResult<>> QuicConnection::receivePacket() {
         return ngtcp2_conn_read_pkt(m_conn, &m_networkPath.path, nullptr, outBuf, bytes, timestamp());
     });
 
-    if (res.ok()) co_return Ok();
+    if (res.ok()) co_return Ok(true);
 
     log::warn("QUIC: failed to read the packet: {}", res);
     if (res.code == NGTCP2_ERR_CRYPTO) {

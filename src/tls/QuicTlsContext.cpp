@@ -25,24 +25,11 @@ TlsResult<std::shared_ptr<QuicTlsContext>> QuicTlsContext::create(const QuicTlsO
 
     GEODE_UNWRAP(context->configure(options));
 
-    // // set cipher list
-    // if (wolfSSL_CTX_set_cipher_list(ctx, "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_CCM_SHA256") != WOLFSSL_SUCCESS) {
-    //     wolfSSL_CTX_free(ctx);
-    //     return Err(lastTlsError());
-    // }
-
-    // if (wolfSSL_CTX_set1_curves_list(ctx, "X25519:P-256:P-384:P-521") != WOLFSSL_SUCCESS) {
-    //     wolfSSL_CTX_free(ctx);
-    //     return Err(lastTlsError());
-    // }
-
-    // idk what this is
-    /*
-    if (config.session_file) {
-        wolfSSL_CTX_UseSessionTicket(ssl_ctx_);
-        wolfSSL_CTX_sess_set_new_cb(ssl_ctx_, new_session_cb);
+    // for some reason, the server (s2n-quic) implementation prioritizes only P-384, so we want to use it to avoid a HelloRetryRequest
+    if (wolfSSL_CTX_set1_groups_list(ctx, "P-384:P-256:X25519") != WOLFSSL_SUCCESS) {
+        wolfSSL_CTX_free(ctx);
+        return Err(lastTlsError());
     }
-    */
 
     return Ok(std::move(context));
 }
