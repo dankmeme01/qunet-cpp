@@ -309,9 +309,6 @@ void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& ad
     Duration responseTime = it->sentAt.elapsed();
     result.responseTime = responseTime;
 
-    // remove the ping from the list
-    pings.erase(it);
-
     // store ipv6 mapped addresses in cache, since that is what recvFrom may return
     auto v6 = toV6(address);
     auto cache = m_cache.lock();
@@ -335,6 +332,9 @@ void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& ad
     }
 
     it->callback(result);
+
+    // remove the ping from the list
+    pings.erase(it);
 }
 
 bool Pinger::isCached(const qsox::SocketAddress& address) {
