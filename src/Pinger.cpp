@@ -297,6 +297,20 @@ ByteReader::Result<PingResult> Pinger::thrParsePingResponse(const uint8_t* data,
 
 void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& address) {
     auto& pings = m_outgoingPings;
+    auto it = std::find_if(pings.begin(), pings.end(), [&result](const auto& ping) {
+        return ping.pingId == result.pingId;
+    });
+
+    if (it == pings.end()) {
+        log::warn("Received pong with unknown ID: {}", result.pingId);
+        return;
+    }
+
+    Duration responseTime = it->sentAt.elapsed();
+    result.responseTime = responseTime;
+
+    // remove the ping from the list
+    pings.erase(it);
 
     // store ipv6 mapped addresses in cache, since that is what recvFrom may return
     auto v6 = toV6(address);
@@ -320,19 +334,7 @@ void Pinger::thrDispatchResult(PingResult& result, const qsox::SocketAddress& ad
         cacheEntry->protocols = result.protocols;
     }
 
-    for (size_t i = 0; i < pings.size(); i++) {
-        auto& ping = pings[i];
-
-        if (result.pingId == ping.pingId) {
-            Duration responseTime = ping.sentAt.elapsed();
-            result.responseTime = responseTime;
-            ping.callback(result);
-
-            // remove the ping from the list
-            pings.erase(pings.begin() + i);
-            break;
-        }
-    }
+    it->callback(result);
 }
 
 bool Pinger::isCached(const qsox::SocketAddress& address) {
