@@ -179,6 +179,8 @@ if (QUNET_BUILD_TESTER)
     target_link_libraries(qunet_tester PRIVATE qunet qsox)
 
     # add asan
-    target_compile_options(qunet_tester PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
-    target_link_options(qunet_tester PRIVATE -fsanitize=address)
+    if (NOT WIN32)
+        target_compile_options(qunet_tester PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
+        target_link_options(qunet_tester PRIVATE -fsanitize=address)
+    endif()
 endif()

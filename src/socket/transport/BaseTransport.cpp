@@ -85,7 +85,7 @@ Duration BaseTransport::untilTimerExpiry() const {
 }
 
 arc::Future<TransportResult<>> BaseTransport::handleTimerExpiry() {
-    if (m_unackedKeepalives >= 3 && m_lastKeepalive->elapsed() > Duration::fromMillis(750)) {
+    if (m_unackedKeepalives > 5 && m_lastKeepalive->elapsed() > Duration::fromMillis(750)) {
         log::warn("Server did not respond to {} keepalives, terminating connection", m_unackedKeepalives);
         co_return Err(TransportError::TimedOut);
     }
