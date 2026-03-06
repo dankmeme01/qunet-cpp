@@ -21,6 +21,9 @@
 using namespace asp::time;
 using namespace arc;
 
+static constexpr size_t SOURCE_ID_LEN = 8;
+static constexpr size_t DEST_ID_LEN = 8;
+
 struct CSPRNG {
     CSPRNG() {
         if (wc_InitRng(&m_rng) != 0) {
@@ -262,21 +265,25 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     // Initialize transport parameters
     ngtcp2_transport_params params;
     ngtcp2_transport_params_default(&params);
-    params.initial_max_stream_data_bidi_local = 1024 * 1024 * 8; // 8 MiB
-    params.initial_max_stream_data_bidi_remote = 1024 * 1024 * 8; // 8 MiB
-    params.initial_max_stream_data_uni = 1024 * 1024 * 8; // 8 MiB
-    params.initial_max_data = 1024 * 1024 * 16; // 16 MiB
-    params.initial_max_streams_bidi = 2; // we only need 1 stream really
-    params.initial_max_streams_uni = 1;
-    params.max_idle_timeout = Duration::fromSecs(60).nanos();
-    params.active_connection_id_limit = 4; // idk?
+    constexpr size_t MiB = 1024 * 1024;
+
+    params.initial_max_stream_data_bidi_local = 12 * MiB;
+    params.initial_max_stream_data_bidi_remote = 1 * MiB;
+    params.initial_max_stream_data_uni = 1 * MiB;
+    params.initial_max_data = 24 * MiB;
+    params.initial_max_streams_bidi = 100;
+    params.initial_max_streams_uni = 100;
+    params.max_datagram_frame_size = 65535;
+    params.max_idle_timeout = Duration::fromSecs(30).nanos();
+    params.active_connection_id_limit = 8;
     params.grease_quic_bit = 1;
+    params.max_ack_delay = Duration::fromMillis(20).nanos();
 
     // Initialize connection IDs
     ngtcp2_cid scid, dcid;
-    scid.datalen = 17; // value used by ngtcp2 example
+    scid.datalen = SOURCE_ID_LEN; // value used by ngtcp2 example
     fillRandom(scid.data, scid.datalen);
-    dcid.datalen = 18; // ditto
+    dcid.datalen = DEST_ID_LEN; // ditto
     fillRandom(dcid.data, dcid.datalen);
 
     // Initialize callbacks
