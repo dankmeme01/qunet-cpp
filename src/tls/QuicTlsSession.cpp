@@ -28,7 +28,8 @@ TlsResult<QuicTlsSession> QuicTlsSession::create(
 
     wolfSSL_set_connect_state(ssl);
 
-    const uint8_t alpn[] = "\x06qunet1";
+    // use h3 as the alpn, for higher likelihood of bypassing firewalls/dpi systems
+    const uint8_t alpn[] = "\x02h3";
     GEODE_UNWRAP(tlsWrap(wolfSSL_set_alpn_protos(ssl, alpn, sizeof(alpn) - 1)));
 
     // use quic v1
