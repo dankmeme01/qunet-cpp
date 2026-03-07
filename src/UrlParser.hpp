@@ -139,7 +139,7 @@ public:
 private:
     std::string_view m_url;
     std::optional<ConnectionType> m_proto;
-    UrlParseError m_result;
+    UrlParseError m_result = UrlParseError::Success;
 
     std::optional<std::variant<
         qsox::SocketAddress, // ip with port
