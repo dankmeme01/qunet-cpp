@@ -6,6 +6,7 @@
 
 #include <qsox/BaseSocket.hpp>
 #include <algorithm>
+#include <asp/iter.hpp>
 
 #include <ares.h>
 #ifdef __ANDROID__
@@ -76,17 +77,32 @@ Resolver::Resolver() {
         return;
     }
 
+    // setup the dns servers
     auto csv = ares_get_servers_csv((ares_channel_t*)m_channel);
-    m_systemDnsServers = csv ? csv : "";
+    std::string csvStr = csv;
     ares_free_string(csv);
 
-    log::debug("(Resolver) System DNS servers: {}", m_systemDnsServers);
+    m_systemDnsServers = asp::iter::split(csvStr, ',')
+        .filterMap([](std::string_view srv) {
+            return qsox::SocketAddress::parse(srv).ok();
+        })
+        .filter([](const qsox::SocketAddress& addr) {
+            return addr.isV4();
+        })
+        .collect();
+
+    log::debug("(Resolver) System DNS servers: {} ({} valid IPv4s)", csvStr, m_systemDnsServers.size());
+
+    this->reloadServers();
 
     auto setupCache = [&](auto& cache) {
         cache.setMaxEntries(128);
         cache.setTimeToLive(asp::Duration::fromMinutes(5));
         cache.setWorkInterval(asp::Duration::fromMinutes(1));
     };
+    setupCache(*m_aCache.lock());
+    setupCache(*m_aaaaCache.lock());
+    setupCache(*m_srvCache.lock());
 }
 
 void Resolver::wineWorkaround() {
@@ -274,33 +290,33 @@ geode::Result<> Resolver::setDnsTransport(DNSTransport transport) {
 }
 
 void Resolver::reloadServers() {
-    std::string servers;
-
-    if (!m_primaryNs) {
-        // no dns servers would be invalid, so set 1.1.1.1 as default
-        m_primaryNs = qsox::Ipv4Address{1, 1, 1, 1};
-    }
+    std::vector<qsox::SocketAddress> servers;
 
     for (auto addrOpt : {m_primaryNs, m_secondaryNs}) {
-        if (!addrOpt.has_value()) {
-            continue;
+        if (addrOpt.has_value()) {
+            servers.push_back(qsox::SocketAddress{addrOpt.value(), 53});
         }
-
-        if (!servers.empty()) {
-            servers += ",";
-        }
-        servers += fmt::format("[{}]", addrOpt->toString());
     }
 
     // add the system server as the last resort
     // this is important, because for example if a VPN is enabled, it might block any custom DNS servers
-    if (!servers.empty()) {
-        servers += ",";
-    }
-    servers += m_systemDnsServers;
-    log::debug("(Resolver) setting DNS servers to: {}", servers);
+    servers.insert(servers.end(), m_systemDnsServers.begin(), m_systemDnsServers.end());
 
-    ares_set_servers_csv((ares_channel_t*)m_channel, servers.c_str());
+    if (servers.empty()) {
+        // if there is not a single server, add 1.1.1.1
+        servers.push_back({
+            qsox::Ipv4Address{1, 1, 1, 1},
+            53
+        });
+    }
+
+    auto str = asp::iter::from(servers)
+        .map([](const auto& addr) { return addr.toString(); })
+        .join(",");
+
+    log::debug("(Resolver) setting DNS servers to: '{}'", str);
+
+    ares_set_servers_csv((ares_channel_t*)m_channel, str.c_str());
 }
 
 std::optional<DNSRecordA> Resolver::getCachedA(const std::string& name) {
