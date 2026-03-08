@@ -12,6 +12,11 @@ public:
     FragmentStore();
     ~FragmentStore();
 
+    FragmentStore(const FragmentStore&) = delete;
+    FragmentStore& operator=(const FragmentStore&) = delete;
+    FragmentStore(FragmentStore&&) noexcept = default;
+    FragmentStore& operator=(FragmentStore&&) noexcept = default;
+
     /// Accepts incoming message fragment. If a whole message is ready, it will be reassembled and returned, otherwise nullopt is returned.
     TransportResult<std::optional<QunetMessageMeta>> processFragment(
         QunetMessageMeta&& message

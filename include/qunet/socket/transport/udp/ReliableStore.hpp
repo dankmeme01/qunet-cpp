@@ -12,6 +12,11 @@ public:
     ReliableStore();
     ~ReliableStore();
 
+    ReliableStore(const ReliableStore&) = delete;
+    ReliableStore& operator=(const ReliableStore&) = delete;
+    ReliableStore(ReliableStore&&) noexcept = default;
+    ReliableStore& operator=(ReliableStore&&) noexcept = default;
+
     // Handling of incoming messages
 
     /// Handles an incoming reliability header from a message. Returns false if this message should be rejected,
