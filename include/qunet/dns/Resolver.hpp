@@ -59,6 +59,13 @@ public:
     Resolver(Resolver&&) = delete;
     Resolver& operator=(Resolver&&) = delete;
 
+#ifdef QUNET_ADVANCED_DNS
+    /// Initializes the c-ares library globally. This is required to be called on Android before using the resolver.
+    /// The arguments are JNIEnv* and a jobject representing a ConnectivityManager.
+    /// On non-android, these arguments are ignored and can be null.
+    static void globalInit(void* jvm, void* cman);
+#endif
+
     ResolverResult<> queryA(const std::string& name, ResolverCallback<DNSRecordA> callback);
     ResolverResult<> queryAAAA(const std::string& name, ResolverCallback<DNSRecordAAAA> callback);
     ResolverResult<> querySRV(const std::string& name, ResolverCallback<DNSRecordSRV> callback);

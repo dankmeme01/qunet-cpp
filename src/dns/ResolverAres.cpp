@@ -8,8 +8,13 @@
 #include <algorithm>
 
 #include <ares.h>
+#ifdef __ANDROID__
+# include <jni.h>
+#endif
 
 namespace qn {
+
+static std::atomic<bool> g_aresInited{false};
 
 template <typename T>
 struct QueryData {
@@ -17,7 +22,12 @@ struct QueryData {
     std::string name;
 };
 
-Resolver::Resolver() {
+void Resolver::globalInit(void* jvm_, void* cman) {
+    if (g_aresInited.exchange(true)) {
+        log::warn("Resolver::globalInit called multiple times, ignoring");
+        return;
+    }
+
     // we must do wsastartup manually, ares does not do it
     auto sres = qsox::initSockets();
     if (!sres) {
@@ -31,7 +41,24 @@ Resolver::Resolver() {
         return;
     }
 
-    // TODO: apparently we need to call ares_library_init_jvm and ares_library_init_android here on android
+#ifdef __ANDROID__
+    auto jvm = reinterpret_cast<JavaVM*>(jvm_);
+    auto cm = reinterpret_cast<jobject>(cman);
+    if (!jvm || !cm) {
+        log::warn("Resolver::globalInit called with invalid JVM or ConnectivityManager, DNS may be broken!");
+        return;
+    }
+
+    ares_library_init_jvm(jvm);
+    ares_library_init_android(cm);
+#endif
+}
+
+Resolver::Resolver() {
+    if (!g_aresInited.load()) {
+        // initialize now, this isn't an issue on non-android
+        Resolver::globalInit(nullptr, nullptr);
+    }
 
     int optmask = ARES_OPT_TIMEOUTMS | ARES_OPT_EVENT_THREAD;
     ares_options options = {};
@@ -42,7 +69,7 @@ Resolver::Resolver() {
         this->wineWorkaround();
     }
 
-    res = ares_init_options((ares_channel_t**)&m_channel, &options, optmask);
+    int res = ares_init_options((ares_channel_t**)&m_channel, &options, optmask);
     if (res != ARES_SUCCESS) {
         log::error("ares_init_options failed with code {}: {}", res, ares_strerror(res));
         m_channel = nullptr;
