@@ -15,8 +15,11 @@
 namespace qn {
 
 QSOX_MAKE_OPAQUE_ERROR_STRUCT(QuicError, int);
+
+#ifdef QUNET_TLS_SUPPORT
 using xtls::TlsError;
 using xtls::TlsResult;
+#endif
 
 // Transport error
 

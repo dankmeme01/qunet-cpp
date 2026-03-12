@@ -1,7 +1,9 @@
 #pragma once
 
 #include "transport/BaseTransport.hpp"
-#include <xtls/Context.hpp>
+#ifdef QUNET_TLS_SUPPORT
+# include <xtls/Context.hpp>
+#endif
 
 #include <asp/time/Duration.hpp>
 #include <qsox/SocketAddress.hpp>

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef QUNET_QUIC_SUPPORT
+
 #include <xtls/Session.hpp>
 #include <xtls/Context.hpp>
 
@@ -46,3 +48,5 @@ private:
 };
 
 }
+
+#endif

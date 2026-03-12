@@ -5,7 +5,6 @@
 #include <qunet/util/assert.hpp>
 #include "UrlParser.hpp"
 
-#include <xtls/Backend.hpp>
 #include <arc/future/Select.hpp>
 #include <arc/future/Join.hpp>
 #include <arc/time/Sleep.hpp>

@@ -1,3 +1,6 @@
+
+#ifdef QUNET_QUIC_SUPPORT
+
 #include "QuicTlsSession.hpp"
 #include "QuicConnection.hpp"
 
@@ -63,3 +66,5 @@ QuicTlsSession::~QuicTlsSession() {
 }
 
 }
+
+#endif
