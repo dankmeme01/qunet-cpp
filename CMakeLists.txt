@@ -9,6 +9,7 @@ option(QUNET_ADVANCED_DNS "Enable advanced DNS resolver" ON)
 option(QUNET_DEBUG "Enable debug mode" OFF)
 option(QUNET_BUILD_TESTER OFF)
 option(QUNET_ENABLE_OPENSSL OFF)
+option(QUNET_ENABLE_WOLFSSL OFF)
 
 if (QUNET_QUIC_SUPPORT)
     set(QUNET_TLS_SUPPORT ON)
@@ -112,10 +113,10 @@ if (QUNET_TLS_SUPPORT)
     if (NOT TARGET xtls)
         if (PROJECT_IS_TOP_LEVEL)
             CPMAddPackage(
-                URI "gh:dankmeme01/xtls#8f34f23"
-                OPTIONS "XTLS_ENABLE_OPENSSL ON"
+                URI "gh:dankmeme01/xtls#86a80aa"
+                OPTIONS "XTLS_ENABLE_OPENSSL ${QUNET_ENABLE_OPENSSL}"
+                        "XTLS_ENABLE_WOLFSSL ${QUNET_ENABLE_WOLFSSL}"
             )
-            set(QUNET_ENABLE_OPENSSL ON)
         else()
             message(FATAL_ERROR "xtls must be included with your preferred TLS backend for TLS support")
         endif()
@@ -134,6 +135,8 @@ if (QUNET_QUIC_SUPPORT)
             OPTIONS "ENABLE_LIB_ONLY ON"
                     "ENABLE_STATIC_LIB ON"
                     "ENABLE_SHARED_LIB OFF"
+                    "ENABLE_OPENSSL ${QUNET_ENABLE_OPENSSL}"
+                    "ENABLE_WOLFSSL ${QUNET_ENABLE_WOLFSSL}"
                     "BUILD_TESTING OFF"
         )
 
@@ -147,6 +150,9 @@ if (QUNET_QUIC_SUPPORT)
     if (QUNET_ENABLE_OPENSSL)
         target_link_libraries(qunet PRIVATE ngtcp2_crypto_ossl_static)
         target_compile_definitions(qunet PUBLIC QUNET_ENABLE_OPENSSL)
+    elseif(QUNET_ENABLE_WOLFSSL)
+        target_link_libraries(qunet PRIVATE ngtcp2_crypto_wolfssl_static)
+        target_compile_definitions(qunet PUBLIC QUNET_ENABLE_WOLFSSL)
     else()
         message(FATAL_ERROR "At least one crypto backend must be enabled")
     endif()

@@ -16,6 +16,10 @@
 
 #ifdef QUNET_ENABLE_OPENSSL
 # include <openssl/ssl.h>
+#elif defined(QUNET_ENABLE_WOLFSSL)
+# include <wolfssl/options.h>
+# include <wolfssl/ssl.h>
+# include <ngtcp2/ngtcp2_crypto_wolfssl.h>
 #endif
 
 using enum std::memory_order;
@@ -1299,9 +1303,18 @@ ConnectionError Connection::lastError() const {
 
 #ifdef QUNET_TLS_SUPPORT
 TlsResult<> setupQuicContext(xtls::Context& ctx) {
-#ifdef QUNET_ENABLE_OPENSSL
     // for some reason, the server (s2n-quic) implementation prioritizes only P-384, so we want to use it to avoid a HelloRetryRequest
+#ifdef QUNET_ENABLE_OPENSSL
     if (SSL_CTX_set1_groups_list((SSL_CTX*)ctx.handle_(), "P-384:P-256:X25519") != 1) {
+        return Err(TlsError::lastError());
+    }
+#elif defined(QUNET_ENABLE_WOLFSSL) && defined(OPENSSL_EXTRA)
+    auto ch = (WOLFSSL_CTX*)ctx.handle_();
+    if (ngtcp2_crypto_wolfssl_configure_client_context(ch) != 0) {
+        return Err(TlsError::lastError());
+    }
+
+    if (wolfSSL_CTX_set1_groups_list(ch, "P-384:P-256:X25519") != 1) {
         return Err(TlsError::lastError());
     }
 #endif

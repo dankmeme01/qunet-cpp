@@ -7,8 +7,10 @@
 
 #ifdef QUNET_ENABLE_OPENSSL
 # include <ngtcp2/ngtcp2_crypto_ossl.h>
+#elif defined(QUNET_ENABLE_WOLFSSL)
+# include <ngtcp2/ngtcp2_crypto_wolfssl.h>
 #else
-# error
+# error "unsupported crypto backend"
 #endif
 
 namespace qn {

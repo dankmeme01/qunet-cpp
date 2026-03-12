@@ -20,6 +20,11 @@ xtls::TlsResult<QuicTlsSession> QuicTlsSession::create(
     ret.m_session = s;
     ret.m_xctx = ctx;
 
+    // use h3 as the alpn, for higher likelihood of bypassing firewalls/dpi systems
+    const uint8_t alpn[] = "\x02h3";
+    s->setALPN(std::span(alpn, sizeof(alpn) - 1));
+    s->setAppData(conn->connRef());
+
 #ifdef QUNET_ENABLE_OPENSSL
     ngtcp2_crypto_ossl_ctx* ngtcp2ctxp = nullptr;
 
@@ -31,13 +36,12 @@ xtls::TlsResult<QuicTlsSession> QuicTlsSession::create(
         return Err(xtls::TlsError::custom("ngtcp2 ossl configure failed"));
     }
 
-    SSL_set_app_data(ssl, conn->connRef());
-    SSL_set_connect_state(ssl);
-
-    // use h3 as the alpn, for higher likelihood of bypassing firewalls/dpi systems
-    const uint8_t alpn[] = "\x02h3";
-    SSL_set_alpn_protos(ssl, alpn, sizeof(alpn) - 1);
     ret.m_ngtcp2ctx = std::move(ngtcp2ctx);
+
+#elif defined(QUNET_ENABLE_WOLFSSL)
+    auto ssl = static_cast<WOLFSSL*>(s->handle_());
+    // use quic v1
+    wolfSSL_set_quic_transport_version(ssl, 0x39);
 #endif
 
     return Ok(std::move(ret));
@@ -52,12 +56,14 @@ void* QuicTlsSession::handle() const {
 }
 
 void* QuicTlsSession::ngtcp2_handle() const {
+#ifdef QUNET_ENABLE_OPENSSL
     return m_ngtcp2ctx.get();
+#elif defined(QUNET_ENABLE_WOLFSSL)
+    return this->handle();
+#endif
 }
 
 QuicTlsSession::~QuicTlsSession() {
-    m_ngtcp2ctx.reset();
-
     if (!m_session) return;
     auto ssl = static_cast<SSL*>(m_session->handle_());
     if (ssl) {
