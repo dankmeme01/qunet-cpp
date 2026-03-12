@@ -377,7 +377,7 @@ private:
     bool sendMsgToThread(QunetMessage&& message, bool reliable = true, bool uncompressed = false, std::string tag = "");
 };
 
-#ifdef QUNET_TLS_SUPPORT
+#ifdef QUNET_QUIC_SUPPORT
 TlsResult<> setupQuicContext(xtls::Context& ctx);
 #endif
 
