@@ -419,7 +419,7 @@ Future<TransportResult<std::shared_ptr<BaseTransport>>> Socket::createTransport(
             auto transport = ARC_CO_UNWRAP(co_await QuicTransport::connect(
                 options.address,
                 options.timeout,
-                std::static_pointer_cast<QuicTlsContext>(options.tlsContext),
+                options.tlsContext,
                 options.connOptions,
                 options.hostname
             ));

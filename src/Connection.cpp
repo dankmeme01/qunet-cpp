@@ -5,6 +5,7 @@
 #include <qunet/util/assert.hpp>
 #include "UrlParser.hpp"
 
+#include <xtls/Backend.hpp>
 #include <arc/future/Select.hpp>
 #include <arc/future/Join.hpp>
 #include <arc/time/Sleep.hpp>
@@ -13,6 +14,10 @@
 #include <asp/time/sleep.hpp>
 
 #include <algorithm>
+
+#ifdef QUNET_ENABLE_OPENSSL
+# include <openssl/ssl.h>
+#endif
 
 using enum std::memory_order;
 using qsox::SocketAddress;
@@ -918,7 +923,7 @@ Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, C
 #ifdef QUNET_TLS_SUPPORT
     if (this->requiresTls(type)) {
         if (auto err = this->initTlsContext(type).err()) {
-            log::warn("TLS initialization failed: {}", err);
+            log::warn("TLS initialization failed: {}", err->message);
             co_return Err(ConnectionError::TlsInitFailed);
         }
     }
@@ -942,7 +947,7 @@ bool Connection::isSupported(ConnectionType type) {
 }
 
 #ifdef QUNET_TLS_SUPPORT
-std::shared_ptr<TlsContext> Connection::getTlsForConnection(ConnectionType type) {
+std::shared_ptr<xtls::Context> Connection::getTlsForConnection(ConnectionType type) {
     if (type == ConnectionType::Quic) {
 #ifdef QUNET_QUIC_SUPPORT
         return m_quicTlsContext;
@@ -957,13 +962,20 @@ std::shared_ptr<TlsContext> Connection::getTlsForConnection(ConnectionType type)
 TlsResult<> Connection::initTlsContext(ConnectionType type) {
     if (type == ConnectionType::Quic) {
 #ifdef QUNET_QUIC_SUPPORT
-        if (!m_quicTlsContext) m_quicTlsContext = GEODE_UNWRAP(QuicTlsContext::create());
+        if (!m_quicTlsContext) {
+            m_quicTlsContext = GEODE_UNWRAP(xtls::Backend::get().createContext(xtls::ContextType::Client1_3));
+            GEODE_UNWRAP(m_quicTlsContext->loadSystemCACerts()); // TODO
+            GEODE_UNWRAP(setupQuicContext(*m_quicTlsContext));
+        }
 #else
         log::error("QUIC support is not enabled, cannot initialize QUIC TLS context!");
         QN_ASSERT(false && "QUIC support not enabled");
 #endif
     } else {
-        if (!m_tcpTlsContext) m_tcpTlsContext = GEODE_UNWRAP(TcpTlsContext::create());
+        if (!m_tcpTlsContext) {
+            m_tcpTlsContext = GEODE_UNWRAP(xtls::Backend::get().createContext(xtls::ContextType::Client));
+            GEODE_UNWRAP(m_tcpTlsContext->loadSystemCACerts());
+        }
     }
 
     return Ok();
@@ -1235,13 +1247,13 @@ void Connection::simulateConnectionDrop() {
 }
 
 #ifdef QUNET_TLS_SUPPORT
-void Connection::setTlsContext(std::shared_ptr<TcpTlsContext> context) {
+void Connection::setTlsContext(std::shared_ptr<xtls::Context> context) {
     m_tcpTlsContext = std::move(context);
 }
 #endif
 
 #ifdef QUNET_QUIC_SUPPORT
-void Connection::setQuicTlsContext(std::shared_ptr<QuicTlsContext> context) {
+void Connection::setQuicTlsContext(std::shared_ptr<xtls::Context> context) {
     m_quicTlsContext = std::move(context);
 }
 #endif
@@ -1285,5 +1297,17 @@ void Connection::setState(ConnectionState state) {
 ConnectionError Connection::lastError() const {
     return *m_lastError.lock();
 }
+
+#ifdef QUNET_TLS_SUPPORT
+TlsResult<> setupQuicContext(xtls::Context& ctx) {
+#ifdef QUNET_ENABLE_OPENSSL
+    // for some reason, the server (s2n-quic) implementation prioritizes only P-384, so we want to use it to avoid a HelloRetryRequest
+    if (SSL_CTX_set1_groups_list((SSL_CTX*)ctx.handle_(), "P-384:P-256:X25519") != 1) {
+        return Err(TlsError::lastError());
+    }
+#endif
+    return Ok();
+}
+#endif
 
 }

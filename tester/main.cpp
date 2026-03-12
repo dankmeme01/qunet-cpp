@@ -5,14 +5,12 @@
 #include <arc/prelude.hpp>
 #include <qunet/dns/Resolver.hpp>
 #include <qunet/Connection.hpp>
-#include <qunet/tls/TlsSocket.hpp>
 #include <qunet/Log.hpp>
 #include <asp/time.hpp>
 #include <fmt/color.h>
 
 #ifdef QUNET_TLS_SUPPORT
-# include <wolfssl/options.h>
-# include <wolfssl/ssl.h>
+# include <xtls/Backend.hpp>
 #endif
 
 using namespace qn;
@@ -35,43 +33,7 @@ arc::Future<> connLoop(Connection& conn) {
     }
 }
 
-#ifdef QUNET_TLS_SUPPORT
-arc::Future<TransportResult<>> testTLS() {
-    auto& resolver = Resolver::get();
-
-    auto dnsRes = co_await resolver.asyncQueryA("www.google.com");
-    if (auto err = dnsRes.err()) {
-        log::warn("DNS error: {}", err->message());
-        co_return Err(TransportError::Other);
-    }
-
-    qsox::SocketAddress address { dnsRes.unwrap().addresses[0], 443 };
-
-    TcpTlsOptions opts{};
-    opts.caCertPath = "/home/dankpc/programming/globed/qunet/qunet-cpp/tester/cacert.pem";
-    auto ctx = ARC_CO_UNWRAP(TcpTlsContext::create(opts));
-
-    auto socket = ARC_CO_UNWRAP(co_await TlsSocket::connect(address, ctx, "www.google.com"));
-    const char* request = "HEAD / HTTP/1.1\r\nHost: google.com\r\nConnection: close\r\n\r\n";
-
-    ARC_CO_UNWRAP(co_await socket.sendAll(request, strlen(request)));
-    char response[4096];
-    size_t bytes = ARC_CO_UNWRAP(co_await socket.receive(response, sizeof(response)));
-    std::string respStr(response, bytes);
-
-    log::info("Received response:\n{}", respStr);
-
-    co_return Ok();
-}
-#endif
-
 arc::Future<int> amain(int argc, char** argv) {
-    // wolfSSL_SetLoggingCb([](int logLevel, const char* logMessage) {
-    //     log::debug("(wolfSSL) {}", logMessage);
-    // });
-
-    // wolfSSL_Debugging_ON();
-
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <address>" << std::endl;
         co_return 1;
@@ -105,10 +67,10 @@ arc::Future<int> amain(int argc, char** argv) {
     });
 
 #ifdef QUNET_QUIC_SUPPORT
-    QuicTlsOptions opts{};
-    opts.insecure = true;
-    auto tls = QuicTlsContext::create(opts).unwrap();
-    conn->setQuicTlsContext(tls);
+    auto ctx = xtls::Backend::get().createContext(xtls::ContextType::Client1_3).unwrap();
+    ctx->setCertVerification(false).unwrap();
+    setupQuicContext(*ctx).unwrap();
+    conn->setQuicTlsContext(ctx);
 #endif
 
     auto res = co_await conn->connectWait(argv[1]);

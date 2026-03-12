@@ -6,13 +6,17 @@
 #include <qunet/buffers/Error.hpp>
 #include <qsox/Error.hpp>
 #include <arc/time/Timeout.hpp>
+#ifdef QUNET_TLS_SUPPORT
+# include <xtls/Base.hpp>
+#endif
 
 // Various transport errors
 
 namespace qn {
 
 QSOX_MAKE_OPAQUE_ERROR_STRUCT(QuicError, int);
-QSOX_MAKE_OPAQUE_ERROR_STRUCT(TlsError, unsigned long);
+using xtls::TlsError;
+using xtls::TlsResult;
 
 // Transport error
 

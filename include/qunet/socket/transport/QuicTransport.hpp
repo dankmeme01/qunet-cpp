@@ -3,7 +3,7 @@
 #ifdef QUNET_QUIC_SUPPORT
 
 #include "BaseTransport.hpp"
-#include <qunet/tls/QuicTlsContext.hpp>
+#include <xtls/Context.hpp>
 #include <qunet/buffers/CircularByteBuffer.hpp>
 #include <qsox/SocketAddress.hpp>
 #include <memory>
@@ -22,7 +22,7 @@ public:
     static arc::Future<TransportResult<QuicTransport>> connect(
         const qsox::SocketAddress& address,
         const asp::time::Duration& timeout,
-        std::shared_ptr<QuicTlsContext> tlsContext = nullptr,
+        std::shared_ptr<xtls::Context> tlsContext = nullptr,
         const struct ConnectionOptions* connOptions = nullptr,
         const std::string& hostname = ""
     );

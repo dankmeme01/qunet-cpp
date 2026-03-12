@@ -33,6 +33,7 @@ std::string_view TransportError::CustomKind::message() const {
 
 std::string TransportError::message() const {
 #define FOR_MSG(t, msg) if (std::holds_alternative<t>(m_kind)) { return fmt::format(msg, std::get<t>(m_kind).message()); } else
+#define FOR_MSG2(t, msg) if (std::holds_alternative<t>(m_kind)) { return fmt::format(msg, std::get<t>(m_kind).message); } else
 
     FOR_MSG(qsox::Error, "Socket error: {}")
 
@@ -40,7 +41,7 @@ std::string TransportError::message() const {
     FOR_MSG(QuicError, "QUIC error: {}")
 #endif
 #ifdef QUNET_TLS_SUPPORT
-    FOR_MSG(TlsError, "TLS error: {}")
+    FOR_MSG2(TlsError, "TLS error: {}")
 #endif
     FOR_MSG(ByteReaderError, "Error decoding packet: {}")
     FOR_MSG(ByteWriterError, "Error encoding message: {}")

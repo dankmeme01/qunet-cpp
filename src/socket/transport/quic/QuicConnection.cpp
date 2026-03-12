@@ -9,9 +9,6 @@
 #include <qunet/Log.hpp>
 
 #include <ngtcp2_path.h>
-#include <wolfssl/options.h>
-#include <wolfssl/wolfcrypt/random.h>
-#include <wolfssl/wolfcrypt/logging.h>
 #include <arc/time/Timeout.hpp>
 #include <arc/time/Sleep.hpp>
 #include <arc/future/Select.hpp>
@@ -24,42 +21,20 @@ using namespace arc;
 static constexpr size_t SOURCE_ID_LEN = 8;
 static constexpr size_t DEST_ID_LEN = 8;
 
-struct CSPRNG {
-    CSPRNG() {
-        if (wc_InitRng(&m_rng) != 0) {
-            qn::log::error("Failed to initialize wolfssl rng");
-            return;
-        }
-        m_initialized = true;
-    }
-
-    ~CSPRNG() {
-        if (m_initialized) {
-            wc_FreeRng(&m_rng);
-        }
-    }
-
-    bool generate(uint8_t* buf, size_t len) {
-        if (!m_initialized) {
-            return false;
-        }
-
-        if (wc_RNG_GenerateBlock(&m_rng, buf, len) != 0) {
-            qn::log::error("Failed to generate random bytes");
-            return false;
-        }
-
-        return true;
-    }
-
-private:
-    WC_RNG m_rng;
-    bool m_initialized = false;
-};
-
 static bool secureRandom(uint8_t* buf, size_t len) {
-    thread_local CSPRNG rng;
-    return rng.generate(buf, len);
+    if (buf == nullptr || len == 0) return false;
+
+    thread_local std::random_device dev;
+
+    size_t i = 0;
+    while (i < len) {
+        uint32_t random_val = dev();
+        size_t rem = std::min<size_t>(len - i, sizeof(uint32_t));
+        std::memcpy(buf + i, &random_val, rem);
+        i += rem;
+    }
+
+    return true;
 }
 
 static void fillRandom(uint8_t* dest, size_t len) {
@@ -177,6 +152,7 @@ QuicConnection::QuicConnection(ngtcp2_conn* conn)
 }
 
 QuicConnection::~QuicConnection() {
+    m_tls = {};
     ngtcp2_conn_del(m_conn);
 }
 
@@ -191,7 +167,7 @@ ngtcp2_crypto_conn_ref* QuicConnection::connRef() const {
 Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect(
     const qsox::SocketAddress& address,
     const Duration& timeout,
-    const std::shared_ptr<QuicTlsContext> tlsContext,
+    const std::shared_ptr<xtls::Context> tlsContext,
     const ConnectionOptions* connOptions,
     const std::string& hostname
 ) {
@@ -235,15 +211,7 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
 
     // set debug options
     if (debugOptions) {
-        if (debugOptions->verboseSsl) {
-            wolfSSL_SetLoggingCb([](int logLevel, const char* logMessage) {
-                log::debug("(wolfSSL) {}", logMessage);
-            });
-
-            wolfSSL_Debugging_ON();
-        } else {
-            wolfSSL_Debugging_OFF();
-        }
+        // TODO: handle verboseSsl
 
         if (debugOptions->packetLossSimulation != 0.0f) {
             ret->m_lossSimulation = debugOptions->packetLossSimulation;
@@ -360,11 +328,9 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     }
 
     // Create the TLS session
-    ret->m_tls = ARC_CO_UNWRAP(QuicTlsSession::create(
-        tlsContext, address, ret.get(), hostname
-    ));
+    ret->m_tls = ARC_CO_UNWRAP(QuicTlsSession::create(tlsContext, ret.get(), hostname));
 
-    ngtcp2_conn_set_tls_native_handle(ret->m_conn, ret->m_tls->handle());
+    ngtcp2_conn_set_tls_native_handle(ret->m_conn, ret->m_tls.ngtcp2_handle());
     ngtcp2_conn_set_keep_alive_timeout(ret->m_conn, Duration::fromSecs(30).nanos());
 
     // Start the handshake and wait for it to complete
@@ -736,8 +702,8 @@ Future<TransportResult<bool>> QuicConnection::receivePacket(bool block) {
 
     log::warn("QUIC: failed to read the packet: {}", res);
     if (res.code == NGTCP2_ERR_CRYPTO) {
-        auto tlsErr = m_tls->myLastError(-1);
-        log::warn("QUIC: last TLS error: {}", tlsErr);
+        auto tlsErr = m_tls.lastError();
+        log::warn("QUIC: last TLS error: {}", tlsErr.message);
         co_return Err(tlsErr);
     }
     co_return Err(res);

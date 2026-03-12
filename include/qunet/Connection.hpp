@@ -1,10 +1,12 @@
 #pragma once
 
-#include <qunet/tls/QuicTlsContext.hpp>
-#include <qunet/tls/TcpTlsContext.hpp>
 #include "socket/Socket.hpp"
 #include "util/compat.hpp"
 #include "Pinger.hpp"
+
+#ifdef QUNET_TLS_SUPPORT
+# include <xtls/Context.hpp>
+#endif
 
 #include <arc/task/CancellationToken.hpp>
 #include <arc/sync/Mutex.hpp>
@@ -106,7 +108,7 @@ enum class ConnectionState {
 
 // Various Debug options for the connection. Note that some of those do nothing in Release builds.
 struct ConnectionDebugOptions {
-    // Print verbose wolfSSL debug output (QUIC)
+    // Print verbose SSL debug output (QUIC)
     bool verboseSsl = false;
     // Print verbose ngtcp2 debug output (QUIC)
     bool verboseQuic = false;
@@ -306,11 +308,11 @@ public:
 #ifdef QUNET_TLS_SUPPORT
     /// Sets the TLS context that will be used for TCP-based TLS connections.
     /// If never called, a default context will be created upon first connection.
-    void setTlsContext(std::shared_ptr<TcpTlsContext> context);
+    void setTlsContext(std::shared_ptr<xtls::Context> context);
 # ifdef QUNET_QUIC_SUPPORT
     /// Sets the TLS context that will be used for QUIC connections.
     /// If never called, a default context will be created upon first connection.
-    void setQuicTlsContext(std::shared_ptr<QuicTlsContext> context);
+    void setQuicTlsContext(std::shared_ptr<xtls::Context> context);
 # endif
 #endif
 
@@ -331,9 +333,9 @@ private:
     std::optional<Socket> m_socket;
 
 #ifdef QUNET_TLS_SUPPORT
-    std::shared_ptr<TcpTlsContext> m_tcpTlsContext;
+    std::shared_ptr<xtls::Context> m_tcpTlsContext;
 # ifdef QUNET_QUIC_SUPPORT
-    std::shared_ptr<QuicTlsContext> m_quicTlsContext;
+    std::shared_ptr<xtls::Context> m_quicTlsContext;
 # endif
 #endif
 
@@ -348,7 +350,7 @@ private:
     bool isSupported(ConnectionType type);
 
 #ifdef QUNET_TLS_SUPPORT
-    std::shared_ptr<TlsContext> getTlsForConnection(ConnectionType type);
+    std::shared_ptr<xtls::Context> getTlsForConnection(ConnectionType type);
     TlsResult<> initTlsContext(ConnectionType type);
 #endif
 
@@ -374,5 +376,9 @@ private:
 
     bool sendMsgToThread(QunetMessage&& message, bool reliable = true, bool uncompressed = false, std::string tag = "");
 };
+
+#ifdef QUNET_TLS_SUPPORT
+TlsResult<> setupQuicContext(xtls::Context& ctx);
+#endif
 
 }
