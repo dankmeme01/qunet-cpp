@@ -335,7 +335,7 @@ Future<TransportResult<std::shared_ptr<QuicConnection>>> QuicConnection::connect
     ret->m_tls = ARC_CO_UNWRAP(QuicTlsSession::create(tlsContext, ret.get(), hostname));
 
     ngtcp2_conn_set_tls_native_handle(ret->m_conn, ret->m_tls.ngtcp2_handle());
-    ngtcp2_conn_set_keep_alive_timeout(ret->m_conn, Duration::fromSecs(30).nanos());
+    ngtcp2_conn_set_keep_alive_timeout(ret->m_conn, Duration::fromSecs(15).nanos());
 
     // Start the handshake and wait for it to complete
     ARC_CO_UNWRAP(co_await ret->performHandshake());
