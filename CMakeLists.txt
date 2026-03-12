@@ -104,7 +104,7 @@ if (QUNET_ADVANCED_DNS)
 
         target_compile_options(c-ares PRIVATE "-Wno-sign-conversion")
     endif()
-    target_compile_definitions(qunet PUBLIC QUNET_ADVANCED_DNS=1)
+    target_compile_definitions(qunet PUBLIC QUNET_ADVANCED_DNS=1 CARES_STATICLIB)
     target_link_libraries(qunet PRIVATE c-ares)
 endif()
 
@@ -112,7 +112,7 @@ if (QUNET_TLS_SUPPORT)
     if (NOT TARGET xtls)
         if (PROJECT_IS_TOP_LEVEL)
             CPMAddPackage(
-                URI "gh:dankmeme01/xtls#b81c9e3"
+                URI "gh:dankmeme01/xtls#8f34f23"
                 OPTIONS "XTLS_ENABLE_OPENSSL ON"
             )
             set(QUNET_ENABLE_OPENSSL ON)
@@ -126,7 +126,7 @@ if (QUNET_TLS_SUPPORT)
 endif()
 
 if (QUNET_QUIC_SUPPORT)
-    if (NOT TARGET ngtcp2)
+    if (NOT TARGET ngtcp2_static)
         CPMAddPackage(
             NAME ngtcp2
             GIT_REPOSITORY "https://github.com/ngtcp2/ngtcp2.git"

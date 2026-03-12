@@ -8,7 +8,11 @@
 #include <qunet/util/rng.hpp>
 #include <qunet/Log.hpp>
 
+#include <ngtcp2/ngtcp2.h>
+#if __has_include(<ngtcp2_path.h>)
 #include <ngtcp2_path.h>
+#endif
+
 #include <arc/time/Timeout.hpp>
 #include <arc/time/Sleep.hpp>
 #include <arc/future/Select.hpp>
