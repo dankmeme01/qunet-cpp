@@ -99,7 +99,6 @@ private:
     ngtcp2_conn* m_conn = nullptr;
     ngtcp2_crypto_conn_ref m_connRef;
     ngtcp2_path_storage m_networkPath;
-    ngtcp2_tstamp m_connExpiry = UINT64_MAX;
 
     QuicTlsSession m_tls;
     std::optional<arc::UdpSocket> m_socket;

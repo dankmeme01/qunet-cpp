@@ -474,13 +474,14 @@ Future<TransportResult<>> QuicConnection::performHandshake() {
     auto lastSentPacket = Instant{};
 
     while (ngtcp2_conn_get_handshake_completed(m_conn) == 0) {
-        if (shouldBlock && lastSentPacket.elapsed() > Duration::fromMillis(5)) {
+        // debounce handshake packets. ngtcp2 in the end truly decides whether to actually send one,
+        // but it still sometimes can send unnecessary ones rapidly
+        if (lastSentPacket.elapsed() > Duration::fromMillis(10)) {
             ARC_CO_UNWRAP(co_await this->sendHandshakePacket());
             lastSentPacket = Instant::now();
         }
 
-        auto deadline = std::min(m_connectDeadline, Instant::now() + Duration::fromMillis(750));
-
+        auto deadline = std::min(m_connectDeadline, m_nextExpiry);
         auto tres = co_await arc::timeoutAt(
             deadline,
             this->receivePacket(shouldBlock)
@@ -490,14 +491,19 @@ Future<TransportResult<>> QuicConnection::performHandshake() {
             if (m_connectDeadline.until().isZero()) {
                 co_return Err(TransportError::ConnectionTimedOut);
             }
+
+            int result = ngtcp2_conn_handle_expiry(m_conn, timestamp());
+            if (result != 0) {
+                co_return Err(QuicError(result));
+            }
+
             continue;
         }
 
         bool didReceiveData = ARC_CO_UNWRAP(std::move(tres).unwrap());
-        shouldBlock = !didReceiveData;
-
-        if (didReceiveData) {
+        while (didReceiveData) {
             log::debug("QUIC: received handshake response");
+            didReceiveData = ARC_CO_UNWRAP(co_await this->receivePacket(false));
         }
     }
 
@@ -597,6 +603,7 @@ Future<TransportResult<>> QuicConnection::sendPacket(const uint8_t* buf, size_t 
 
     this->withLockedConn([&]() {
         ngtcp2_conn_update_pkt_tx_time(m_conn, timestamp());
+        this->updateExpiry();
     });
 
     m_lastSendAttempt = Instant::now();
