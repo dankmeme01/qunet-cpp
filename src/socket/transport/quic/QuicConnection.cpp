@@ -657,8 +657,8 @@ Future<TransportResult<>> QuicConnection::sendStreamData(QuicStream& stream, boo
         vecCount,
         timestamp()
     );
-    connGuard.unlock();
     this->updateExpiry();
+    connGuard.unlock();
 
     if (written < 0) {
         QuicError err(written);
