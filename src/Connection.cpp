@@ -181,7 +181,7 @@ std::string ConnectionError::message() const {
 
 Future<std::shared_ptr<Connection>> Connection::create() {
     auto [cTx, cRx] = arc::mpsc::channel<std::string>(2);
-    auto [mTx, mRx] = arc::mpsc::channel<OutgoingMessage>(128);
+    auto [mTx, mRx] = arc::mpsc::channel<OutgoingMessage>(512);
 
     WorkerThreadState wts{
         .connectChan = std::move(cRx),
