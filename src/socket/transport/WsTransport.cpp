@@ -43,7 +43,7 @@ Future<TransportResult<WsTransport>> WsTransport::connect(
 
 Future<TransportResult<>> WsTransport::close() {
     if (m_ws.isConnected()) {
-        MAP_CO_UNWRAP(co_await m_ws.close());
+        MAP_CO_UNWRAP(co_await m_ws.closeNoAck());
     }
     co_return Ok();
 }

@@ -36,6 +36,8 @@ static std::string_view getSrvProto(qn::ConnectionType type) {
         case Udp: return "_udp";
         case Tcp: return "_tcp";
         case Quic: return "_quic";
+        case WebSocket:
+        case WebSocketTls: return "_ws";
         default: return "_udp";
     }
 }
@@ -47,6 +49,8 @@ static std::string_view connTypeToString(qn::ConnectionType type) {
         case Udp: return "udp";
         case Tcp: return "tcp";
         case Quic: return "quic";
+        case WebSocket:
+        case WebSocketTls: return "ws";
         default: return "unknown";
     }
 }
@@ -969,9 +973,11 @@ std::shared_ptr<xtls::Context> Connection::getTlsForConnection(ConnectionType ty
 #else
         QN_ASSERT(false && "QUIC support is not enabled, cannot get QUIC TLS context!");
 #endif
-    } else {
+    } else if (type == ConnectionType::WebSocketTls) {
         return m_tcpTlsContext;
     }
+
+    return {};
 }
 
 TlsResult<> Connection::initTlsContext(ConnectionType type) {
