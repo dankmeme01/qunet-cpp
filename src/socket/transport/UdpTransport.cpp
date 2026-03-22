@@ -36,7 +36,7 @@ Future<NetResult<UdpTransport>> UdpTransport::connect(
 
     co_return Ok(UdpTransport(
         std::move(socket),
-        UDP_PACKET_LIMIT,
+        UDP_SAFE_MTU,
         connOptions
     ));
 }
@@ -349,7 +349,7 @@ Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessag
 
     // now actually poll the socket for a message
 
-    uint8_t buffer[UDP_PACKET_LIMIT];
+    uint8_t buffer[UDP_MAX_ALLOWED_MTU];
 
     auto bytesRead = ARC_CO_UNWRAP(co_await m_socket.recv(buffer, sizeof(buffer)));
 

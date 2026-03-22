@@ -61,7 +61,8 @@ constexpr inline uint8_t PROTO_WEBSOCKET = 0x04;
 
 constexpr inline uint16_t DEFAULT_PORT = 4340;
 
-constexpr inline size_t UDP_PACKET_LIMIT = 1400;
+constexpr inline size_t UDP_MAX_ALLOWED_MTU = 1400;
+constexpr inline size_t UDP_SAFE_MTU = 1200;
 
 constexpr inline size_t HANDSHAKE_START_SIZE = 1 + 2 + 2 + 16; // header, qunet major, frag limit, qdb hash
 constexpr inline size_t HANDSHAKE_HEADER_SIZE = 9; // connection ID (u64) + qdb presence (bool)
