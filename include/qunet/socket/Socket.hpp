@@ -16,6 +16,8 @@ enum class ConnectionType {
     Tcp,
     Udp,
     Quic,
+    WebSocket,
+    WebSocketTls
 };
 
 struct TransportOptions {
@@ -23,6 +25,7 @@ struct TransportOptions {
     ConnectionType type;
     asp::time::Duration timeout;
     std::string hostname;
+    std::string path; // used for ws
     const struct ConnectionOptions* connOptions = nullptr;
 #ifdef QUNET_TLS_SUPPORT
     std::shared_ptr<xtls::Context> tlsContext;

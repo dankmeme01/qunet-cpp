@@ -5,6 +5,7 @@ project(qunet VERSION 1.0.0)
 
 option(QUNET_TLS_SUPPORT "Enable TLS support (for DNS over TLS and other), implied ON if QUIC is enabled" OFF)
 option(QUNET_QUIC_SUPPORT "Enable QUIC support" OFF)
+option(QUNET_WS_SUPPORT "Enable WebSocket support" OFF)
 option(QUNET_ADVANCED_DNS "Enable advanced DNS resolver" ON)
 option(QUNET_DEBUG "Enable debug mode" OFF)
 option(QUNET_BUILD_TESTER OFF)
@@ -113,9 +114,11 @@ if (QUNET_TLS_SUPPORT)
     if (NOT TARGET xtls)
         if (PROJECT_IS_TOP_LEVEL)
             CPMAddPackage(
-                URI "gh:dankmeme01/xtls#86a80aa"
+                URI "gh:dankmeme01/xtls#12695fe"
                 OPTIONS "XTLS_ENABLE_OPENSSL ${QUNET_ENABLE_OPENSSL}"
                         "XTLS_ENABLE_WOLFSSL ${QUNET_ENABLE_WOLFSSL}"
+                        "XTLS_ENABLE_SOCKET ${QUNET_WS_SUPPORT}"
+                        "XTLS_ENABLE_ARC_SOCKET ${QUNET_WS_SUPPORT}"
             )
         else()
             message(FATAL_ERROR "xtls must be included with your preferred TLS backend for TLS support")
@@ -162,6 +165,20 @@ if (QUNET_QUIC_SUPPORT)
     target_link_libraries(qunet PRIVATE ngtcp2_static)
     target_compile_definitions(qunet PUBLIC QUNET_QUIC_SUPPORT=1)
 endif()
+
+if (QUNET_WS_SUPPORT)
+    if (NOT TARGET wsx)
+        CPMAddPackage(
+            URI "gh:dankmeme01/wsx#1d34724"
+            OPTIONS "WSX_ENABLE_TLS ${QUNET_TLS_SUPPORT}"
+                    "WSX_ENABLE_ASYNC ON"
+        )
+    endif()
+
+    target_link_libraries(qunet PUBLIC wsx xtls)
+    target_compile_definitions(qunet PUBLIC QUNET_WS_SUPPORT=1)
+endif()
+
 
 if (QUNET_BUILD_TESTER)
     # Qunet tester

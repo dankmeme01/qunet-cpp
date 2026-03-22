@@ -21,6 +21,21 @@ using xtls::TlsError;
 using xtls::TlsResult;
 #endif
 
+#ifdef QUNET_WS_SUPPORT
+class WsError {
+    std::string error;
+public:
+    WsError(std::string error) : error(std::move(error)) {}
+
+    std::string_view message() const {
+        return error;
+    }
+
+    bool operator==(const WsError& other) const = default;
+    bool operator!=(const WsError& other) const = default;
+};
+#endif
+
 // Transport error
 
 struct TransportError {
@@ -81,6 +96,9 @@ struct TransportError {
     TransportError(DecompressorError err) : m_kind(std::move(err)) {}
     TransportError(CustomCode code) : m_kind(CustomKind{code}) {}
     TransportError(arc::TimedOut) : m_kind(qsox::Error{qsox::Error::TimedOut}) {}
+#ifdef QUNET_WS_SUPPORT
+    TransportError(WsError err) : m_kind(std::move(err)) {}
+#endif
 
     bool operator==(const TransportError& other) const = default;
     bool operator!=(const TransportError& other) const = default;
@@ -92,6 +110,9 @@ struct TransportError {
 #endif
 #ifdef QUNET_TLS_SUPPORT
         TlsError,
+#endif
+#ifdef QUNET_WS_SUPPORT
+        WsError,
 #endif
         ByteReaderError,
         ByteWriterError,

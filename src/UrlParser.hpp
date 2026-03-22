@@ -28,6 +28,10 @@ public:
                 type = ConnectionType::Tcp;
             } else if (proto == "quic") {
                 type = ConnectionType::Quic;
+            } else if (proto == "ws") {
+                type = ConnectionType::WebSocket;
+            } else if (proto == "wss") {
+                type = ConnectionType::WebSocketTls;
             } else if (proto == "qunet") {
                 type = ConnectionType::Unknown;
             } else {
@@ -40,9 +44,11 @@ public:
 
         m_proto = type;
 
-        // if there's a trailing slash, remove it
-        while (!m_url.empty() && m_url.back() == '/') {
-            m_url.remove_suffix(1);
+        // parse the path (for ws/wss) and remove it from the url
+        auto pathPos = m_url.find('/');
+        if (pathPos != m_url.npos) {
+            m_path = m_url.substr(pathPos);
+            m_url = m_url.substr(0, pathPos);
         }
 
         bool hasPort = false;
@@ -104,6 +110,10 @@ public:
         return m_proto;
     }
 
+    std::string_view path() const {
+        return m_path;
+    }
+
     bool isIpWithPort() const {
         return m_value && std::holds_alternative<qsox::SocketAddress>(*m_value);
     }
@@ -138,6 +148,7 @@ public:
 
 private:
     std::string_view m_url;
+    std::string_view m_path;
     std::optional<ConnectionType> m_proto;
     UrlParseError m_result = UrlParseError::Success;
 

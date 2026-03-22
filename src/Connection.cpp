@@ -548,6 +548,7 @@ Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
 
     this->resetConnectionState();
     auto type = parser.protocol().value();
+    m_wts.connectPath = parser.path();
 
     if (parser.isIpWithPort()) {
         co_return co_await this->threadConnectIp(parser.asIpWithPort(), type);
@@ -569,6 +570,7 @@ Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
 Future<ConnectionResult<>> Connection::threadConnectIp(qsox::SocketAddress addr, ConnectionType type) {
     bool preferIpv6 = m_settings.lock()->m_preferIpv6;
     m_wts.connectHostname.clear();
+    m_wts.connectPath.clear();
 
     return this->threadConnectWithIps(
         std::vector<SocketAddress>{addr},
@@ -795,6 +797,7 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
             finalAddrs.push_back({ addr, ConnectionType::Udp });
             finalAddrs.push_back({ addr, ConnectionType::Tcp });
             finalAddrs.push_back({ addr, ConnectionType::Quic });
+            finalAddrs.push_back({ addr, ConnectionType::WebSocket });
         }
     } else {
         log::debug("Pinging finished in {}, arrived pings: {} / {}, fastest address: {} ({})",
@@ -832,6 +835,7 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
                     case PROTO_UDP: ctype = ConnectionType::Udp; break;
                     case PROTO_TCP: ctype = ConnectionType::Tcp; break;
                     case PROTO_QUIC: ctype = ConnectionType::Quic; break;
+                    case PROTO_WEBSOCKET: ctype = ConnectionType::WebSocket; break;
                     default:
                         log::warn("Unknown protocol ID {} in supported protocols, skipping", ty.protocolId);
                         continue;
@@ -855,12 +859,14 @@ Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<
 
     // sort by connection type
     std::sort(addrs.begin(), addrs.end(), [&](const auto& a, const auto& b) {
-        // By default sort in the order Tcp > Quic > Udp
+        // By default sort in the order Tcp > Quic > Udp > WebSocket
         auto toNum = [](ConnectionType t) {
             switch (t) {
                 case ConnectionType::Tcp: return 10;
                 case ConnectionType::Quic: return 20;
                 case ConnectionType::Udp: return 30;
+                case ConnectionType::WebSocket:
+                case ConnectionType::WebSocketTls: return 40;
                 default: QN_ASSERT(false && "ConnectionType must not be unknown in therSortConnTypes");
             };
         };
@@ -938,13 +944,17 @@ Future<ConnectionResult<>> Connection::threadEstablishConn(SocketAddress addr, C
 }
 
 bool Connection::requiresTls(ConnectionType type) {
-    // for now, only QUIC requires TLS
-    return type == ConnectionType::Quic;
+    return type == ConnectionType::Quic || type == ConnectionType::WebSocketTls;
 }
 
 bool Connection::isSupported(ConnectionType type) {
 #ifndef QUNET_QUIC_SUPPORT
     if (type == ConnectionType::Quic) {
+        return false;
+    }
+#endif
+#ifndef QUNET_WS_SUPPORT
+    if (type == ConnectionType::WebSocket) {
         return false;
     }
 #endif
@@ -995,6 +1005,7 @@ TransportOptions Connection::makeOptions(SocketAddress addr, ConnectionType type
         .type = type,
         .timeout = settings->m_connTimeout,
         .hostname = m_wts.connectHostname,
+        .path = m_wts.connectPath,
         .connOptions = &settings->m_connOptions,
 #ifdef QUNET_TLS_SUPPORT
         .tlsContext = this->getTlsForConnection(type),

@@ -2,6 +2,7 @@
 #include <qunet/socket/transport/UdpTransport.hpp>
 #include <qunet/socket/transport/TcpTransport.hpp>
 #include <qunet/socket/transport/QuicTransport.hpp>
+#include <qunet/socket/transport/WsTransport.hpp>
 #include <qunet/buffers/HeapByteWriter.hpp>
 #include <qunet/database/QunetDatabase.hpp>
 #include <qunet/protocol/constants.hpp>
@@ -424,6 +425,27 @@ Future<TransportResult<std::shared_ptr<BaseTransport>>> Socket::createTransport(
                 options.hostname
             ));
             auto ptr = std::make_shared<QuicTransport>(std::move(transport));
+            co_return Ok(std::static_pointer_cast<BaseTransport>(ptr));
+        } break;
+#endif
+
+#ifdef QUNET_WS_SUPPORT
+        case ConnectionType::WebSocket: {
+            wsx::ClientConnectOptions opts {
+                .path = options.path,
+                .hostname = options.hostname,
+                .address = options.address,
+#ifdef QUNET_TLS_SUPPORT
+                .tlsContext = options.tlsContext,
+#endif
+            };
+
+            auto transport = ARC_CO_UNWRAP(co_await WsTransport::connect(
+                options.timeout,
+                *options.connOptions,
+                opts
+            ));
+            auto ptr = std::make_shared<WsTransport>(std::move(transport));
             co_return Ok(std::static_pointer_cast<BaseTransport>(ptr));
         } break;
 #endif
