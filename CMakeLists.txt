@@ -169,7 +169,7 @@ endif()
 if (QUNET_WS_SUPPORT)
     if (NOT TARGET wsx)
         CPMAddPackage(
-            URI "gh:dankmeme01/wsx#1d34724"
+            URI "gh:dankmeme01/wsx#e936ecc"
             OPTIONS "WSX_ENABLE_TLS ${QUNET_TLS_SUPPORT}"
                     "WSX_ENABLE_ASYNC ON"
         )
