@@ -145,6 +145,8 @@ struct HandshakeFailureMessage {
 
 struct ClientCloseMessage {
     MessageEncodeResult encode(auto& writer) const {
+        uint8_t flags = 0;
+        writer.writeU8(flags);
         return Ok();
     }
 
