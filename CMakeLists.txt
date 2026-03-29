@@ -54,7 +54,7 @@ endif()
 set(ARC_FEATURE_DEBUG ${QUNET_DEBUG})
 
 if (NOT TARGET asp2)
-    CPMAddPackage("gh:dankmeme01/asp2#66a292d")
+    CPMAddPackage("gh:dankmeme01/asp2#a3a1414")
 endif()
 if (NOT TARGET arc)
     CPMAddPackage("gh:dankmeme01/arc@1.5.3")
