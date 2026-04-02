@@ -558,7 +558,7 @@ Future<ConnectionResult<>> Connection::threadConnect(std::string url) {
         co_return co_await this->threadConnectIp(parser.asIpWithPort(), type);
     } else if (parser.isIp()) {
         co_return co_await this->threadConnectIp(
-            qsox::SocketAddress{parser.asIp(), DEFAULT_PORT},
+            qsox::SocketAddress{parser.asIp(), defaultPort(type)},
             type
         );
     } else if (parser.isDomainWithPort()) {
@@ -667,7 +667,7 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
             ARC_CO_UNWRAP(co_await fetchIps(
                 addrs,
                 ep.target,
-                endpoints[0].port ?: DEFAULT_PORT,
+                endpoints[0].port ?: defaultPort(type),
                 ipv4Allowed,
                 ipv6Allowed
             ));
@@ -683,7 +683,7 @@ Future<ConnectionResult<>> Connection::threadConnectDomain(std::string_view host
             ARC_CO_UNWRAP(co_await fetchIps(
                 addrs,
                 hostname,
-                DEFAULT_PORT,
+                defaultPort(type),
                 ipv4Allowed,
                 ipv6Allowed
             ));

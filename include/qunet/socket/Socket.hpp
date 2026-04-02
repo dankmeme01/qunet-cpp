@@ -20,6 +20,14 @@ enum class ConnectionType {
     WebSocketTls
 };
 
+inline uint16_t defaultPort(ConnectionType type) {
+    switch (type) {
+        case ConnectionType::WebSocket: return 80;
+        case ConnectionType::WebSocketTls: return 443;
+        default: return DEFAULT_PORT;
+    }
+}
+
 struct TransportOptions {
     qsox::SocketAddress address;
     ConnectionType type;

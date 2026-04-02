@@ -195,13 +195,13 @@ geode::Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
         this->ping(parser.asIpWithPort(), std::move(callback));
         return Ok();
     } else if (parser.isIp()) {
-        this->ping(qsox::SocketAddress{parser.asIp(), DEFAULT_PORT}, std::move(callback));
+        this->ping(qsox::SocketAddress{parser.asIp(), defaultPort(ConnectionType::Udp)}, std::move(callback));
         return Ok();
     } else if (parser.isDomainWithPort()) {
         auto& [domain, port] = parser.asDomainWithPort();
         return this->resolveAndPing(domain, port, std::move(callback));
     } else if (parser.isDomain()) {
-        return this->resolveAndPing(parser.asDomain(), DEFAULT_PORT, std::move(callback));
+        return this->resolveAndPing(parser.asDomain(), defaultPort(ConnectionType::Udp), std::move(callback));
     } else {
         QN_ASSERT(false && "Invalid urlparser outcome");
     }
