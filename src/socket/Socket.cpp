@@ -430,7 +430,8 @@ Future<TransportResult<std::shared_ptr<BaseTransport>>> Socket::createTransport(
 #endif
 
 #ifdef QUNET_WS_SUPPORT
-        case ConnectionType::WebSocket: {
+        case ConnectionType::WebSocket:
+        case ConnectionType::WebSocketTls: {
             wsx::ClientConnectOptions opts {
                 .path = options.path,
                 .hostname = options.hostname,
