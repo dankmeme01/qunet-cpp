@@ -43,6 +43,9 @@ std::string TransportError::message() const {
 #ifdef QUNET_TLS_SUPPORT
     FOR_MSG2(TlsError, "TLS error: {}")
 #endif
+#ifdef QUNET_WS_SUPPORT
+    FOR_MSG(WsError, "WS error: {}")
+#endif
     FOR_MSG(ByteReaderError, "Error decoding packet: {}")
     FOR_MSG(ByteWriterError, "Error encoding message: {}")
     FOR_MSG(HandshakeFailure, "Handshake failed: {}")
