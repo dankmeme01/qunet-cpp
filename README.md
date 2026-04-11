@@ -6,7 +6,7 @@ This library is available in Rust: [dankmeme01/qunet](https://github.com/dankmem
 
 ## Features
 
-* Support for three underlying transports: TCP, QUIC and Reliable UDP
+* Support for four underlying transports: TCP, QUIC, Reliable UDP and WebSockets
 * UDP transport allows for choosing reliability per-message, perfect for games and other low latency cases
 * Handles UDP fragmentation at protocol level
 * Full support of IPv4 and IPv6
