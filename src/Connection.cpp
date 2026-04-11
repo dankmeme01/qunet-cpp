@@ -141,8 +141,13 @@ std::string_view ServerClosedError::message() const {
     return reason.empty() ? "Server closed the connection" : std::string_view{reason};
 }
 
-std::string_view AllAddressesFailed::message() const {
-    return "Failed to connect to all resolved addresses";
+std::string AllAddressesFailed::message() const {
+    if (addresses.size() == 1) {
+        auto& [addr, ctype, err] = addresses.front();
+        return fmt::format("Failed to connect to {} ({}): {}", addr.toString(), connTypeToString(ctype), err.message());
+    } else {
+        return fmt::format("Failed to connect to all ({}) resolved addresses", addresses.size());
+    }
 }
 
 bool AllAddressesFailed::operator==(const AllAddressesFailed& other) const {
@@ -159,7 +164,7 @@ std::string ConnectionError::message() const {
     } else if (this->isServerClosedError()) {
         return std::string{this->asServerClosedError().message()};
     } else if (this->isAllAddressesFailed()) {
-        return std::string{this->asAllAddressesFailed().message()};
+        return this->asAllAddressesFailed().message();
     } else switch (this->asOtherError()) {
         case Code::Success: return "Success";
         case Code::InvalidProtocol: return "Invalid protocol specified";

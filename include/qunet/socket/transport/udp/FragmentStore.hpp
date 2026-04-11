@@ -7,6 +7,8 @@
 
 namespace qn {
 
+// TODO: make this measure loss
+
 class FragmentStore {
 public:
     FragmentStore();

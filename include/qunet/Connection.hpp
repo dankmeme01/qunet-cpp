@@ -33,7 +33,7 @@ class ConnectionError;
 struct AllAddressesFailed {
     std::vector<std::tuple<qsox::SocketAddress, ConnectionType, ConnectionError>> addresses;
 
-    std::string_view message() const;
+    std::string message() const;
 
     bool operator==(const AllAddressesFailed& other) const;
     bool operator!=(const AllAddressesFailed& other) const;
