@@ -181,13 +181,13 @@ void ReliableStore::setOutgoingAcks(ReliabilityHeader& header) {
     }
 }
 
-void ReliableStore::pushLocalUnacked(QunetMessage&& msg) {
+TransportResult<> ReliableStore::pushLocalUnacked(QunetMessage&& msg) {
     QN_DEBUG_ASSERT(msg.is<DataMessage>());
     QN_DEBUG_ASSERT(msg.as<DataMessage>().relHeader.has_value());
 
     if (m_localUnacked.size() >= 64) {
-        log::warn("ReliableStore: unacked message queue is full, dropping older message");
-        m_localUnacked.pop_front();
+        log::warn("ReliableStore: unacked message queue is full, terminating connection");
+        return Err(TransportError::TooUnreliable);
     }
 
     uint16_t msgId = msg.as<DataMessage>().relHeader->messageId;
@@ -200,6 +200,8 @@ void ReliableStore::pushLocalUnacked(QunetMessage&& msg) {
         .sentAt = Instant::now(),
         .retransmitAttempts = 0,
     });
+
+    return Ok();
 }
 
 Duration ReliableStore::untilTimerExpiry() const {

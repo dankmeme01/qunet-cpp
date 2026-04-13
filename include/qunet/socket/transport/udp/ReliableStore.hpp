@@ -34,7 +34,8 @@ public:
     void setOutgoingAcks(ReliabilityHeader& header);
 
     /// Stores a local message for potential retransmission. It must be a reliable data message.
-    void pushLocalUnacked(QunetMessage&& msg);
+    /// Returns an error if the transport is considered too unreliable and the connection should be closed.
+    TransportResult<> pushLocalUnacked(QunetMessage&& msg);
 
     asp::time::Duration untilTimerExpiry() const;
 

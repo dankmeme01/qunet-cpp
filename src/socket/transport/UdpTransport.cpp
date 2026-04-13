@@ -255,7 +255,7 @@ arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage
         }
 
         if (isReliable) {
-            m_relStore.pushLocalUnacked(std::move(message));
+            ARC_CO_UNWRAP(m_relStore.pushLocalUnacked(std::move(message)));
         }
 
         this->updateLastActivity();
@@ -313,7 +313,7 @@ arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage
     }
 
     if (isReliable) {
-        m_relStore.pushLocalUnacked(std::move(message));
+        ARC_CO_UNWRAP(m_relStore.pushLocalUnacked(std::move(message)));
     }
 
     this->updateLastActivity();
