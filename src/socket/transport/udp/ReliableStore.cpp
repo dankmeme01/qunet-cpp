@@ -239,18 +239,30 @@ void ReliableStore::updateRtt(uint64_t rttMicros) {
     m_avgRttMicros = rttMicros;
 }
 
-QunetMessage* ReliableStore::maybeRetransmit() {
+TransportResult<QunetMessage*> ReliableStore::maybeRetransmit() {
     for (auto& msg : m_localUnacked) {
         auto retransDelay = this->calcRetransmissionDeadline(msg.retransmitAttempts);
 
-        if (msg.sentAt.elapsed() >= retransDelay) {
-            log::debug("ReliableStore: retransmitting local message with ID {} (after {})", msg.messageId, msg.sentAt.elapsed());
+        auto sinceSent = msg.sentAt.elapsed();
+        if (sinceSent >= retransDelay) {
             msg.sentAt = Instant::now();
-            return &msg.msg;
+            if (msg.retransmitAttempts++ >= 8) {
+                log::warn(
+                    "ReliableStore: could not deliver message {} after {} retransmissions",
+                    msg.messageId, msg.retransmitAttempts
+                );
+                return Err(TransportError::TooUnreliable);
+            }
+
+            log::debug(
+                "ReliableStore: retransmitting local message with ID {} (after {}, attempt {})",
+                msg.messageId, sinceSent, msg.retransmitAttempts
+            );
+            return Ok(&msg.msg);
         }
     }
 
-    return nullptr;
+    return Ok(nullptr);
 }
 
 bool ReliableStore::hasUrgentOutgoingAcks() {

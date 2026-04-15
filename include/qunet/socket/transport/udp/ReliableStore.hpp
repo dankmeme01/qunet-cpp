@@ -40,7 +40,7 @@ public:
     asp::time::Duration untilTimerExpiry() const;
 
     /// Checks if any messages need to be retransmitted. Returns null if none.
-    QunetMessage* maybeRetransmit();
+    TransportResult<QunetMessage*> maybeRetransmit();
 
     /// Returns whether there are any unacked remote messages that must be acknowledged as soon as possible.
     bool hasUrgentOutgoingAcks();

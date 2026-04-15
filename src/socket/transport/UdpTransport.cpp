@@ -460,7 +460,7 @@ arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
     ARC_FRAME();
     ARC_CO_UNWRAP(co_await BaseTransport::handleTimerExpiry());
 
-    while (auto msg = m_relStore.maybeRetransmit()) {
+    while (auto msg = ARC_CO_UNWRAP(m_relStore.maybeRetransmit())) {
         // if we have a message to retransmit, send it
         SentMessageContext ctx{};
         ARC_CO_UNWRAP(co_await this->doSendUnfragmentedData(*msg, ctx, true));
