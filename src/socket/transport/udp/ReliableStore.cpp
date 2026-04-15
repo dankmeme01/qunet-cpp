@@ -246,7 +246,7 @@ TransportResult<QunetMessage*> ReliableStore::maybeRetransmit() {
         auto sinceSent = msg.sentAt.elapsed();
         if (sinceSent >= retransDelay) {
             msg.sentAt = Instant::now();
-            if (msg.retransmitAttempts++ >= 8) {
+            if (msg.retransmitAttempts++ >= 10) {
                 log::warn(
                     "ReliableStore: could not deliver message {} after {} retransmissions",
                     msg.messageId, msg.retransmitAttempts
