@@ -287,8 +287,8 @@ Duration ReliableStore::calcRetransmissionDeadline(size_t nthAttempt) const {
     auto ackDelay = this->calcAckDeadline();
 
     auto base = std::max(rtt.millis<float>() * 1.6f + ackDelay.millis<float>(), 175.f);
-    size_t shift = std::min(nthAttempt, size_t(5));
-    return Duration::fromMillis(base * (1u << shift));
+    size_t mult = std::min(nthAttempt, size_t(5));
+    return Duration::fromMillis(base * (1u << mult));
 }
 
 Duration ReliableStore::calcAckDeadline() const {
