@@ -237,10 +237,11 @@ arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage
     ctx.relHeader = msg.relHeader;
     ctx.reliable = isReliable;
 
+    size_t commonHdrSize = 9; // 1 header byte, 8 bytes for conn id
     size_t relHdrSize = msg.relHeader.has_value() ? 4 + msg.relHeader->ackCount * 2 : 0; // 2 for message ID + 2 for ack count, 2 for each ACK
     size_t compHdrSize = msg.compHeader.has_value() ? 4 : 0;
 
-    size_t unfragTotalSize = relHdrSize + compHdrSize + msg.data.size();
+    size_t unfragTotalSize = commonHdrSize + relHdrSize + compHdrSize + msg.data.size();
 
     if (unfragTotalSize <= m_mtu) {
         // no fragmentation :)
@@ -271,8 +272,8 @@ arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage
     // first fragment must include reliability and compression headers if they are present, rest don't have to
 
     size_t fragHdrSize = 4;
-    size_t firstPayloadSize = m_mtu - relHdrSize - compHdrSize - fragHdrSize;
-    size_t restPayloadSize = m_mtu - fragHdrSize;
+    size_t firstPayloadSize = m_mtu - relHdrSize - compHdrSize - fragHdrSize - commonHdrSize;
+    size_t restPayloadSize = m_mtu - fragHdrSize - commonHdrSize;
 
     uint16_t fragMessageId = m_fragStore.nextMessageId();
 
