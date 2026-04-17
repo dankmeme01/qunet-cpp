@@ -14,8 +14,8 @@
 /// 64 - 14 (ethernet) - 20 (ipv4) - 8 (udp) = 22 bytes
 static constexpr size_t MINIMUM_UDP_PAYLOAD = 22;
 
-struct RNG {
-    RNG() {
+struct QunetRNG {
+    QunetRNG() {
         std::random_device rd;
         m_x = rd();
         m_y = rd();
@@ -38,7 +38,7 @@ struct RNG {
 };
 
 static void fillPadding(qn::HeapByteWriter& writer, size_t bytes) {
-    static RNG rng;
+    static QunetRNG rng;
 
     size_t filled = 0;
     while (filled < bytes) {
