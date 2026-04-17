@@ -10,6 +10,45 @@
 #include <qsox/Poll.hpp>
 #include <algorithm>
 
+/// Pad all control messages to be at least 64 bytes, so that it's less likely they are dropped by bad middleboxes.
+/// 64 - 14 (ethernet) - 20 (ipv4) - 8 (udp) = 22 bytes
+static constexpr size_t MINIMUM_UDP_PAYLOAD = 22;
+
+struct RNG {
+    RNG() {
+        std::random_device rd;
+        m_x = rd();
+        m_y = rd();
+        m_z = rd();
+    }
+
+    uint64_t next() {
+        auto rotl = [](uint64_t x, int k) {
+            return (x << k) | (x >> (64 - k));
+        };
+
+        uint64_t xp = m_x, yp = m_y, zp = m_z;
+        m_x = 15241094284759029579u * zp;
+        m_y = yp - xp; m_y = rotl(m_y, 12);
+        m_z = zp - yp; m_z = rotl(m_z, 44);
+        return xp;
+    }
+
+    uint64_t m_x, m_y, m_z;
+};
+
+static void fillPadding(qn::HeapByteWriter& writer, size_t bytes) {
+    static RNG rng;
+
+    size_t filled = 0;
+    while (filled < bytes) {
+        uint64_t rand = rng.next();
+        size_t toWrite = std::min(sizeof(rand), bytes - filled);
+        writer.writeBytes((uint8_t*)&rand, toWrite);
+        filled += toWrite;
+    }
+}
+
 #define MAP_UNWRAP(x) GEODE_UNWRAP((x).mapErr([](const auto& err) { return TransportError::EncodingFailed; }))
 
 using namespace arc;
@@ -190,8 +229,12 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, S
 
         HeapByteWriter writer;
         ARC_CO_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
-        auto data = writer.written();
+        if (writer.position() < MINIMUM_UDP_PAYLOAD) {
+            auto toPad = MINIMUM_UDP_PAYLOAD - writer.position();
+            fillPadding(writer, toPad);
+        }
 
+        auto data = writer.written();
         if (!this->shouldLosePacket()) {
             ARC_CO_UNWRAP(co_await m_socket.send(data.data(), data.size()));
         }
