@@ -437,7 +437,7 @@ Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessag
 
     bool reliable = meta.reliabilityHeader.has_value();
     if (reliable) {
-        if (!m_relStore.handleIncoming(meta)) {
+        if (!ARC_CO_UNWRAP(m_relStore.handleIncoming(meta))) {
             // duplicate message or otherwise invalid
             co_return Ok(std::nullopt);
         }
