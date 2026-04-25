@@ -60,7 +60,7 @@ if (NOT TARGET arc)
     CPMAddPackage("gh:dankmeme01/arc@1.5.3")
 endif()
 if (NOT TARGET dbuf)
-    CPMAddPackage("gh:dankmeme01/dbuf@1.0.0")
+    CPMAddPackage("gh:dankmeme01/dbuf@1.0.2")
 endif()
 
 # pain and suffering
