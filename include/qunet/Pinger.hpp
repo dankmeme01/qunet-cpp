@@ -1,6 +1,6 @@
 #pragma once
 
-#include <qunet/buffers/ByteReader.hpp>
+#include <dbuf/ByteReader.hpp>
 #include <qunet/util/compat.hpp>
 
 #include <arc/sync/mpsc.hpp>
@@ -75,7 +75,7 @@ private:
     arc::Future<> workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>>);
 
     arc::Future<> thrDoPing(const qsox::SocketAddress& address, Callback callback);
-    ByteReader::Result<PingResult> thrParsePingResponse(const uint8_t* data, size_t size);
+    geode::Result<PingResult> thrParsePingResponse(const uint8_t* data, size_t size);
     void thrDispatchResult(PingResult& result, const qsox::SocketAddress& address);
     void thrRemoveTimedOutPings();
     arc::Future<> recreateSocket();

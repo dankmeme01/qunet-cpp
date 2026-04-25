@@ -1,7 +1,7 @@
 #pragma once
 
 #include "BaseTransport.hpp"
-#include <qunet/buffers/CircularByteBuffer.hpp>
+#include <dbuf/CircularByteBuffer.hpp>
 #include <arc/net/TcpStream.hpp>
 
 namespace qn {
@@ -34,7 +34,7 @@ private:
     friend class MultiPoller;
 
     arc::TcpStream m_socket;
-    CircularByteBuffer m_recvBuffer;
+    dbuf::CircularByteBuffer m_recvBuffer;
     std::optional<asp::time::Duration> m_activeKeepaliveInterval;
     bool m_closed = false;
 

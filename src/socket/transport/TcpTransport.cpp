@@ -1,5 +1,5 @@
 #include <qunet/socket/transport/TcpTransport.hpp>
-#include <qunet/buffers/HeapByteWriter.hpp>
+#include <dbuf/ByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Connection.hpp>
 #include <qunet/Log.hpp>

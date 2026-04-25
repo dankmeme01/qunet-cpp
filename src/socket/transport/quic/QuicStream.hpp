@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/util/SlidingBuffer.hpp>
-#include <qunet/buffers/CircularByteBuffer.hpp>
+#include <dbuf/CircularByteBuffer.hpp>
 #include <arc/sync/Notify.hpp>
 #include <asp/sync/Mutex.hpp>
 
@@ -30,7 +30,7 @@ public:
     /// Returns amount of bytes that have been sent but not yet acknowledged.
     size_t unackedBytes() const;
     size_t sendCapacity() const;
-    size_t sendCapacity(CircularByteBuffer& sendBuffer) const;
+    size_t sendCapacity(dbuf::CircularByteBuffer& sendBuffer) const;
 
     void close();
 
@@ -40,7 +40,7 @@ public:
     arc::Future<> pollWritable();
     arc::Future<> pollReadable();
 
-    std::pair<CircularByteBuffer::WrappedRead, asp::MutexGuard<CircularByteBuffer>> peekUnsentData();
+    std::pair<dbuf::CircularByteBuffer::WrappedRead, asp::MutexGuard<dbuf::CircularByteBuffer>> peekUnsentData();
     void advanceSentData(size_t len);
 
 private:
@@ -51,8 +51,8 @@ private:
     bool m_closed = false;
     arc::Notify m_writableNotify, m_readableNotify;
 
-    asp::Mutex<CircularByteBuffer> m_sendBuffer;
-    asp::Mutex<CircularByteBuffer> m_recvBuffer;
+    asp::Mutex<dbuf::CircularByteBuffer> m_sendBuffer;
+    asp::Mutex<dbuf::CircularByteBuffer> m_recvBuffer;
     uint64_t m_ackOffset = 0;
     std::atomic<uint64_t> m_unackedBytes = 0;
     std::atomic<uint64_t> m_streamOffset = 0;

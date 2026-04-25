@@ -5,6 +5,7 @@
 #ifdef QUNET_QUIC_SUPPORT
 
 using namespace arc;
+using namespace dbuf;
 
 static const size_t INITIAL_BUFFER_SIZE = 16384; // 16 KiB
 static const size_t MAX_BUFFER_SIZE = 1024 * 1024 * 16; // 16 MiB

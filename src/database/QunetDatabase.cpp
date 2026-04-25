@@ -7,6 +7,8 @@
 #include <asp/fs.hpp>
 #include <cstring>
 
+using namespace geode;
+using namespace dbuf;
 
 namespace qn {
 
@@ -21,13 +23,15 @@ std::string_view DatabaseDecodeError::CustomKind::message() const {
         case CustomCode::ZstdDictTooLarge: return "Zstd dictionary section is too large";
     }
 
-    qn::unreachable();
+    std::unreachable();
 }
 
 std::string_view DatabaseDecodeError::message() const {
-    return std::visit([](const auto& err) -> std::string_view {
-        return err.message();
-    }, m_kind);
+    if (std::holds_alternative<std::string>(m_kind)) {
+        return std::get<std::string>(m_kind);
+    } else {
+        return std::get<CustomKind>(m_kind).message();
+    }
 }
 
 geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(const std::vector<uint8_t>& data) {
@@ -52,7 +56,7 @@ static size_t roundUpTo16(size_t value) {
     return (value + 15) & ~(size_t)(15);
 }
 
-geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(ByteReader& reader) {
+geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(dbuf::ByteReader<>& reader) {
     constexpr uint8_t MAGIC[] = { 0xa3, 0xdb, 0xdb, 0x11 };
     uint8_t magic[sizeof(MAGIC)];
 
@@ -122,7 +126,7 @@ geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(ByteRead
     return Ok(std::move(db));
 }
 
-geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeSection(uint16_t type, size_t size, ByteReader& reader) {
+geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeSection(uint16_t type, size_t size, dbuf::ByteReader<>& reader) {
     switch (type) {
         case 3: {
             return this->decodeZstdDictSection(size, reader);
@@ -135,7 +139,7 @@ geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeSection(uint16_t t
     }
 }
 
-geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeZstdDictSection(size_t size, ByteReader& reader) {
+geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeZstdDictSection(size_t size, dbuf::ByteReader<>& reader) {
     if (size > 1024 * 1024) {
         return Err(DatabaseDecodeError::ZstdDictTooLarge);
     }

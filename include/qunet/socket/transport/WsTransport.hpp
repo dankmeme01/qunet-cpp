@@ -4,7 +4,7 @@
 
 #include "BaseTransport.hpp"
 #include <wsx/AsyncClient.hpp>
-#include <qunet/buffers/CircularByteBuffer.hpp>
+#include <dbuf/CircularByteBuffer.hpp>
 
 namespace qn {
 
@@ -36,7 +36,7 @@ private:
     friend class MultiPoller;
 
     wsx::AsyncClient m_ws;
-    CircularByteBuffer m_recvBuffer;
+    dbuf::CircularByteBuffer m_recvBuffer;
     std::optional<asp::time::Duration> m_activeKeepaliveInterval;
     bool m_closed = false;
 

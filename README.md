@@ -14,7 +14,6 @@ This library is available in Rust: [dankmeme01/qunet](https://github.com/dankmem
 * ZSTD and LZ4 compression of messages, applied per-message
 * Extensive DNS lookups, including SRV queries
 * Smart logic for connection & reconnection, including [happy eyeballs](https://datatracker.ietf.org/doc/html/rfc6555)
-* Buffers for efficient data manipulation: `ByteWriter`, `HeapByteWriter`, `ArrayByteWriter`, `CircularByteBuffer`, `ByteReader`
 * Statistics tracking (bytes/messages sent, compression ratios, etc.)
 * Highly confgiruable, including being able to disable some features at compile time, e.g. QUIC or advanced DNS resolver.
 

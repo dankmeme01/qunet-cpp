@@ -1,7 +1,7 @@
 #ifdef QUNET_WS_SUPPORT
 
 #include <qunet/socket/transport/WsTransport.hpp>
-#include <qunet/buffers/HeapByteWriter.hpp>
+#include <dbuf/ByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Connection.hpp>
 #include <qunet/Log.hpp>
@@ -67,7 +67,7 @@ Future<TransportResult<>> WsTransport::sendMessage(QunetMessage message, SentMes
         this->updateLastSentKeepalive();
     }
 
-    HeapByteWriter writer;
+    dbuf::ByteWriter writer;
 
     if (!message.is<DataMessage>()) {
         // non-data message
@@ -105,7 +105,7 @@ Future<TransportResult<QunetMessage>> WsTransport::receiveMessage() {
     }
 
     auto data = msg.binary();
-    ByteReader reader{data};
+    dbuf::ByteReader reader{data};
     auto meta = GEODE_CO_UNWRAP(QunetMessage::decodeMeta(reader));
 
     if (meta.type != MSG_DATA) {

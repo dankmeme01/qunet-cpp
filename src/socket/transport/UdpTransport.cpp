@@ -1,5 +1,5 @@
 #include <qunet/socket/transport/UdpTransport.hpp>
-#include <qunet/buffers/HeapByteWriter.hpp>
+#include <dbuf/ByteWriter.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/socket/message/meta.hpp>
 #include <qunet/Connection.hpp>
@@ -37,7 +37,7 @@ struct QunetRNG {
     uint64_t m_x, m_y, m_z;
 };
 
-static void fillPadding(qn::HeapByteWriter& writer, size_t bytes) {
+static void fillPadding(dbuf::ByteWriter<>& writer, size_t bytes) {
     static QunetRNG rng;
 
     size_t filled = 0;
@@ -227,7 +227,7 @@ arc::Future<TransportResult<>> UdpTransport::sendMessage(QunetMessage message, S
             this->updateLastSentKeepalive();
         }
 
-        HeapByteWriter writer;
+        dbuf::ByteWriter writer;
         ARC_CO_UNWRAP(message.encodeControlMsg(writer, m_connectionId));
         if (writer.position() < MINIMUM_UDP_PAYLOAD) {
             auto toPad = MINIMUM_UDP_PAYLOAD - writer.position();
@@ -273,7 +273,7 @@ arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage
     ARC_FRAME();
 
     auto& msg = message.as<DataMessage>();
-    HeapByteWriter writer;
+    dbuf::ByteWriter writer;
 
     bool isReliable = msg.relHeader.has_value() && msg.relHeader->messageId != 0 && !retransmission;
 
@@ -332,7 +332,7 @@ arc::Future<TransportResult<>> UdpTransport::doSendUnfragmentedData(QunetMessage
 
         auto chunk = data.subspan(offset, std::min(payloadSize, data.size() - offset));
 
-        HeapByteWriter fwriter;
+        dbuf::ByteWriter fwriter;
 
         // write the header, omit headers for all but the first fragment
         message.encodeDataHeader(fwriter, m_connectionId, !isFirst).unwrap();
@@ -403,7 +403,7 @@ Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessag
 
     m_tracker.onDownPacket(bytesRead);
 
-    ByteReader reader(buffer, bytesRead);
+    dbuf::ByteReader reader({buffer, bytesRead});
     auto meta = ARC_CO_UNWRAP(QunetMessage::decodeMeta(reader));
 
     // not a data message, cannot be compressed/fragmented/reliable

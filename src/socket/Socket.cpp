@@ -3,7 +3,7 @@
 #include <qunet/socket/transport/TcpTransport.hpp>
 #include <qunet/socket/transport/QuicTransport.hpp>
 #include <qunet/socket/transport/WsTransport.hpp>
-#include <qunet/buffers/HeapByteWriter.hpp>
+#include <dbuf/ByteWriter.hpp>
 #include <qunet/database/QunetDatabase.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/Log.hpp>

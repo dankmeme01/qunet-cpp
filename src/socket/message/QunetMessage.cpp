@@ -12,7 +12,7 @@ std::string_view MessageDecodeError::message() const {
     }
 }
 MessageEncodeResult QunetMessage::encodeControlHeader(
-    HeapByteWriter& writer,
+    dbuf::ByteWriter<>& writer,
     uint64_t connectionId
 ) const {
     writer.writeU8(this->headerByte());
@@ -25,12 +25,12 @@ MessageEncodeResult QunetMessage::encodeControlHeader(
     return Ok();
 }
 
-MessageEncodeResult QunetMessage::encodeControlMsg(HeapByteWriter& writer, uint64_t connectionId) const {
+MessageEncodeResult QunetMessage::encodeControlMsg(dbuf::ByteWriter<>& writer, uint64_t connectionId) const {
     GEODE_UNWRAP(this->encodeControlHeader(writer, connectionId));
     return this->encode(writer);
 }
 
-MessageEncodeResult QunetMessage::encodeDataHeader(HeapByteWriter& writer, uint64_t connectionId, bool omitHeaders) const {
+MessageEncodeResult QunetMessage::encodeDataHeader(dbuf::ByteWriter<>& writer, uint64_t connectionId, bool omitHeaders) const {
     QN_ASSERT(this->is<DataMessage>());
 
     auto& msg = this->as<DataMessage>();
@@ -144,7 +144,7 @@ geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decodeWithMeta(Qun
         return Err(MessageDecodeError::InvalidMessageType);
     }
 
-    auto reader = ByteReader{meta.data};
+    auto reader = dbuf::ByteReader{meta.data};
 
     switch (msgType) {
         case MSG_KEEPALIVE: {
@@ -183,7 +183,8 @@ geode::Result<QunetMessage, MessageDecodeError> QunetMessage::decodeWithMeta(Qun
     return Err(MessageDecodeError::InvalidMessageType);
 }
 
-geode::Result<QunetMessageMeta, MessageDecodeError> QunetMessage::decodeMeta(ByteReader& reader) {
+template <typename S>
+geode::Result<QunetMessageMeta, MessageDecodeError> QunetMessage::decodeMeta(dbuf::ByteReader<S>& reader) {
     auto msgType = MAP_UNWRAP(reader.readU8());
 
     if ((msgType & MSG_DATA_MASK) == 0) {
@@ -242,5 +243,11 @@ geode::Result<QunetMessageMeta, MessageDecodeError> QunetMessage::decodeMeta(Byt
 
     return Ok(std::move(meta));
 }
+
+// yucky
+template geode::Result<QunetMessageMeta, MessageDecodeError>
+QunetMessage::decodeMeta(dbuf::ByteReader<dbuf::SpanReadSource>& reader);
+template geode::Result<QunetMessageMeta, MessageDecodeError>
+QunetMessage::decodeMeta(dbuf::ByteReader<TwoSpanSource>& reader);
 
 }

@@ -1,10 +1,11 @@
 #pragma once
 
 #include <qunet/socket/transport/BaseTransport.hpp>
-#include <qunet/buffers/CircularByteBuffer.hpp>
+#include <dbuf/CircularByteBuffer.hpp>
 #include <qunet/socket/transport/Error.hpp>
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/Log.hpp>
+#include <qunet/util/TwoSpanSource.hpp>
 #include <arc/future/Future.hpp>
 #include <arc/util/Result.hpp>
 
@@ -15,7 +16,7 @@ namespace qn::streamcommon {
 inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& socket, BaseTransport& transport, SentMessageContext& ctx) {
     ARC_FRAME();
 
-    HeapByteWriter writer;
+    dbuf::ByteWriter writer;
 
     bool hasLength = !(message.is<HandshakeStartMessage>() || message.is<ClientReconnectMessage>());
 
@@ -74,7 +75,7 @@ inline arc::Future<TransportResult<>> sendMessage(QunetMessage message, auto&& s
 inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
     auto&& stream,
     BaseTransport& transport,
-    CircularByteBuffer& buffer,
+    dbuf::CircularByteBuffer& buffer,
     size_t messageSizeLimit
 ) {
     ARC_FRAME();
@@ -114,7 +115,7 @@ inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
         // there's enough bytes to read the length, let's see if we have a full message
         uint8_t lenbuf[sizeof(uint32_t)];
         buffer.peek(lenbuf, sizeof(uint32_t));
-        size_t length = ByteReader{lenbuf, sizeof(uint32_t)}.readU32().unwrap();
+        size_t length = dbuf::ByteReader{{lenbuf, sizeof(uint32_t)}}.readU32().unwrap();
 
         if (length == 0) {
             buffer.skip(sizeof(uint32_t));
@@ -135,7 +136,8 @@ inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
         buffer.skip(sizeof(uint32_t));
         auto wrpread = buffer.peek(length);
 
-        ByteReader reader = ByteReader::withTwoSpans(wrpread.first, wrpread.second);
+        dbuf::ByteReader reader{TwoSpanSource{wrpread.first, wrpread.second}};
+
         auto dec = [&]() -> TransportResult<QunetMessage> {
             auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
 

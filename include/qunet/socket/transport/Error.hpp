@@ -3,7 +3,6 @@
 #include <qunet/socket/message/QunetMessage.hpp>
 #include <qunet/compression/Error.hpp>
 #include <qunet/util/Error.hpp>
-#include <qunet/buffers/Error.hpp>
 #include <qsox/Error.hpp>
 #include <arc/time/Timeout.hpp>
 #ifdef QUNET_TLS_SUPPORT
@@ -88,8 +87,7 @@ struct TransportError {
 #ifdef QUNET_TLS_SUPPORT
     TransportError(TlsError err) : m_kind(std::move(err)) {}
 #endif
-    TransportError(ByteReaderError err) : m_kind(std::move(err)) {}
-    TransportError(ByteWriterError err) : m_kind(std::move(err)) {}
+    TransportError(std::string err) : m_kind(std::move(err)) {}
     TransportError(HandshakeFailure err) : m_kind(std::move(err)) {}
     TransportError(MessageDecodeError err) : m_kind(std::move(err)) {}
     TransportError(CompressorError err) : m_kind(std::move(err)) {}
@@ -114,8 +112,7 @@ struct TransportError {
 #ifdef QUNET_WS_SUPPORT
         WsError,
 #endif
-        ByteReaderError,
-        ByteWriterError,
+        std::string,
         HandshakeFailure,
         MessageDecodeError,
         CompressorError,

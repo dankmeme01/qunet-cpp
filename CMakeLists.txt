@@ -59,6 +59,9 @@ endif()
 if (NOT TARGET arc)
     CPMAddPackage("gh:dankmeme01/arc@1.5.3")
 endif()
+if (NOT TARGET dbuf)
+    CPMAddPackage("gh:dankmeme01/dbuf@1.0.0")
+endif()
 
 # pain and suffering
 
@@ -89,7 +92,7 @@ if (NOT TARGET blake3)
 endif()
 
 target_link_libraries(qunet PRIVATE libzstd_static lz4_static blake3)
-target_link_libraries(qunet PUBLIC qsox asp arc fmt std23::nontype_functional)
+target_link_libraries(qunet PUBLIC qsox asp arc fmt dbuf std23::nontype_functional)
 
 if (QUNET_ADVANCED_DNS)
     if (NOT TARGET c-ares)
@@ -187,10 +190,10 @@ if (QUNET_BUILD_TESTER)
     target_link_libraries(qunet_tester PRIVATE qunet qsox)
 
     # add asan
-    if (NOT WIN32)
-        target_compile_options(qunet_tester PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
-        target_compile_options(qunet PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
-        target_link_options(qunet_tester PRIVATE -fsanitize=address)
-        target_link_options(qunet PRIVATE -fsanitize=address)
-    endif()
+    # if (NOT WIN32)
+    #     target_compile_options(qunet_tester PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
+    #     target_compile_options(qunet PRIVATE -fsanitize=address -fno-omit-frame-pointer -g)
+    #     target_link_options(qunet_tester PRIVATE -fsanitize=address)
+    #     target_link_options(qunet PRIVATE -fsanitize=address)
+    # endif()
 endif()

@@ -1,8 +1,7 @@
 #pragma once
 #include "meta.hpp"
-#include <qunet/buffers/ByteWriter.hpp>
-#include <qunet/buffers/HeapByteWriter.hpp>
-#include <qunet/buffers/ByteReader.hpp>
+#include <dbuf/ByteWriter.hpp>
+#include <dbuf/ByteReader.hpp>
 #include <qunet/protocol/constants.hpp>
 #include <qunet/protocol/errors.hpp>
 #include <qunet/util/assert.hpp>
@@ -12,15 +11,15 @@
 #define QN_NO_ENCODE(t) MessageEncodeResult encode(auto& writer) const { \
     QN_ASSERT(false && "Message of type " #t " cannot be encoded"); \
 }
-#define QN_NO_DECODE(t) static MessageDecodeResult<t> decode(ByteReader& writer) { \
+#define QN_NO_DECODE(t) static MessageDecodeResult<t> decode(auto& writer) { \
     QN_ASSERT(false && "Message of type " # t " cannot be decoded"); \
 }
 
 namespace qn {
 
-using MessageEncodeResult = geode::Result<void, ByteWriterError>;
+using MessageEncodeResult = geode::Result<void>;
 template <typename T>
-using MessageDecodeResult = geode::Result<T, ByteReaderError>;
+using MessageDecodeResult = geode::Result<T>;
 
 struct PingMessage {};
 
@@ -32,7 +31,7 @@ struct KeepaliveMessage {
     MessageEncodeResult encode(auto& writer) const {
         writer.writeU64(timestamp);
         writer.writeU8(0);
-        return Ok();
+        return geode::Ok();
     }
 
     QN_NO_DECODE(KeepaliveMessage);
@@ -44,7 +43,8 @@ struct KeepaliveResponseMessage {
 
     QN_NO_ENCODE(KeepaliveResponseMessage);
 
-    static MessageDecodeResult<KeepaliveResponseMessage> decode(ByteReader& reader) {
+    template <typename S>
+    static MessageDecodeResult<KeepaliveResponseMessage> decode(dbuf::ByteReader<S>& reader) {
         KeepaliveResponseMessage out;
 
         out.timestamp = GEODE_UNWRAP(reader.readU64());
@@ -89,7 +89,7 @@ struct HandshakeFinishMessage {
 
     QN_NO_ENCODE(HandshakeFinishMessage);
 
-    static MessageDecodeResult<HandshakeFinishMessage> decode(ByteReader& reader) {
+    static MessageDecodeResult<HandshakeFinishMessage> decode(dbuf::ByteReader<>& reader) {
         HandshakeFinishMessage out;
 
         out.connectionId = GEODE_UNWRAP(reader.readU64());
@@ -130,7 +130,7 @@ struct HandshakeFailureMessage {
         }
     }
 
-    static MessageDecodeResult<HandshakeFailureMessage> decode(ByteReader& writer) {
+    static MessageDecodeResult<HandshakeFailureMessage> decode(dbuf::ByteReader<>& writer) {
         HandshakeFailureMessage out;
         out.errorCode = GEODE_UNWRAP(writer.readU32());
         if (out.errorCode == 0) {
@@ -171,7 +171,7 @@ struct ServerCloseMessage {
         }
     }
 
-    static MessageDecodeResult<ServerCloseMessage> decode(ByteReader& writer) {
+    static MessageDecodeResult<ServerCloseMessage> decode(dbuf::ByteReader<>& writer) {
         ServerCloseMessage out;
         out.errorCode = GEODE_UNWRAP(writer.readU32());
         if (out.errorCode == 0) {
@@ -213,7 +213,7 @@ struct ConnectionErrorMessage {
         return Ok();
     }
 
-    static MessageDecodeResult<ConnectionErrorMessage> decode(ByteReader& writer) {
+    static MessageDecodeResult<ConnectionErrorMessage> decode(dbuf::ByteReader<>& writer) {
         return Ok(ConnectionErrorMessage {
             .errorCode = GEODE_UNWRAP(writer.readU32()),
         });
@@ -225,7 +225,7 @@ struct QdbChunkRequestMessage {};
 struct QdbChunkResponseMessage {};
 
 struct ReconnectSuccessMessage {
-    static MessageDecodeResult<ReconnectSuccessMessage> decode(ByteReader& writer) {
+    static MessageDecodeResult<ReconnectSuccessMessage> decode(dbuf::ByteReader<>& writer) {
         return Ok(ReconnectSuccessMessage{});
     }
 
@@ -233,7 +233,7 @@ struct ReconnectSuccessMessage {
 };
 
 struct ReconnectFailureMessage {
-    static MessageDecodeResult<ReconnectFailureMessage> decode(ByteReader& writer) {
+    static MessageDecodeResult<ReconnectFailureMessage> decode(dbuf::ByteReader<>& writer) {
         return Ok(ReconnectFailureMessage{});
     }
 
@@ -254,7 +254,7 @@ struct DataMessage {
         return Ok();
     }
 
-    static MessageDecodeResult<DataMessage> decode(ByteReader& reader) {
+    static MessageDecodeResult<DataMessage> decode(dbuf::ByteReader<>& reader) {
         return Ok(DataMessage{ reader.readToEnd() });
     }
 };

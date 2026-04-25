@@ -4,7 +4,7 @@
 
 #include "BaseTransport.hpp"
 #include <xtls/Context.hpp>
-#include <qunet/buffers/CircularByteBuffer.hpp>
+#include <dbuf/CircularByteBuffer.hpp>
 #include <qsox/SocketAddress.hpp>
 #include <memory>
 
@@ -41,7 +41,7 @@ public:
 
 private:
     std::shared_ptr<class QuicConnection> m_conn;
-    CircularByteBuffer m_recvBuffer;
+    dbuf::CircularByteBuffer m_recvBuffer;
 
     QuicTransport(std::shared_ptr<QuicConnection> connection);
 };

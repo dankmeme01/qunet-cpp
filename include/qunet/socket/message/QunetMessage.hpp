@@ -2,6 +2,8 @@
 
 #include <qunet/util/assert.hpp>
 #include <qunet/util/visit.hpp>
+#include <qunet/util/Error.hpp>
+#include <qunet/util/TwoSpanSource.hpp>
 #include "messages.hpp"
 #include "meta.hpp"
 #include <variant>
@@ -87,10 +89,10 @@ public:
         }, m_kind);
     }
 
-    MessageEncodeResult encodeControlHeader(HeapByteWriter& writer, uint64_t connectionId) const;
-    MessageEncodeResult encodeControlMsg(HeapByteWriter& writer, uint64_t connectionId) const;
+    MessageEncodeResult encodeControlHeader(dbuf::ByteWriter<>& writer, uint64_t connectionId) const;
+    MessageEncodeResult encodeControlMsg(dbuf::ByteWriter<>& writer, uint64_t connectionId) const;
 
-    MessageEncodeResult encodeDataHeader(HeapByteWriter& writer, uint64_t connectionId, bool omitHeaders) const;
+    MessageEncodeResult encodeDataHeader(dbuf::ByteWriter<>& writer, uint64_t connectionId, bool omitHeaders) const;
 
     std::string_view typeStr() const;
     uint8_t headerByte() const;
@@ -98,7 +100,8 @@ public:
     static geode::Result<QunetMessage, MessageDecodeError> decodeWithMeta(QunetMessageMeta&& meta);
 
     /// Decodes message meta from the message header
-    static geode::Result<QunetMessageMeta, MessageDecodeError> decodeMeta(ByteReader& reader);
+    template <typename S>
+    static geode::Result<QunetMessageMeta, MessageDecodeError> decodeMeta(dbuf::ByteReader<S>& reader);
 
 private:
     VariantTy m_kind;

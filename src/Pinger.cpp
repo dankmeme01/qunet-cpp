@@ -2,7 +2,7 @@
 #include <qunet/dns/Resolver.hpp>
 #include <qunet/Log.hpp>
 #include <qunet/protocol/constants.hpp>
-#include <qunet/buffers/HeapByteWriter.hpp>
+#include <dbuf/ByteWriter.hpp>
 #include <qunet/util/shutdown.hpp>
 #include "UrlParser.hpp"
 
@@ -10,6 +10,7 @@
 #include <arc/time/Sleep.hpp>
 
 using namespace arc;
+using namespace dbuf;
 using namespace asp::time;
 
 constexpr Duration PING_TIMEOUT = Duration::fromMillis(1500);
@@ -239,7 +240,7 @@ geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, C
 Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback) {
     uint32_t pingId = ++m_nextPingId;
 
-    HeapByteWriter writer;
+    ByteWriter writer;
     writer.writeU8(MSG_PING);
     writer.writeU32(pingId);
     writer.writeU8(this->isCached(address) ? 1 : 0); // flags
@@ -263,13 +264,13 @@ Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback
     });
 }
 
-ByteReader::Result<PingResult> Pinger::thrParsePingResponse(const uint8_t* data, size_t size) {
-    ByteReader reader(data, size);
+geode::Result<PingResult> Pinger::thrParsePingResponse(const uint8_t* data, size_t size) {
+    ByteReader reader({data, size});
 
     auto code = reader.readU8().unwrapOr(0);
     if (code != MSG_PONG) {
         log::warn("Invalid ping response received, expected MSG_PONG, got {}", code);
-        return Err(ByteReaderError::OutOfBoundsRead); // eh
+        return Err(fmt::format("invalid ping response received, code {}", code));
     }
 
     uint32_t pingId = GEODE_UNWRAP(reader.readU32());

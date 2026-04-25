@@ -34,6 +34,7 @@ std::string_view TransportError::CustomKind::message() const {
 std::string TransportError::message() const {
 #define FOR_MSG(t, msg) if (std::holds_alternative<t>(m_kind)) { return fmt::format(msg, std::get<t>(m_kind).message()); } else
 #define FOR_MSG2(t, msg) if (std::holds_alternative<t>(m_kind)) { return fmt::format(msg, std::get<t>(m_kind).message); } else
+#define FOR_MSG3(t, msg) if (std::holds_alternative<t>(m_kind)) { return fmt::format(msg, std::get<t>(m_kind)); } else
 
     FOR_MSG(qsox::Error, "Socket error: {}")
 
@@ -46,8 +47,7 @@ std::string TransportError::message() const {
 #ifdef QUNET_WS_SUPPORT
     FOR_MSG(WsError, "WS error: {}")
 #endif
-    FOR_MSG(ByteReaderError, "Error decoding packet: {}")
-    FOR_MSG(ByteWriterError, "Error encoding message: {}")
+    FOR_MSG3(std::string, "{}")
     FOR_MSG(HandshakeFailure, "Handshake failed: {}")
     FOR_MSG(MessageDecodeError, "Error decoding message: {}")
     FOR_MSG(CompressorError, "Compression error: {}")

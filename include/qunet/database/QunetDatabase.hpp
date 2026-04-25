@@ -1,7 +1,6 @@
 #pragma once
 
-#include <qunet/buffers/ByteReader.hpp>
-#include <qunet/buffers/Error.hpp>
+#include <dbuf/ByteReader.hpp>
 #include <qsox/SocketAddress.hpp>
 #include <stdint.h>
 #include <stddef.h>
@@ -29,12 +28,12 @@ struct DatabaseDecodeError {
     };
 
     inline DatabaseDecodeError(CustomCode code) : m_kind(CustomKind{code}) {}
-    inline DatabaseDecodeError(ByteReaderError error) : m_kind(error) {}
+    inline DatabaseDecodeError(std::string error) : m_kind(error) {}
 
     bool operator==(const DatabaseDecodeError& other) const = default;
     bool operator!=(const DatabaseDecodeError& other) const = default;
 
-    std::variant<ByteReaderError, CustomKind> m_kind;
+    std::variant<std::string, CustomKind> m_kind;
 
     std::string_view message() const;
 };
@@ -52,10 +51,10 @@ struct QunetDatabase {
     std::array<uint8_t, 16> getHash() const;
 
 private:
-    geode::Result<void, DatabaseDecodeError> decodeSection(uint16_t type, size_t size, ByteReader& reader);
-    geode::Result<void, DatabaseDecodeError> decodeZstdDictSection(size_t size, ByteReader& reader);
+    geode::Result<void, DatabaseDecodeError> decodeSection(uint16_t type, size_t size, dbuf::ByteReader<>& reader);
+    geode::Result<void, DatabaseDecodeError> decodeZstdDictSection(size_t size, dbuf::ByteReader<>& reader);
 
-    static geode::Result<QunetDatabase, DatabaseDecodeError> decode(ByteReader& reader);
+    static geode::Result<QunetDatabase, DatabaseDecodeError> decode(dbuf::ByteReader<>& reader);
 };
 
 std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address);
