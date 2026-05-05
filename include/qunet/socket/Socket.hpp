@@ -79,23 +79,25 @@ public:
     arc::Future<TransportResult<QunetMessage>> receiveMessage();
 
     /// Returns the average latency of the connection.
-    asp::time::Duration getLatency() const;
+    asp::Duration getLatency() const;
+    /// Returns the network jitter of the transport, which is a smoothened measure of the variance of latency.
+    asp::Duration getJitter() const;
 
     /// Returns how much time is left until the transport timer expires.
     /// Currently, this is only used for UDP transports to determine when to retransmit messages (or send ACKs),
     /// and by UDP/TCP to determine when to send keepalive messages.
     /// After this time elapses, you must call `handleTimerExpiry()` to handle the expiry.
-    asp::time::Duration untilTimerExpiry() const;
+    asp::Duration untilTimerExpiry() const;
     arc::Future<TransportResult<>> handleTimerExpiry();
 
-    void updateLatency(asp::time::Duration rtt);
+    void updateLatency(asp::Duration rtt);
 
     std::shared_ptr<BaseTransport> transport() const;
 
 private:
     std::shared_ptr<BaseTransport> m_transport;
     qsox::SocketAddress m_remoteAddress;
-    asp::time::Duration m_connTimeout;
+    asp::Duration m_connTimeout;
     std::optional<QunetDatabase> m_usedQdb;
     std::optional<std::filesystem::path> m_qdbFolder;
 
@@ -103,7 +105,7 @@ private:
         : m_transport(std::move(transport)), m_remoteAddress(std::move(remote)) {}
 
     static arc::Future<TransportResult<std::shared_ptr<BaseTransport>>> createTransport(const TransportOptions& options);
-    static arc::Future<TransportResult<std::pair<Socket, asp::time::Duration>>> createSocket(const TransportOptions& options);
+    static arc::Future<TransportResult<std::pair<Socket, asp::Duration>>> createSocket(const TransportOptions& options);
 
     arc::Future<TransportResult<>> onHandshakeSuccess(const HandshakeFinishMessage& msg);
     TransportResult<> onReconnectSuccess(Socket& older);

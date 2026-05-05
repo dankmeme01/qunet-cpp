@@ -161,14 +161,24 @@ void BaseTransport::onIncomingMessage(const QunetMessage& msg) {
 }
 
 Duration BaseTransport::getLatency() const {
-    return Duration::fromMicros(m_lastRttMicros);
+    return Duration::fromMicros(m_pingMicros);
+}
+
+Duration BaseTransport::getJitter() const {
+    return Duration::fromMicros(m_jitterMicros);
 }
 
 void BaseTransport::updateLatency(Duration rtt) {
-    if (m_lastRttMicros == 0) {
-        m_lastRttMicros = rtt.micros();
+    // calculate delta with previous comparison
+    uint64_t delta = std::abs((int64_t)rtt.micros() - (int64_t)m_latestRttMicros);
+    m_latestRttMicros = rtt.micros();
+    
+    if (m_totalRttEstimates == 0) {
+        m_pingMicros = rtt.micros();
+        m_jitterMicros = 0;
     } else {
-        m_lastRttMicros = exponentialMovingAverage<uint64_t>(m_lastRttMicros, rtt.micros(), 0.25);
+        m_pingMicros = exponentialMovingAverage<uint64_t>(m_pingMicros, rtt.micros(), 0.25);
+        m_jitterMicros = exponentialMovingAverage<uint64_t>(m_jitterMicros, delta, 0.08);
     }
     m_totalRttEstimates++;
 }

@@ -382,6 +382,10 @@ Duration Socket::getLatency() const {
     return m_transport->getLatency();
 }
 
+Duration Socket::getJitter() const {
+    return m_transport->getJitter();
+}
+
 Duration Socket::untilTimerExpiry() const {
     return m_transport->untilTimerExpiry();
 }

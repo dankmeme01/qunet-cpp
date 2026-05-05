@@ -276,7 +276,9 @@ public:
     bool disconnected() const;
 
     // Returns the average latency of the connection, zero if not connected or if there's not enough ping data.
-    asp::time::Duration getLatency() const;
+    asp::Duration getLatency() const;
+    // Returns the network jitter of the transport, which is a smoothened measure of the variance of latency, zero if not connected or if there's not enough ping data.
+    asp::Duration getJitter() const;
 
     // Get the current connection state.
     ConnectionState state() const;

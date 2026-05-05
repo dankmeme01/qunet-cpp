@@ -1240,6 +1240,10 @@ Duration Connection::getLatency() const {
     return m_socket ? m_socket->getLatency() : Duration::zero();
 }
 
+Duration Connection::getJitter() const {
+    return m_socket ? m_socket->getJitter() : Duration::zero();
+}
+
 bool Connection::sendKeepalive() {
     return this->sendMsgToThread(KeepaliveMessage{});
 }

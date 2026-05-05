@@ -78,6 +78,8 @@ public:
 
     /// Returns the average latency (round-trip time) of the transport.
     virtual asp::time::Duration getLatency() const;
+    /// Returns the network jitter of the transport, which is a smoothened measure of the variance of latency.
+    virtual asp::time::Duration getJitter() const;
 
     TransportResult<QunetMessage> decodePreFinalDataMessage(QunetMessageMeta&& meta);
 
@@ -96,7 +98,9 @@ protected:
     Lz4Compressor m_lz4Compressor;
     Lz4Decompressor m_lz4Decompressor;
 
-    uint64_t m_lastRttMicros = 0;
+    uint64_t m_pingMicros = 0; // ema'd latency
+    uint64_t m_latestRttMicros = 0;
+    uint64_t m_jitterMicros = 0;
     std::optional<asp::time::Instant> m_lastActivity;
     std::optional<asp::time::Instant> m_lastKeepalive;
     size_t m_totalKeepalives = 0;
