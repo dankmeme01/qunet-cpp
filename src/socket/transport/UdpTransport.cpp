@@ -541,7 +541,7 @@ arc::Future<TransportResult<>> UdpTransport::handleTimerExpiry() {
 
 void UdpTransport::updateLatency(asp::Duration rtt) {
     BaseTransport::updateLatency(rtt);
-    m_relStore.updateRtt(m_lastRttMicros);
+    m_relStore.updateRtt(m_latestRttMicros);
 }
 
 bool UdpTransport::shouldLosePacket() {
