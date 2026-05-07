@@ -414,6 +414,8 @@ Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessag
 
     for (auto item : iter) {
         auto meta = GEODE_CO_UNWRAP(item);
+        if (meta.type == MSG_PADDING) continue;
+
         auto msg = GEODE_CO_UNWRAP(this->processOne(std::move(meta)));
         if (msg) {
             if (!toReturn) {
