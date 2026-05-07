@@ -8,6 +8,7 @@
 #include <qunet/Log.hpp>
 #include <asp/time.hpp>
 #include <fmt/color.h>
+#include <fmt/ranges.h>
 
 #ifdef QUNET_TLS_SUPPORT
 # include <xtls/Backend.hpp>
@@ -18,19 +19,47 @@ using namespace asp::time;
 using namespace arc;
 
 arc::Future<> connLoop(Connection& conn) {
-    while (true) {
-        log::debug("Sending keepalive");
-        conn.sendKeepalive();
-        std::vector megabyte(1024 * 1023, (uint8_t) 0x42); // 1 MB of data
-        // std::vector megabyte(256, (uint8_t)0);
-        // fill with stuff
-        for (size_t i = 0, u = 0; i < megabyte.size(); i++, u++) {
-            megabyte[i] = rand() % 256;
+    constexpr static size_t TRIES = 32768;
+
+    std::atomic<size_t> inFlight{0};
+    std::vector<std::vector<uint8_t>> messages{1};
+    auto [tx, rx] = arc::mpsc::channel<std::vector<uint8_t>>();
+
+    conn.setDataCallback([&](std::vector<uint8_t> data) {
+        tx.trySend(std::move(data)).unwrap();
+    });
+
+    auto receiver = arc::spawn([&] -> arc::Future<> {
+        for (size_t i = 1; i < TRIES; i++) {
+            auto val = (co_await rx.recv()).unwrap();
+            inFlight--;
+
+            if (val != messages[i]) {
+                fmt::println("Received incorrect message {} ({} bytes)\n", i, val.size());
+            } else {
+                fmt::print("Received good message {} ({} bytes)\n", i, val.size());
+            }
+        }
+    });
+
+    for (size_t i = 1; i < TRIES; i++) {
+        std::vector<uint8_t> msg(i);
+        for (size_t j = 0; j < i; j++) {
+            msg[j] = (uint8_t)rand();
+        }
+        messages.push_back(std::move(msg));
+        log::debug("Send {} bytes", messages.back().size());
+        conn.sendData(messages.back(), true);
+        inFlight++;
+
+        while (inFlight > 5) {
+            co_await arc::sleep(asp::time::Duration::fromMillis(10));
         }
 
-        // conn.sendData(megabyte);
-        co_await arc::sleep(asp::time::Duration::fromMillis(1000));
+        co_await arc::sleep(asp::time::Duration::fromMillis(1));
     }
+
+    co_await receiver;
 }
 
 arc::Future<int> amain(int argc, char** argv) {

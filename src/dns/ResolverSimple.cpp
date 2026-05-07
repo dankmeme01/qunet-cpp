@@ -126,7 +126,7 @@ void Resolver::setCustomDnsServers(std::optional<qsox::IpAddress> primary, std::
     // not supported
 }
 
-geode::Result<> Resolver::setDnsTransport(DNSTransport transport) {
+Result<> Resolver::setDnsTransport(DNSTransport transport) {
     // not supported
     return Err("not supported in simple resolver");
 }

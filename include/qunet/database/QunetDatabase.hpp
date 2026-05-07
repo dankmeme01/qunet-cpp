@@ -2,6 +2,7 @@
 
 #include <dbuf/ByteReader.hpp>
 #include <qsox/SocketAddress.hpp>
+#include <qunet/util/Result.hpp>
 #include <stdint.h>
 #include <stddef.h>
 #include <optional>
@@ -46,19 +47,19 @@ struct QunetDatabase {
     int zstdLevel = 0;
     std::array<uint8_t, 16> hash;
 
-    static geode::Result<QunetDatabase, DatabaseDecodeError> decode(const std::vector<uint8_t>& data);
+    static Result<QunetDatabase, DatabaseDecodeError> decode(const std::vector<uint8_t>& data);
 
     std::array<uint8_t, 16> getHash() const;
 
 private:
-    geode::Result<void, DatabaseDecodeError> decodeSection(uint16_t type, size_t size, dbuf::ByteReader<>& reader);
-    geode::Result<void, DatabaseDecodeError> decodeZstdDictSection(size_t size, dbuf::ByteReader<>& reader);
+    Result<void, DatabaseDecodeError> decodeSection(uint16_t type, size_t size, dbuf::ByteReader<>& reader);
+    Result<void, DatabaseDecodeError> decodeZstdDictSection(size_t size, dbuf::ByteReader<>& reader);
 
-    static geode::Result<QunetDatabase, DatabaseDecodeError> decode(dbuf::ByteReader<>& reader);
+    static Result<QunetDatabase, DatabaseDecodeError> decode(dbuf::ByteReader<>& reader);
 };
 
 std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address);
-geode::Result<> saveQdb(
+Result<> saveQdb(
     const std::vector<uint8_t>& data,
     const std::filesystem::path& folder,
     const qsox::SocketAddress& address

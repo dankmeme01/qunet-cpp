@@ -94,7 +94,7 @@ private:
 inline auto format_as(const ConnectionError& err) { return err.message(); }
 
 template <typename T = void>
-using ConnectionResult = geode::Result<T, ConnectionError>;
+using ConnectionResult = Result<T, ConnectionError>;
 
 enum class ConnectionState {
     Disconnected,

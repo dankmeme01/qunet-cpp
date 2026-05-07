@@ -5,6 +5,7 @@
 #include <qunet/protocol/constants.hpp>
 #include <qunet/protocol/errors.hpp>
 #include <qunet/util/assert.hpp>
+#include <qunet/util/Result.hpp>
 #include <fmt/format.h>
 #include <array>
 
@@ -17,9 +18,9 @@
 
 namespace qn {
 
-using MessageEncodeResult = geode::Result<void>;
+using MessageEncodeResult = Result<void>;
 template <typename T>
-using MessageDecodeResult = geode::Result<T>;
+using MessageDecodeResult = Result<T>;
 
 struct PingMessage {};
 
@@ -238,6 +239,64 @@ struct ReconnectFailureMessage {
     }
 
     QN_NO_ENCODE(ReconnectFailureMessage);
+};
+
+struct ConnectionControlMessage {
+    struct PMTUDProbe {
+        std::vector<uint8_t> data;
+    };
+
+    struct SetMTU {
+        uint16_t mtu;
+    };
+
+    std::variant<PMTUDProbe, SetMTU> message;
+
+    template <typename T>
+    bool is() const {
+        return std::holds_alternative<T>(message);
+    }
+
+    template <typename T>
+    const T& as() const {
+        return std::get<T>(message);
+    }
+
+    static MessageDecodeResult<ConnectionControlMessage> decode(dbuf::ByteReader<>& reader) {
+        uint8_t type = GEODE_UNWRAP(reader.readU16());
+
+        switch (type) {
+            case QUNET_CONNCTL_SET_MTU: {
+                uint16_t mtu = GEODE_UNWRAP(reader.readU16());
+                return Ok(ConnectionControlMessage{ SetMTU{ mtu } });
+
+            }
+            case QUNET_CONNCTL_PMTUD_PROBE: {
+                uint16_t size = GEODE_UNWRAP(reader.readU16());
+                std::vector<uint8_t> data(size);
+                GEODE_UNWRAP(reader.readBytes(data.data(), size));
+                return Ok(ConnectionControlMessage{ PMTUDProbe{ std::move(data) } });
+            }
+
+            default:
+                return Err("Unknown connection control message type");
+        }
+    }
+
+    MessageEncodeResult encode(auto& writer) const {
+        if (auto m = std::get_if<SetMTU>(&message)) {
+            writer.writeU8(QUNET_CONNCTL_SET_MTU);
+            writer.writeU16(m->mtu);
+            return Ok();
+        } else if (auto m = std::get_if<PMTUDProbe>(&message)) {
+            writer.writeU8(QUNET_CONNCTL_PMTUD_PROBE);
+            writer.writeU16(m->data.size());
+            writer.writeBytes(m->data.data(), m->data.size());
+            return Ok();
+        } else {
+            QN_ASSERT(false && "Unknown connection control message type");
+        }
+    }
 };
 
 struct QdbgToggleMessage {};

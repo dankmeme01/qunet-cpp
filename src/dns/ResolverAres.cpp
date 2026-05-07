@@ -279,7 +279,7 @@ void Resolver::setCustomDnsServers(std::optional<qsox::IpAddress> primary, std::
     this->reloadServers();
 }
 
-geode::Result<> Resolver::setDnsTransport(DNSTransport transport) {
+Result<> Resolver::setDnsTransport(DNSTransport transport) {
     if (transport == DNSTransport::Https || transport == DNSTransport::Tls) {
         return Err("DNS over HTTPS/TLS is not supported yet");
     }

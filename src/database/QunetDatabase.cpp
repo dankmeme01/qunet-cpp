@@ -34,7 +34,7 @@ std::string_view DatabaseDecodeError::message() const {
     }
 }
 
-geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(const std::vector<uint8_t>& data) {
+Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(const std::vector<uint8_t>& data) {
     ByteReader reader(data);
     auto qdb = GEODE_UNWRAP(decode(reader));
 
@@ -56,7 +56,7 @@ static size_t roundUpTo16(size_t value) {
     return (value + 15) & ~(size_t)(15);
 }
 
-geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(dbuf::ByteReader<>& reader) {
+Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(dbuf::ByteReader<>& reader) {
     constexpr uint8_t MAGIC[] = { 0xa3, 0xdb, 0xdb, 0x11 };
     uint8_t magic[sizeof(MAGIC)];
 
@@ -126,7 +126,7 @@ geode::Result<QunetDatabase, DatabaseDecodeError> QunetDatabase::decode(dbuf::By
     return Ok(std::move(db));
 }
 
-geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeSection(uint16_t type, size_t size, dbuf::ByteReader<>& reader) {
+Result<void, DatabaseDecodeError> QunetDatabase::decodeSection(uint16_t type, size_t size, dbuf::ByteReader<>& reader) {
     switch (type) {
         case 3: {
             return this->decodeZstdDictSection(size, reader);
@@ -139,7 +139,7 @@ geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeSection(uint16_t t
     }
 }
 
-geode::Result<void, DatabaseDecodeError> QunetDatabase::decodeZstdDictSection(size_t size, dbuf::ByteReader<>& reader) {
+Result<void, DatabaseDecodeError> QunetDatabase::decodeZstdDictSection(size_t size, dbuf::ByteReader<>& reader) {
     if (size > 1024 * 1024) {
         return Err(DatabaseDecodeError::ZstdDictTooLarge);
     }
@@ -185,7 +185,7 @@ std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, con
     return std::move(qdb).unwrap();
 }
 
-geode::Result<> saveQdb(
+Result<> saveQdb(
     const std::vector<uint8_t>& data,
     const std::filesystem::path& folder,
     const qsox::SocketAddress& address

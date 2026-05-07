@@ -11,7 +11,7 @@
 namespace qn {
 
 template <typename T = void>
-using QuicResult = geode::Result<T, QuicError>;
+using QuicResult = Result<T, QuicError>;
 
 class QuicTransport : public BaseTransport {
 public:

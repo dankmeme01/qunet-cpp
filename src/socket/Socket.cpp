@@ -172,7 +172,7 @@ Future<TransportResult<>> Socket::onHandshakeSuccess(const HandshakeFinishMessag
         if (m_qdbFolder) {
             log::debug("Saving Qunet database to {:?}", *m_qdbFolder);
 
-            auto res = co_await arc::spawnBlocking<geode::Result<>>([&] {
+            auto res = co_await arc::spawnBlocking<Result<>>([&] {
                 return qn::saveQdb(qdbData, *m_qdbFolder, m_remoteAddress);
             });
 

@@ -19,7 +19,7 @@ struct ProtocolVersion {
     }
 };
 
-constexpr inline ProtocolVersion PROTOCOL_VERSION{ 1, 0 };
+constexpr inline ProtocolVersion PROTOCOL_VERSION{ 1, 2 };
 
 constexpr inline uint8_t MSG_PING = 1;
 constexpr inline uint8_t MSG_PONG = 2;
@@ -36,6 +36,7 @@ constexpr inline uint8_t MSG_QDB_CHUNK_REQUEST = 12;
 constexpr inline uint8_t MSG_QDB_CHUNK_RESPONSE = 13;
 constexpr inline uint8_t MSG_RECONNECT_SUCCESS = 14;
 constexpr inline uint8_t MSG_RECONNECT_FAILURE = 15;
+constexpr inline uint8_t MSG_CONNECTION_CONTROL = 16;
 
 constexpr inline uint8_t MSG_QDBG_TOGGLE = 64;
 constexpr inline uint8_t MSG_QDBG_REPORT = 65;
@@ -47,6 +48,7 @@ constexpr inline uint8_t MSG_DATA_MASK = MSG_DATA;
 
 constexpr inline size_t MSG_DATA_BIT_COMPRESSION_1 = 0; // least significant bit
 constexpr inline size_t MSG_DATA_BIT_COMPRESSION_2 = 1; // second least significant bit
+constexpr inline size_t MSG_DATA_BOUNDARY_MASK = 1 << 3;
 constexpr inline size_t MSG_DATA_RELIABILITY_MASK = 1 << 4;
 constexpr inline size_t MSG_DATA_FRAGMENTATION_MASK = 1 << 5;
 
@@ -58,6 +60,9 @@ constexpr inline uint8_t PROTO_TCP = 0x01;
 constexpr inline uint8_t PROTO_UDP = 0x02;
 constexpr inline uint8_t PROTO_QUIC = 0x03;
 constexpr inline uint8_t PROTO_WEBSOCKET = 0x04;
+
+constexpr inline uint16_t QUNET_CONNCTL_SET_MTU = 0x0001;
+constexpr inline uint16_t QUNET_CONNCTL_PMTUD_PROBE = 0x0040;
 
 constexpr inline uint16_t DEFAULT_PORT = 4340;
 

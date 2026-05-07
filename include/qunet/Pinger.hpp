@@ -2,6 +2,7 @@
 
 #include <dbuf/ByteReader.hpp>
 #include <qunet/util/compat.hpp>
+#include <qunet/util/Result.hpp>
 
 #include <arc/sync/mpsc.hpp>
 #include <arc/sync/Mutex.hpp>
@@ -42,7 +43,7 @@ public:
 
     /// Pings a url rather than an address. This is slightly more limited, it will not resolve SRV records but will resolve an A record.
     /// The callback may never be invoked if DNS resolution fails, but timeouts will still be handled.
-    geode::Result<> pingUrl(const std::string& url, Callback callback);
+    Result<> pingUrl(const std::string& url, Callback callback);
 
     bool isCached(const qsox::SocketAddress& address);
     std::optional<PingResult> getCached(const qsox::SocketAddress& address);
@@ -75,12 +76,12 @@ private:
     arc::Future<> workerLoop(arc::mpsc::Receiver<std::pair<qsox::SocketAddress, Callback>>);
 
     arc::Future<> thrDoPing(const qsox::SocketAddress& address, Callback callback);
-    geode::Result<PingResult> thrParsePingResponse(const uint8_t* data, size_t size);
+    Result<PingResult> thrParsePingResponse(const uint8_t* data, size_t size);
     void thrDispatchResult(PingResult& result, const qsox::SocketAddress& address);
     void thrRemoveTimedOutPings();
     arc::Future<> recreateSocket();
 
-    geode::Result<> resolveAndPing(std::string_view domain, uint16_t port, Callback callback);
+    Result<> resolveAndPing(std::string_view domain, uint16_t port, Callback callback);
 };
 
 }

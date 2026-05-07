@@ -44,7 +44,7 @@ private:
     bool m_closed = false;
     float m_lossSim = 0.f;
     std::optional<asp::time::Duration> m_activeKeepaliveInterval;
-    std::queue<QunetMessage> m_oobMessages;
+    std::queue<QunetMessage> m_pendingMessages;
 
     UdpTransport(arc::UdpSocket socket, size_t mtu, const struct ConnectionOptions& connOptions);
 
@@ -56,6 +56,7 @@ private:
     asp::time::Duration untilKeepalive() const;
 
     arc::Future<TransportResult<std::optional<QunetMessage>>> receiveMessageInner();
+    TransportResult<std::optional<QunetMessage>> processOne(QunetMessageMeta&& msg);
 };
 
 }

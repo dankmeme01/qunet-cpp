@@ -46,4 +46,5 @@ struct QunetMessageMeta {
     std::optional<ReliabilityHeader> reliabilityHeader;
     std::optional<FragmentationHeader> fragmentationHeader;
     std::vector<uint8_t> data;
+    size_t dataOffset;
 };

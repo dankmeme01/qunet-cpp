@@ -210,7 +210,7 @@ Future<TransportResult<QunetMessage>> UdpTransport::performHandshake(
     }
 
     // store unexpected messages for later
-    m_oobMessages = std::move(unexpectedMessages);
+    m_pendingMessages = std::move(unexpectedMessages);
 
     // done!
 
@@ -378,10 +378,11 @@ Future<TransportResult<QunetMessage>> UdpTransport::receiveMessage() {
 Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessageInner() {
     ARC_FRAME();
 
-    // first, check if we have any messages sent before connection was established
-    if (!m_oobMessages.empty()) {
-        auto msg = std::move(m_oobMessages.front());
-        m_oobMessages.pop();
+    // first, check if we have any messages sent before connection was established,
+    // or just pending messages due to batching
+    if (!m_pendingMessages.empty()) {
+        auto msg = std::move(m_pendingMessages.front());
+        m_pendingMessages.pop();
         co_return Ok(std::move(msg));
     }
 
@@ -403,30 +404,47 @@ Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessag
 
     m_tracker.onDownPacket(bytesRead);
 
-    dbuf::ByteReader reader({buffer, bytesRead});
-    auto meta = ARC_CO_UNWRAP(QunetMessage::decodeMeta(reader));
+    QunetUdpMessageIter iter({buffer, bytesRead}, false);
+    std::optional<QunetMessage> toReturn;
 
+    for (auto item : iter) {
+        auto meta = GEODE_CO_UNWRAP(item);
+        auto msg = GEODE_CO_UNWRAP(this->processOne(std::move(meta)));
+        if (msg) {
+            if (!toReturn) {
+                toReturn = std::move(*msg);
+            } else {
+                // already have a message to return, queue this one
+                m_pendingMessages.push(std::move(*msg));
+            }
+        }
+    }
+
+    co_return Ok(std::move(toReturn));
+}
+
+TransportResult<std::optional<QunetMessage>> UdpTransport::processOne(QunetMessageMeta&& meta) {
     // not a data message, cannot be compressed/fragmented/reliable
     if (meta.type != MSG_DATA) {
-        auto msg = ARC_CO_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
+        m_tracker.onDownMessage(meta.type, meta.data.size());
+
+        auto msg = ARC_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
 
         if (msg.is<KeepaliveResponseMessage>()) {
             m_unackedKeepalives = 0;
         }
 
-        m_tracker.onDownMessage(buffer[0], bytesRead);
-
-        co_return Ok(std::move(msg));
+        return Ok(std::move(msg));
     }
 
     // handle fragmented / reliable messages
 
     if (meta.fragmentationHeader) {
-        auto recvf = ARC_CO_UNWRAP(m_fragStore.processFragment(std::move(meta)));
+        auto recvf = ARC_UNWRAP(m_fragStore.processFragment(std::move(meta)));
 
         // if a message wasn't completed, just return false
         if (!recvf) {
-            co_return Ok(std::nullopt);
+            return Ok(std::nullopt);
         }
 
         // otherwise, keep processing
@@ -437,14 +455,14 @@ Future<TransportResult<std::optional<QunetMessage>>> UdpTransport::receiveMessag
 
     bool reliable = meta.reliabilityHeader.has_value();
     if (reliable) {
-        if (!ARC_CO_UNWRAP(m_relStore.handleIncoming(meta))) {
+        if (!ARC_UNWRAP(m_relStore.handleIncoming(meta))) {
             // duplicate message or otherwise invalid
-            co_return Ok(std::nullopt);
+            return Ok(std::nullopt);
         }
     }
 
-    auto msg = ARC_CO_UNWRAP(this->decodePreFinalDataMessage(std::move(meta)));
-    co_return Ok(std::move(msg));
+    auto msg = ARC_UNWRAP(this->decodePreFinalDataMessage(std::move(meta)));
+    return Ok(std::move(msg));
 }
 
 Future<TransportResult<>> UdpTransport::poll() {

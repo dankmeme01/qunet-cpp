@@ -12,7 +12,7 @@ namespace qn {
 
 using ResolverError = qsox::resolver::Error;
 template <typename T = void>
-using ResolverResult = geode::Result<T, ResolverError>;
+using ResolverResult = Result<T, ResolverError>;
 
 enum class QueryType {
     A,
@@ -76,7 +76,7 @@ public:
 
     void setCustomDnsServer(qsox::IpAddress addr);
     void setCustomDnsServers(std::optional<qsox::IpAddress> primary, std::optional<qsox::IpAddress> secondary = std::nullopt);
-    geode::Result<> setDnsTransport(DNSTransport transport);
+    Result<> setDnsTransport(DNSTransport transport);
 
 #ifdef QUNET_ADVANCED_DNS
     template <typename T>

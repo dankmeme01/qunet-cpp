@@ -181,7 +181,7 @@ void Pinger::ping(const qsox::SocketAddress& address, Callback callback) {
     (void) m_pingTx->trySend(std::make_pair(address, std::move(callback)));
 }
 
-geode::Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
+Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
     // parse and resolve the url
     UrlParser parser{url};
     auto parseRes = parser.result();
@@ -208,7 +208,7 @@ geode::Result<> Pinger::pingUrl(const std::string& url, Callback callback) {
     }
 }
 
-geode::Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, Callback callback) {
+Result<> Pinger::resolveAndPing(std::string_view domain, uint16_t port, Callback callback) {
     // not cached, resolve the domain
     auto& resolver = Resolver::get();
     auto res = resolver.queryA(std::string(domain), [
@@ -264,7 +264,7 @@ Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback
     });
 }
 
-geode::Result<PingResult> Pinger::thrParsePingResponse(const uint8_t* data, size_t size) {
+Result<PingResult> Pinger::thrParsePingResponse(const uint8_t* data, size_t size) {
     ByteReader reader({data, size});
 
     auto code = reader.readU8().unwrapOr(0);

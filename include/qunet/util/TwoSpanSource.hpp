@@ -7,7 +7,7 @@ namespace qn {
 struct TwoSpanSource {
     TwoSpanSource(std::span<const uint8_t> first, std::span<const uint8_t> second) : m_first(first), m_second(second) {}
 
-    geode::Result<void> read(uint8_t* buf, size_t size) {
+    Result<void> read(uint8_t* buf, size_t size) {
         if (m_pos + size > this->totalSize()) {
             return geode::Err("Not enough data to read");
         }
@@ -29,7 +29,7 @@ struct TwoSpanSource {
         return geode::Ok();
     }
 
-    geode::Result<void> skip(size_t size) {
+    Result<void> skip(size_t size) {
         if (m_pos + size > this->totalSize()) {
             return geode::Err("Not enough data to skip");
         }
@@ -40,7 +40,7 @@ struct TwoSpanSource {
     size_t position() const { return m_pos; }
     size_t totalSize() const { return m_first.size() + m_second.size(); }
 
-    geode::Result<void> setPosition(size_t pos) {
+    Result<void> setPosition(size_t pos) {
         if (pos >= this->totalSize()) {
             return geode::Err("Position out of bounds");
         }

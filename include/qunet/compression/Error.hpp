@@ -13,7 +13,7 @@ QN_MAKE_ERROR_STRUCT(DecompressorError,
 );
 
 template <typename T = void>
-using DecompressorResult = geode::Result<T, DecompressorError>;
+using DecompressorResult = Result<T, DecompressorError>;
 
 QN_MAKE_ERROR_STRUCT(CompressorError,
     NotInitialized,
@@ -23,6 +23,6 @@ QN_MAKE_ERROR_STRUCT(CompressorError,
 );
 
 template <typename T = void>
-using CompressorResult = geode::Result<T, CompressorError>;
+using CompressorResult = Result<T, CompressorError>;
 
 }

@@ -7,12 +7,15 @@
 #include "messages.hpp"
 #include "meta.hpp"
 #include <variant>
+#include <asp/iter.hpp>
 
 namespace qn {
 
 QN_MAKE_ERROR_STRUCT(MessageDecodeError,
     InvalidMessageType,
-    InvalidData
+    InvalidData,
+    InvalidConnCtlCode,
+    NotEnoughData,
 );
 
 class QunetMessage {
@@ -32,6 +35,7 @@ class QunetMessage {
         // QdbChunkResponseMessage,
         ReconnectSuccessMessage,
         ReconnectFailureMessage,
+        ConnectionControlMessage,
         // QdbgToggleMessage,
         // QdbgReportMessage,
         DataMessage
@@ -50,6 +54,7 @@ public:
     QunetMessage(ServerCloseMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ClientReconnectMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(ConnectionErrorMessage msg) : m_kind(std::move(msg)) {}
+    QunetMessage(ConnectionControlMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbChunkRequestMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbChunkResponseMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbgToggleMessage msg) : m_kind(std::move(msg)) {}
@@ -97,14 +102,27 @@ public:
     std::string_view typeStr() const;
     uint8_t headerByte() const;
 
-    static geode::Result<QunetMessage, MessageDecodeError> decodeWithMeta(QunetMessageMeta&& meta);
+    static Result<QunetMessage, MessageDecodeError> decodeWithMeta(QunetMessageMeta&& meta);
 
     /// Decodes message meta from the message header
-    template <typename S>
-    static geode::Result<QunetMessageMeta, MessageDecodeError> decodeMeta(dbuf::ByteReader<S>& reader);
+    static Result<QunetMessageMeta, MessageDecodeError> decodeMeta(std::span<const uint8_t> data, bool udpHeaders = false, bool udpConnId = false);
 
 private:
     VariantTy m_kind;
+};
+
+struct QunetUdpMessageIter : asp::iter::Iter<QunetUdpMessageIter, Result<QunetMessageMeta, MessageDecodeError>> {
+    // pass whether we are the server
+    QunetUdpMessageIter(std::span<const uint8_t> data, bool server);
+
+    using Item = Result<QunetMessageMeta, MessageDecodeError>;
+
+    std::optional<Item> next();
+
+private:
+    std::span<const uint8_t> m_data;
+    size_t m_pos = 0;
+    bool m_eof = false, m_server;
 };
 
 }

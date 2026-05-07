@@ -105,8 +105,7 @@ Future<TransportResult<QunetMessage>> WsTransport::receiveMessage() {
     }
 
     auto data = msg.binary();
-    dbuf::ByteReader reader{data};
-    auto meta = GEODE_CO_UNWRAP(QunetMessage::decodeMeta(reader));
+    auto meta = GEODE_CO_UNWRAP(QunetMessage::decodeMeta(data));
 
     if (meta.type != MSG_DATA) {
         auto msg = GEODE_CO_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));

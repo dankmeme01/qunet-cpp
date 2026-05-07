@@ -136,10 +136,17 @@ inline arc::Future<TransportResult<QunetMessage>> receiveMessage(
         buffer.skip(sizeof(uint32_t));
         auto wrpread = buffer.peek(length);
 
-        dbuf::ByteReader reader{TwoSpanSource{wrpread.first, wrpread.second}};
-
         auto dec = [&]() -> TransportResult<QunetMessage> {
-            auto meta = GEODE_UNWRAP(QunetMessage::decodeMeta(reader));
+            QunetMessageMeta meta;
+            if (wrpread.second.empty()) {
+                meta = GEODE_UNWRAP(QunetMessage::decodeMeta(wrpread.first));
+            } else {
+                std::vector<uint8_t> combined;
+                combined.reserve(wrpread.first.size() + wrpread.second.size());
+                combined.insert_range(combined.end(), wrpread.first);
+                combined.insert_range(combined.end(), wrpread.second);
+                meta = GEODE_UNWRAP(QunetMessage::decodeMeta(combined));
+            }
 
             if (meta.type != MSG_DATA) {
                 auto msg = GEODE_UNWRAP(QunetMessage::decodeWithMeta(std::move(meta)));
