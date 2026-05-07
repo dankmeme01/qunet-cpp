@@ -36,6 +36,7 @@ class QunetMessage {
         ReconnectSuccessMessage,
         ReconnectFailureMessage,
         ConnectionControlMessage,
+        PaddingMessage,
         // QdbgToggleMessage,
         // QdbgReportMessage,
         DataMessage
@@ -59,6 +60,7 @@ public:
     // QunetMessage(QdbChunkResponseMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbgToggleMessage msg) : m_kind(std::move(msg)) {}
     // QunetMessage(QdbgReportMessage msg) : m_kind(std::move(msg)) {}
+    QunetMessage(PaddingMessage msg) : m_kind(std::move(msg)) {}
     QunetMessage(DataMessage msg) : m_kind(std::move(msg)) {}
 
     QunetMessage(VariantTy kind) : m_kind(std::move(kind)) {}

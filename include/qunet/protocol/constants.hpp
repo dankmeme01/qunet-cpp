@@ -41,6 +41,8 @@ constexpr inline uint8_t MSG_CONNECTION_CONTROL = 16;
 constexpr inline uint8_t MSG_QDBG_TOGGLE = 64;
 constexpr inline uint8_t MSG_QDBG_REPORT = 65;
 
+constexpr inline uint8_t MSG_PADDING = 127;
+
 constexpr inline uint8_t MSG_DATA = 0x80;
 constexpr inline uint8_t MSG_DATA_START = 0x80;
 constexpr inline uint8_t MSG_DATA_END = 0xff;

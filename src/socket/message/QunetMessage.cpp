@@ -188,6 +188,10 @@ Result<QunetMessage, MessageDecodeError> QunetMessage::decodeWithMeta(QunetMessa
         case MSG_CONNECTION_CONTROL: {
             return Ok(MAP_UNWRAP(ConnectionControlMessage::decode(reader)));
         } break;
+
+        case MSG_PADDING: {
+            return Ok(PaddingMessage{});
+        } break;
     }
 
     return Err(MessageDecodeError::InvalidMessageType);
@@ -303,6 +307,8 @@ static Result<size_t, MessageDecodeError> lengthForNonDataMessage(dbuf::ByteRead
 
             return Ok(2 + msgSize);
         } break;
+
+        case MSG_PADDING: return Ok(reader.remainingSize());
     }
 
     return Err(MessageDecodeError::InvalidMessageType);

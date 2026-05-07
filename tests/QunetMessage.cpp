@@ -51,4 +51,31 @@ TEST(QunetMessage, MultiMsgIterator) {
     EXPECT_EQ(fourth.type, MSG_DATA);
     auto fourthData = fourth.data;
     EXPECT_EQ(fourthData, std::vector<uint8_t>({1, 2, 3, 4}));
+
+    EXPECT_FALSE(iter.next().has_value()) << "Expected no more messages, but got one";
+}
+
+
+TEST(QunetMessage, Padding) {
+    uint8_t data[] = {
+        // keepalive header
+        0x3,
+        // connection id
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        // keepalive data
+        0x63, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        // padding (header + 3 bytes, pads to 22 in total)
+        0x7f, 0x67, 0x67, 0x67,
+    };
+
+    QunetUdpMessageIter iter{{data, sizeof(data)}, true};
+
+    auto first = QunetMessage::decodeWithMeta(expectValue(expectValue(iter.next(), "first message"), "first message")).unwrap();
+    EXPECT_TRUE(first.is<KeepaliveMessage>());
+    EXPECT_EQ(first.as<KeepaliveMessage>().timestamp, 0x63);
+
+    auto second = QunetMessage::decodeWithMeta(expectValue(expectValue(iter.next(), "second message"), "second message")).unwrap();
+    EXPECT_TRUE(second.is<PaddingMessage>());
+
+    EXPECT_FALSE(iter.next().has_value()) << "Expected no more messages, but got one";
 }

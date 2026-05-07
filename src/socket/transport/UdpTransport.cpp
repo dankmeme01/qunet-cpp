@@ -38,7 +38,12 @@ struct QunetRNG {
 };
 
 static void fillPadding(dbuf::ByteWriter<>& writer, size_t bytes) {
+    QN_ASSERT(bytes > 0);
+
     static QunetRNG rng;
+
+    writer.writeU8(qn::MSG_PADDING);
+    bytes--;
 
     size_t filled = 0;
     while (filled < bytes) {

@@ -35,7 +35,15 @@ struct KeepaliveMessage {
         return geode::Ok();
     }
 
-    QN_NO_DECODE(KeepaliveMessage);
+    template <typename S>
+    static MessageDecodeResult<KeepaliveMessage> decode(dbuf::ByteReader<S>& reader) {
+        KeepaliveMessage out;
+
+        out.timestamp = GEODE_UNWRAP(reader.readU64());
+        auto flags = GEODE_UNWRAP(reader.readU8());
+
+        return Ok(std::move(out));
+    }
 };
 
 struct KeepaliveResponseMessage {
@@ -297,6 +305,11 @@ struct ConnectionControlMessage {
             QN_ASSERT(false && "Unknown connection control message type");
         }
     }
+};
+
+struct PaddingMessage {
+    QN_NO_ENCODE(PaddingMessage);
+    QN_NO_DECODE(PaddingMessage);
 };
 
 struct QdbgToggleMessage {};
