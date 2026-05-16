@@ -1,11 +1,12 @@
 #include <qunet/Pinger.hpp>
-#include <qunet/dns/Resolver.hpp>
 #include <qunet/Log.hpp>
+#include <qunet/dns/Resolver.hpp>
 #include <qunet/protocol/constants.hpp>
-#include <dbuf/ByteWriter.hpp>
 #include <qunet/util/shutdown.hpp>
+#include <socket/transport/udp/Padding.hpp>
 #include "UrlParser.hpp"
 
+#include <dbuf/ByteWriter.hpp>
 #include <arc/future/Select.hpp>
 #include <arc/time/Sleep.hpp>
 
@@ -244,6 +245,7 @@ Future<> Pinger::thrDoPing(const qsox::SocketAddress& address, Callback callback
     writer.writeU8(MSG_PING);
     writer.writeU32(pingId);
     writer.writeU8(this->isCached(address) ? 1 : 0); // flags
+    padMessageToMinimum(writer);
 
     auto res = co_await m_socket->sendTo(writer.written().data(), writer.written().size(), address);
 
