@@ -55,13 +55,13 @@ endif()
 set(ARC_FEATURE_DEBUG ${QUNET_DEBUG})
 
 if (NOT TARGET asp2)
-    CPMAddPackage("gh:dankmeme01/asp2#a3a1414")
+    CPMAddPackage("gh:dankmeme01/asp2#a2ddce1")
 endif()
 if (NOT TARGET arc)
-    CPMAddPackage("gh:dankmeme01/arc@1.5.3")
+    CPMAddPackage("gh:dankmeme01/arc@1.5.8")
 endif()
 if (NOT TARGET dbuf)
-    CPMAddPackage("gh:dankmeme01/dbuf@1.0.2")
+    CPMAddPackage("gh:dankmeme01/dbuf@1.1.0")
 endif()
 
 # pain and suffering
@@ -85,7 +85,7 @@ if (NOT TARGET lz4_static)
 endif()
 
 if (NOT TARGET blake3)
-    CPMAddPackage("gh:BLAKE3-team/BLAKE3#1.8.2")
+    CPMAddPackage("gh:BLAKE3-team/BLAKE3#1.8.6")
     if (WIN32 OR APPLE)
         set(BLAKE3_SIMD_TYPE "none")
     endif()
@@ -100,8 +100,7 @@ if (QUNET_ADVANCED_DNS)
         CPMAddPackage(
             NAME c-ares
             GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
-            GIT_TAG "89f91c0" # TODO: use stable version when a 1.34.7 or 1.35 is out
-                            # the commit right after 89f91c0 also broke the local dns server getter
+            GIT_TAG "v1.34.8"
             OPTIONS "CARES_STATIC ON"
                     "CARES_SHARED OFF"
                     "CARES_INSTALL OFF"
@@ -118,7 +117,7 @@ if (QUNET_TLS_SUPPORT)
     if (NOT TARGET xtls)
         if (PROJECT_IS_TOP_LEVEL)
             CPMAddPackage(
-                URI "gh:dankmeme01/xtls#12695fe"
+                URI "gh:dankmeme01/xtls#e29f88a"
                 OPTIONS "XTLS_ENABLE_OPENSSL ${QUNET_ENABLE_OPENSSL}"
                         "XTLS_ENABLE_WOLFSSL ${QUNET_ENABLE_WOLFSSL}"
                         "XTLS_ENABLE_SOCKET ${QUNET_WS_SUPPORT}"
@@ -138,7 +137,7 @@ if (QUNET_QUIC_SUPPORT)
         CPMAddPackage(
             NAME ngtcp2
             GIT_REPOSITORY "https://github.com/ngtcp2/ngtcp2.git"
-            GIT_TAG "v1.18.0"
+            GIT_TAG "v1.25.0"
             OPTIONS "ENABLE_LIB_ONLY ON"
                     "ENABLE_STATIC_LIB ON"
                     "ENABLE_SHARED_LIB OFF"
