@@ -11,6 +11,7 @@
 #include <asp/time/Duration.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/time/sleep.hpp>
+#include <asp/iter.hpp>
 
 #include <algorithm>
 
@@ -836,6 +837,12 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
             }
         });
 
+        log::debug("Sorted addresses: {}",
+            asp::iter::from(pingResults)
+                .map([](const auto& p) { return p.get().first.toString(); })
+                .join(", ")
+        );
+
         // prepare final addresses with connection types
         for (auto [addr, _] : pingResults) {
             for (auto ty : protocols) {
@@ -867,7 +874,7 @@ Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<
     auto preferred = m_settings.lock()->m_preferredConnType;
 
     // sort by connection type
-    std::sort(addrs.begin(), addrs.end(), [&](const auto& a, const auto& b) {
+    std::stable_sort(addrs.begin(), addrs.end(), [&](const auto& a, const auto& b) {
         // By default sort in the order Tcp > Quic > Udp > WebSocket
         auto toNum = [](ConnectionType t) {
             switch (t) {
@@ -880,7 +887,9 @@ Future<ConnectionResult<>> Connection::threadFinalConnect(std::vector<std::pair<
             };
         };
 
-        if (a.second == preferred) {
+        if (a.second == preferred && b.second == preferred) {
+            return false;
+        } else if (a.second == preferred) {
             return true;
         } else if (b.second == preferred) {
             return false;
