@@ -839,7 +839,8 @@ Future<ConnectionResult<>> Connection::threadPingCandidates(std::vector<SocketAd
 
         log::debug("Sorted addresses: {}",
             asp::iter::from(pingResults)
-                .map([](const auto& p) { return p.get().first.toString(); })
+                .copied()
+                .map([](const auto& p) { return p.first.toString(); })
                 .join(", ")
         );
 
