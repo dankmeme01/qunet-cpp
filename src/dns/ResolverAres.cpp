@@ -86,12 +86,9 @@ Resolver::Resolver() {
         .filterMap([](std::string_view srv) {
             return qsox::SocketAddress::parse(srv).ok();
         })
-        .filter([](const qsox::SocketAddress& addr) {
-            return addr.isV4();
-        })
         .collect();
 
-    log::debug("(Resolver) System DNS servers: {} ({} valid IPv4s)", csvStr, m_systemDnsServers.size());
+    log::debug("(Resolver) System DNS servers: {} ({} valid IPs)", csvStr, m_systemDnsServers.size());
 
     this->reloadServers();
 
