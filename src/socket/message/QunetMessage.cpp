@@ -255,21 +255,31 @@ static Result<size_t, MessageDecodeError> lengthForNonDataMessage(dbuf::ByteRead
         } break;
 
         case MSG_HANDSHAKE_FAILURE: {
-            MAP_UNWRAP(reader.skip(4));
-            auto len = MAP_UNWRAP(reader.readU16());
-            MAP_UNWRAP(reader.skip(len));
+            auto code = MAP_UNWRAP(reader.readU32());
+            size_t total = 4;
 
-            return Ok(4 + 2 + len);
+            if (code == 0) {
+                auto len = MAP_UNWRAP(reader.readU16());
+                MAP_UNWRAP(reader.skip(len));
+                total += 2 + len;
+            }
+
+            return Ok(total);
         } break;
 
         case MSG_CLIENT_CLOSE: return Ok(1);
 
         case MSG_SERVER_CLOSE: {
-            MAP_UNWRAP(reader.skip(4));
-            auto len = MAP_UNWRAP(reader.readU16());
-            MAP_UNWRAP(reader.skip(len));
+            auto code = MAP_UNWRAP(reader.readU32());
+            size_t total = 4;
 
-            return Ok(4 + 2 + len);
+            if (code == 0) {
+                auto len = MAP_UNWRAP(reader.readU16());
+                MAP_UNWRAP(reader.skip(len));
+                total += 2 + len;
+            }
+
+            return Ok(total);
         } break;
 
         case MSG_CLIENT_RECONNECT: return Ok(8);
