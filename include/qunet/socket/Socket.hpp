@@ -6,6 +6,7 @@
 #endif
 
 #include <asp/time/Duration.hpp>
+#include <asp/fs.hpp>
 #include <qsox/SocketAddress.hpp>
 #include <memory>
 
@@ -53,7 +54,7 @@ public:
     // Attempts to connect to the specified address using the given connection type.
     static arc::Future<TransportResult<Socket>> connect(
         const TransportOptions& options,
-        std::optional<std::filesystem::path> qdbFolder = std::nullopt
+        std::optional<asp::fs::Path> qdbFolder = std::nullopt
     );
     static arc::Future<TransportResult<Socket>> reconnect(const TransportOptions& options, Socket& prev);
 
@@ -99,7 +100,7 @@ private:
     qsox::SocketAddress m_remoteAddress;
     asp::Duration m_connTimeout;
     std::optional<QunetDatabase> m_usedQdb;
-    std::optional<std::filesystem::path> m_qdbFolder;
+    std::optional<asp::fs::Path> m_qdbFolder;
 
     Socket(std::shared_ptr<BaseTransport> transport, qsox::SocketAddress remote)
         : m_transport(std::move(transport)), m_remoteAddress(std::move(remote)) {}

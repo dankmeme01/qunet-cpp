@@ -55,13 +55,13 @@ endif()
 set(ARC_FEATURE_DEBUG ${QUNET_DEBUG})
 
 if (NOT TARGET asp2)
-    CPMAddPackage("gh:dankmeme01/asp2#a2ddce1")
+    CPMAddPackage("gh:dankmeme01/asp2@1.5.2")
 endif()
 if (NOT TARGET arc)
-    CPMAddPackage("gh:dankmeme01/arc@1.5.8")
+    CPMAddPackage("gh:dankmeme01/arc@1.6.4")
 endif()
 if (NOT TARGET dbuf)
-    CPMAddPackage("gh:dankmeme01/dbuf@1.1.0")
+    CPMAddPackage("gh:dankmeme01/dbuf@1.2.0")
 endif()
 
 # pain and suffering
@@ -85,7 +85,7 @@ if (NOT TARGET lz4_static)
 endif()
 
 if (NOT TARGET blake3)
-    CPMAddPackage("gh:BLAKE3-team/BLAKE3#1.8.6")
+    CPMAddPackage("gh:BLAKE3-team/BLAKE3#1.8.7")
     if (WIN32 OR APPLE)
         set(BLAKE3_SIMD_TYPE "none")
     endif()
@@ -100,7 +100,7 @@ if (QUNET_ADVANCED_DNS)
         CPMAddPackage(
             NAME c-ares
             GIT_REPOSITORY "https://github.com/c-ares/c-ares.git"
-            GIT_TAG "v1.34.8"
+            GIT_TAG "v1.34.9"
             OPTIONS "CARES_STATIC ON"
                     "CARES_SHARED OFF"
                     "CARES_INSTALL OFF"
@@ -117,7 +117,7 @@ if (QUNET_TLS_SUPPORT)
     if (NOT TARGET xtls)
         if (PROJECT_IS_TOP_LEVEL)
             CPMAddPackage(
-                URI "gh:dankmeme01/xtls#e29f88a"
+                URI "gh:dankmeme01/xtls@1.0.0"
                 OPTIONS "XTLS_ENABLE_OPENSSL ${QUNET_ENABLE_OPENSSL}"
                         "XTLS_ENABLE_WOLFSSL ${QUNET_ENABLE_WOLFSSL}"
                         "XTLS_ENABLE_SOCKET ${QUNET_WS_SUPPORT}"
@@ -172,7 +172,7 @@ endif()
 if (QUNET_WS_SUPPORT)
     if (NOT TARGET wsx)
         CPMAddPackage(
-            URI "gh:dankmeme01/wsx#e936ecc"
+            URI "gh:dankmeme01/wsx@1.0.0"
             OPTIONS "WSX_ENABLE_TLS ${QUNET_TLS_SUPPORT}"
                     "WSX_ENABLE_ASYNC ON"
         )

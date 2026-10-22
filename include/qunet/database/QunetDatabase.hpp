@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <optional>
 #include <vector>
-#include <filesystem>
+#include <asp/fs.hpp>
 
 namespace qn {
 
@@ -58,10 +58,10 @@ private:
     static Result<QunetDatabase, DatabaseDecodeError> decode(dbuf::ByteReader<>& reader);
 };
 
-std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address);
+std::optional<QunetDatabase> tryFindQdb(asp::fs::PathView folder, const qsox::SocketAddress& address);
 Result<> saveQdb(
     const std::vector<uint8_t>& data,
-    const std::filesystem::path& folder,
+    asp::fs::PathView folder,
     const qsox::SocketAddress& address
 );
 

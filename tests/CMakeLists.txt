@@ -1,4 +1,4 @@
-CPMAddPackage("gh:google/googletest@1.16.0")
+CPMAddPackage("gh:google/googletest@1.18.0")
 
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_executable(qunet_tests ${TEST_SOURCES})

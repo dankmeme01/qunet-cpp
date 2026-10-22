@@ -50,7 +50,7 @@ Future<TransportResult<std::pair<Socket, Duration>>> Socket::createSocket(const 
 
 arc::Future<TransportResult<Socket>> Socket::connect(
     const TransportOptions& options,
-    std::optional<std::filesystem::path> qdbFolder
+    std::optional<asp::fs::Path> qdbFolder
 ) {
     ARC_FRAME();
 

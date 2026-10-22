@@ -1213,9 +1213,9 @@ void Connection::setIpv6Enabled(bool enabled) {
     settings->m_ipv6Enabled = enabled;
 }
 
-void Connection::setQdbFolder(const std::filesystem::path& folder) {
+void Connection::setQdbFolder(asp::fs::Path folder) {
     auto settings = m_settings.lock();
-    settings->m_qdbFolder = folder;
+    settings->m_qdbFolder = std::move(folder);
 }
 
 void Connection::setDebugOptions(const ConnectionDebugOptions& opts) {

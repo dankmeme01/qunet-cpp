@@ -154,7 +154,7 @@ std::array<uint8_t, 16> QunetDatabase::getHash() const {
     return this->hash;
 }
 
-static std::filesystem::path pathForQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address) {
+static asp::fs::Path pathForQdb(asp::fs::PathView folder, const qsox::SocketAddress& address) {
     // use address hash as filename
     auto hash = qn::blake3Hash(address.toString());
     auto hexstr = hash.toString();
@@ -163,10 +163,10 @@ static std::filesystem::path pathForQdb(const std::filesystem::path& folder, con
     return folder / (hexstr + ".qdb");
 }
 
-std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, const qsox::SocketAddress& address) {
+std::optional<QunetDatabase> tryFindQdb(asp::fs::PathView folder, const qsox::SocketAddress& address) {
     auto qdbPath = pathForQdb(folder, address);
 
-    if (!asp::fs::exists(qdbPath)) {
+    if (!qdbPath.exists()) {
         return std::nullopt;
     }
 
@@ -187,11 +187,11 @@ std::optional<QunetDatabase> tryFindQdb(const std::filesystem::path& folder, con
 
 Result<> saveQdb(
     const std::vector<uint8_t>& data,
-    const std::filesystem::path& folder,
+    asp::fs::PathView folder,
     const qsox::SocketAddress& address
 ) {
     auto qdbPath = pathForQdb(folder, address);
-    if (!asp::fs::exists(folder)) {
+    if (!folder.exists()) {
         (void) asp::fs::createDirAll(folder);
     }
 

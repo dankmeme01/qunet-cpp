@@ -14,6 +14,7 @@
 #include <asp/sync/Channel.hpp>
 #include <asp/sync/Notify.hpp>
 #include <asp/thread/Thread.hpp>
+#include <asp/fs.hpp>
 #include <optional>
 
 namespace qn {
@@ -131,7 +132,7 @@ struct ConnectionSettings {
     bool m_ipv4Enabled = true;
     bool m_ipv6Enabled = true;
     asp::time::Duration m_connTimeout = asp::time::Duration::fromSecs(5);
-    std::optional<std::filesystem::path> m_qdbFolder;
+    std::optional<asp::fs::Path> m_qdbFolder;
 };
 
 struct ConnectionCallbacks {
@@ -250,7 +251,7 @@ public:
     // QDB files are files with compression dictionaries and other metadata,
     // they are already used automatically but caching them may significantly help
     // connection establishment times.
-    void setQdbFolder(const std::filesystem::path& folder);
+    void setQdbFolder(asp::fs::Path folder);
 
     // Set the debug options for the connection.
     void setDebugOptions(const ConnectionDebugOptions& opts);
